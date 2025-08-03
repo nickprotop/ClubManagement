@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <!-- Disable global NuGet package folder fallback for WSL compatibility -->
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
+  </PropertyGroup>
+</Project>

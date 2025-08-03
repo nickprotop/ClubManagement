@@ -1,0 +1,55 @@
+# Build stage
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+# Copy solution file
+COPY ClubManagement.sln ./
+
+# Copy project files
+COPY src/Shared/ClubManagement.Shared/ClubManagement.Shared.csproj src/Shared/ClubManagement.Shared/
+COPY src/Domain/ClubManagement.Domain/ClubManagement.Domain.csproj src/Domain/ClubManagement.Domain/
+COPY src/Application/ClubManagement.Application/ClubManagement.Application.csproj src/Application/ClubManagement.Application/
+COPY src/Infrastructure/ClubManagement.Infrastructure/ClubManagement.Infrastructure.csproj src/Infrastructure/ClubManagement.Infrastructure/
+COPY src/Api/ClubManagement.Api/ClubManagement.Api.csproj src/Api/ClubManagement.Api/
+
+# Restore dependencies
+RUN dotnet restore src/Api/ClubManagement.Api/ClubManagement.Api.csproj
+
+# Copy source code
+COPY src/ src/
+COPY scripts/ scripts/
+COPY docker/.env.sample .env
+
+# Generate Docker configuration
+RUN chmod +x scripts/generate-docker-config.sh && \
+    bash scripts/generate-docker-config.sh
+
+# Build application
+WORKDIR /src/src/Api/ClubManagement.Api
+RUN dotnet build -c Release -o /app/build
+
+# Publish stage
+FROM build AS publish
+RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
+
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+WORKDIR /app
+
+# Install curl for health checks
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+# Copy published app
+COPY --from=publish /app/publish .
+
+# Create non-root user
+RUN adduser --disabled-password --gecos '' appuser && chown -R appuser /app
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost/health || exit 1
+
+EXPOSE 80 443
+
+ENTRYPOINT ["dotnet", "ClubManagement.Api.dll"]

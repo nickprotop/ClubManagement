@@ -1,0 +1,21 @@
+# Development override for docker-compose
+# This file is automatically loaded by docker-compose and provides development-specific settings
+
+version: '3.8'
+
+services:
+  api:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    volumes:
+      - ~/.aspnet/https:/https:ro
+    ports:
+      - "4000:80"
+      - "4001:443"
+
+  client:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    ports:
+      - "4002:80"
+      - "4003:443"

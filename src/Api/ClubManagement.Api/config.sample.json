@@ -1,0 +1,52 @@
+{
+  "Database": {
+    "Host": "{{DB_HOST}}",
+    "Port": "{{DB_PORT}}",
+    "Database": "{{DB_NAME}}",
+    "Username": "{{DB_USER}}",
+    "Password": "{{DB_PASSWORD}}",
+    "ConnectionString": "Host={{DB_HOST}};Port={{DB_PORT}};Database={{DB_NAME}};Username={{DB_USER}};Password={{DB_PASSWORD}}"
+  },
+  "Jwt": {
+    "SecretKey": "{{JWT_SECRET_KEY}}",
+    "Issuer": "{{JWT_ISSUER}}",
+    "Audience": "{{JWT_AUDIENCE}}",
+    "AccessTokenExpirationMinutes": "{{JWT_ACCESS_TOKEN_EXPIRATION_MINUTES}}",
+    "RefreshTokenExpirationDays": "{{JWT_REFRESH_TOKEN_EXPIRATION_DAYS}}"
+  },
+  "Redis": {
+    "Host": "{{REDIS_HOST}}",
+    "Port": "{{REDIS_PORT}}",
+    "Password": "{{REDIS_PASSWORD}}",
+    "ConnectionString": "{{REDIS_HOST}}:{{REDIS_PORT}}"
+  },
+  "MinIO": {
+    "Endpoint": "{{MINIO_ENDPOINT}}",
+    "AccessKey": "{{MINIO_ACCESS_KEY}}",
+    "SecretKey": "{{MINIO_SECRET_KEY}}",
+    "UseSSL": {{MINIO_USE_SSL}},
+    "BucketName": "{{MINIO_BUCKET_NAME}}"
+  },
+  "Stripe": {
+    "PublishableKey": "{{STRIPE_PUBLISHABLE_KEY}}",
+    "SecretKey": "{{STRIPE_SECRET_KEY}}",
+    "WebhookSecret": "{{STRIPE_WEBHOOK_SECRET}}"
+  },
+  "Application": {
+    "Environment": "{{ENVIRONMENT}}",
+    "ApiBaseUrl": "{{API_BASE_URL}}",
+    "ClientBaseUrl": "{{CLIENT_BASE_URL}}",
+    "AllowedHosts": "*"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning",
+      "Microsoft.EntityFrameworkCore": "Warning"
+    }
+  },
+  "Deployment": {
+    "Mode": "{{DEPLOYMENT_MODE}}",
+    "IsDocker": {{IS_DOCKER}}
+  }
+}

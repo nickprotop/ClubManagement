@@ -1,0 +1,129 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: clubmanagement-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-clubmanagement}
+      POSTGRES_USER: ${POSTGRES_USER:-clubadmin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clubpassword}
+    ports:
+      - "${POSTGRES_PORT:-4004}:5432"
+    volumes:
+      - cm_postgres_data:/var/lib/postgresql/data
+    networks:
+      - clubmanagement-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clubadmin} -d ${POSTGRES_DB:-clubmanagement}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: clubmanagement-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-4007}:6379"
+    volumes:
+      - cm_redis_data:/data
+    networks:
+      - clubmanagement-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  minio:
+    image: minio/minio:latest
+    container_name: clubmanagement-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "${MINIO_PORT:-4005}:9000"
+      - "${MINIO_CONSOLE_PORT:-4006}:9001"
+    volumes:
+      - cm_minio_data:/data
+    networks:
+      - clubmanagement-network
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    container_name: clubmanagement-api
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ENVIRONMENT:-Development}
+      ASPNETCORE_URLS: http://+:80;https://+:443
+      ASPNETCORE_Kestrel__Certificates__Default__Password: ${CERT_PASSWORD:-password}
+      ASPNETCORE_Kestrel__Certificates__Default__Path: /https/aspnetapp.pfx
+      ConnectionStrings__DefaultConnection: "Host=${DOCKER_POSTGRES_HOST:-postgres};Port=5432;Database=${POSTGRES_DB:-clubmanagement};Username=${POSTGRES_USER:-clubadmin};Password=${POSTGRES_PASSWORD:-clubpassword}"
+      Jwt__SecretKey: ${JWT_SECRET_KEY}
+      Jwt__Issuer: ${JWT_ISSUER:-ClubManagement}
+      Jwt__Audience: ${JWT_AUDIENCE:-ClubManagement}
+      Jwt__AccessTokenExpirationMinutes: ${JWT_ACCESS_TOKEN_EXPIRATION_MINUTES:-60}
+      Jwt__RefreshTokenExpirationDays: ${JWT_REFRESH_TOKEN_EXPIRATION_DAYS:-7}
+      Redis__ConnectionString: "${DOCKER_REDIS_HOST:-redis}:6379"
+      MinIO__Endpoint: "${DOCKER_MINIO_HOST:-minio}:9000"
+      MinIO__AccessKey: ${MINIO_ACCESS_KEY:-minioadmin}
+      MinIO__SecretKey: ${MINIO_SECRET_KEY:-minioadmin}
+      MinIO__UseSSL: ${MINIO_USE_SSL:-false}
+      MinIO__BucketName: ${MINIO_BUCKET_NAME:-clubmanagement}
+      Stripe__PublishableKey: ${STRIPE_PUBLISHABLE_KEY}
+      Stripe__SecretKey: ${STRIPE_SECRET_KEY}
+      Stripe__WebhookSecret: ${STRIPE_WEBHOOK_SECRET}
+    ports:
+      - "4000:80"
+      - "4001:443"
+    volumes:
+      - ~/.aspnet/https:/https:ro
+    networks:
+      - clubmanagement-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  client:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.client
+    container_name: clubmanagement-client
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ENVIRONMENT:-Development}
+      ASPNETCORE_URLS: http://+:80;https://+:443
+    ports:
+      - "4002:80"
+      - "4003:443"
+    networks:
+      - clubmanagement-network
+    depends_on:
+      - api
+
+volumes:
+  cm_postgres_data:
+    driver: local
+  cm_redis_data:
+    driver: local
+  cm_minio_data:
+    driver: local
+
+networks:
+  clubmanagement-network:
+    driver: bridge
