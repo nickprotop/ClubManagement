@@ -5,6 +5,7 @@ using ClubManagement.Infrastructure.Data;
 using ClubManagement.Infrastructure.Services;
 using ClubManagement.Shared.DTOs;
 using ClubManagement.Shared.Models;
+using ClubManagement.Api.Extensions;
 
 namespace ClubManagement.Api.Controllers;
 
@@ -27,6 +28,15 @@ public class MembersController : ControllerBase
     {
         try
         {
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<PagedResult<MemberListDto>>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var query = _context.Members
                 .Include(m => m.User)
                 .AsQueryable();

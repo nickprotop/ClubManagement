@@ -92,7 +92,6 @@ public class EventService : IEventService
     {
         try
         {
-            // Use raw HttpClient approach via manual HTTP call
             var response = await _apiService.GetAsync<EventPermissions>("api/events/permissions");
             return response?.Data;
         }

@@ -37,6 +37,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<EventPermissions>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var permissions = await _authService.GetEventPermissionsAsync(userId, id);
             return Ok(ApiResponse<EventPermissions>.SuccessResult(permissions));
         }
@@ -52,8 +61,21 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<EventPermissions>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var permissions = await _authService.GetEventPermissionsAsync(userId);
             return Ok(ApiResponse<EventPermissions>.SuccessResult(permissions));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(ApiResponse<EventPermissions>.ErrorResult($"Unauthorized: {ex.Message}"));
         }
         catch (Exception ex)
         {
@@ -66,6 +88,15 @@ public class EventsController : ControllerBase
     {
         try
         {
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<PagedResult<EventListDto>>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var query = _context.Events
                 .Include(e => e.Facility)
                 .Include(e => e.Instructor)

@@ -57,6 +57,13 @@ public class ApiService : IApiService
     {
         try
         {
+            // Ensure we have a valid token before making the API call
+            if (!await _authService.IsAuthenticatedAsync())
+            {
+                await _authService.HandleSessionExpiredAsync();
+                return ApiResponse<T>.ErrorResult("Session expired. Please login again.");
+            }
+            
             return await apiCall();
         }
         catch (HttpRequestException ex) when (IsUnauthorized(ex))

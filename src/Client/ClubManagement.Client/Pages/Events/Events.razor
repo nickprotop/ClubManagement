@@ -115,17 +115,19 @@
             <MudTable Items="@_events.Items" 
                       Hover="true" 
                       Striped="true" 
-                      Dense="true">
+                      Dense="true"
+                      Breakpoint="Breakpoint.Sm"
+                      HorizontalScrollbar="true">
                 <HeaderContent>
-                    <MudTh>Event</MudTh>
-                    <MudTh>Type</MudTh>
-                    <MudTh>Date & Time</MudTh>
-                    <MudTh>Facility</MudTh>
-                    <MudTh>Instructor</MudTh>
-                    <MudTh>Capacity</MudTh>
-                    <MudTh>Price</MudTh>
-                    <MudTh>Status</MudTh>
-                    <MudTh>Actions</MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<EventListDto, object>(x => x.Title)">Event</MudTableSortLabel></MudTh>
+                    <MudTh Class="d-none d-md-table-cell">Type</MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<EventListDto, object>(x => x.StartDateTime)">Date & Time</MudTableSortLabel></MudTh>
+                    <MudTh Class="d-none d-lg-table-cell">Facility</MudTh>
+                    <MudTh Class="d-none d-lg-table-cell">Instructor</MudTh>
+                    <MudTh Class="d-none d-md-table-cell">Capacity</MudTh>
+                    <MudTh Class="d-none d-sm-table-cell">Price</MudTh>
+                    <MudTh Class="d-none d-md-table-cell">Status</MudTh>
+                    <MudTh Style="width: 120px; min-width: 120px;">Actions</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd DataLabel="Event">
@@ -169,9 +171,24 @@
                                     Occurrence #@context.OccurrenceNumber
                                 </MudText>
                             }
+                            <!-- Mobile-only additional info -->
+                            <div class="d-md-none">
+                                <MudStack Row="true" Spacing="2" Style="flex-wrap: wrap;" Class="mt-2">
+                                    <MudChip T="string" Size="Size.Small" Color="@GetTypeColor(context.Type)">@context.Type</MudChip>
+                                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+                                    @if (context.Price.HasValue)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Info">$@context.Price.Value.ToString("F2")</MudChip>
+                                    }
+                                    else
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Success">Free</MudChip>
+                                    }
+                                </MudStack>
+                            </div>
                         </MudStack>
                     </MudTd>
-                    <MudTd DataLabel="Type">
+                    <MudTd DataLabel="Type" Class="d-none d-md-table-cell">
                         <MudChip T="string" Size="Size.Small" Color="@GetTypeColor(context.Type)">@context.Type</MudChip>
                     </MudTd>
                     <MudTd DataLabel="Date & Time">
@@ -180,9 +197,26 @@
                             <MudText Typo="Typo.caption" Color="Color.Secondary">
                                 @context.StartDateTime.ToString("HH:mm") - @context.EndDateTime.ToString("HH:mm")
                             </MudText>
+                            <!-- Mobile-only additional details -->
+                            <div class="d-lg-none mt-1">
+                                <MudStack Spacing="1">
+                                    @if (!string.IsNullOrEmpty(context.FacilityName))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            <MudIcon Icon="@Icons.Material.Filled.Place" Size="Size.Small" /> @context.FacilityName
+                                        </MudText>
+                                    }
+                                    @if (!string.IsNullOrEmpty(context.InstructorName))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" /> @context.InstructorName
+                                        </MudText>
+                                    }
+                                </MudStack>
+                            </div>
                         </MudStack>
                     </MudTd>
-                    <MudTd DataLabel="Facility">
+                    <MudTd DataLabel="Facility" Class="d-none d-lg-table-cell">
                         @if (!string.IsNullOrEmpty(context.FacilityName))
                         {
                             <MudText>@context.FacilityName</MudText>
@@ -192,7 +226,7 @@
                             <MudText Color="Color.Secondary">No facility</MudText>
                         }
                     </MudTd>
-                    <MudTd DataLabel="Instructor">
+                    <MudTd DataLabel="Instructor" Class="d-none d-lg-table-cell">
                         @if (!string.IsNullOrEmpty(context.InstructorName))
                         {
                             <MudText>@context.InstructorName</MudText>
@@ -202,7 +236,7 @@
                             <MudText Color="Color.Secondary">No instructor</MudText>
                         }
                     </MudTd>
-                    <MudTd DataLabel="Capacity">
+                    <MudTd DataLabel="Capacity" Class="d-none d-md-table-cell">
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                             <MudText>@context.CurrentEnrollment/@context.MaxCapacity</MudText>
                             <MudProgressLinear Value="@((double)context.CurrentEnrollment / context.MaxCapacity * 100)" 
@@ -210,7 +244,7 @@
                                                Size="Size.Small" />
                         </MudStack>
                     </MudTd>
-                    <MudTd DataLabel="Price">
+                    <MudTd DataLabel="Price" Class="d-none d-sm-table-cell">
                         @if (context.Price.HasValue)
                         {
                             <MudText>$@context.Price.Value.ToString("F2")</MudText>
@@ -220,37 +254,84 @@
                             <MudText Color="Color.Success">Free</MudText>
                         }
                     </MudTd>
-                    <MudTd DataLabel="Status">
+                    <MudTd DataLabel="Status" Class="d-none d-md-table-cell">
                         <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
                     </MudTd>
                     <MudTd DataLabel="Actions">
-                        <MudButtonGroup Size="Size.Small" Variant="Variant.Text">
-                            <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
-                                           Color="Color.Primary" 
-                                           OnClick="@(() => ViewEvent(context.Id))" 
-                                           Title="View Details" />
-                            @if (_generalPermissions?.CanEdit == true)
-                            {
-                                <MudIconButton Icon="@Icons.Material.Filled.Edit" 
-                                               Color="Color.Secondary" 
-                                               OnClick="@(() => EditEvent(context.Id))" 
-                                               Title="Edit Event" />
-                            }
-                            @if (_generalPermissions?.CanDelete == true)
-                            {
-                                <MudIconButton Icon="@Icons.Material.Filled.Delete" 
-                                               Color="Color.Error" 
-                                               OnClick="@(() => DeleteEvent(context.Id))" 
-                                               Title="Delete Event" />
-                            }
-                            @if (_generalPermissions?.CanRegisterSelf == true)
-                            {
-                                <MudIconButton Icon="@Icons.Material.Filled.PersonAdd" 
-                                               Color="Color.Success" 
-                                               OnClick="@(() => RegisterForEvent(context.Id))" 
-                                               Title="Register" />
-                            }
-                        </MudButtonGroup>
+                        <!-- Desktop: Button group -->
+                        <div class="d-none d-md-block">
+                            <MudButtonGroup Size="Size.Small" Variant="Variant.Text">
+                                <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
+                                               Color="Color.Primary" 
+                                               OnClick="@(() => ViewEvent(context.Id))" 
+                                               Title="View Details" />
+                                @if (_generalPermissions?.CanEdit == true)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" 
+                                                   Color="Color.Secondary" 
+                                                   OnClick="@(() => EditEvent(context.Id))" 
+                                                   Title="Edit Event" />
+                                }
+                                @if (_generalPermissions?.CanDelete == true)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                                   Color="Color.Error" 
+                                                   OnClick="@(() => DeleteEvent(context.Id))" 
+                                                   Title="Delete Event" />
+                                }
+                                @if (_generalPermissions?.CanRegisterSelf == true)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.PersonAdd" 
+                                                   Color="Color.Success" 
+                                                   OnClick="@(() => RegisterForEvent(context.Id))" 
+                                                   Title="Register" />
+                                }
+                            </MudButtonGroup>
+                        </div>
+                        
+                        <!-- Mobile: Dropdown menu -->
+                        <div class="d-md-none">
+                            <MudMenu Icon="@Icons.Material.Filled.MoreVert" 
+                                     Size="Size.Small" 
+                                     Dense="true"
+                                     AnchorOrigin="Origin.BottomRight"
+                                     TransformOrigin="Origin.TopRight">
+                                <MudMenuItem OnClick="@(() => ViewEvent(context.Id))">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                        <MudIcon Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" />
+                                        <MudText>View Details</MudText>
+                                    </MudStack>
+                                </MudMenuItem>
+                                @if (_generalPermissions?.CanEdit == true)
+                                {
+                                    <MudMenuItem OnClick="@(() => EditEvent(context.Id))">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                            <MudIcon Icon="@Icons.Material.Filled.Edit" Size="Size.Small" />
+                                            <MudText>Edit Event</MudText>
+                                        </MudStack>
+                                    </MudMenuItem>
+                                }
+                                @if (_generalPermissions?.CanRegisterSelf == true)
+                                {
+                                    <MudMenuItem OnClick="@(() => RegisterForEvent(context.Id))">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                            <MudIcon Icon="@Icons.Material.Filled.PersonAdd" Size="Size.Small" Color="Color.Success" />
+                                            <MudText>Register</MudText>
+                                        </MudStack>
+                                    </MudMenuItem>
+                                }
+                                @if (_generalPermissions?.CanDelete == true)
+                                {
+                                    <MudDivider />
+                                    <MudMenuItem OnClick="@(() => DeleteEvent(context.Id))">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                            <MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" />
+                                            <MudText Color="Color.Error">Delete Event</MudText>
+                                        </MudStack>
+                                    </MudMenuItem>
+                                }
+                            </MudMenu>
+                        </div>
                     </MudTd>
                 </RowTemplate>
             </MudTable>

@@ -26,4 +26,14 @@ public static class ControllerExtensions
         return controller.User.FindFirst(ClaimTypes.Role)?.Value ?? 
                throw new UnauthorizedAccessException("User role not found in token");
     }
+
+    public static Guid GetCurrentTenantId(this ControllerBase controller)
+    {
+        var tenantIdClaim = controller.User.FindFirst("tenant_id")?.Value;
+        if (string.IsNullOrEmpty(tenantIdClaim) || !Guid.TryParse(tenantIdClaim, out var tenantId))
+        {
+            throw new UnauthorizedAccessException("Tenant ID not found in token");
+        }
+        return tenantId;
+    }
 }

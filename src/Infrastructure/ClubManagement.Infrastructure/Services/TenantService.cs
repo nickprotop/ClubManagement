@@ -7,6 +7,7 @@ namespace ClubManagement.Infrastructure.Services;
 public interface ITenantService
 {
     Task<Tenant?> GetTenantByDomainAsync(string domain);
+    Task<Tenant?> GetTenantByIdAsync(Guid tenantId);
     Task<string> GetTenantSchemaAsync(Guid tenantId);
     Task EnsureTenantSchemaExistsAsync(string schemaName);
 }
@@ -24,6 +25,12 @@ public class TenantService : ITenantService
     {
         return await _context.Tenants
             .FirstOrDefaultAsync(t => t.Domain == domain && t.Status == TenantStatus.Active);
+    }
+
+    public async Task<Tenant?> GetTenantByIdAsync(Guid tenantId)
+    {
+        return await _context.Tenants
+            .FirstOrDefaultAsync(t => t.Id == tenantId && t.Status == TenantStatus.Active);
     }
 
     public async Task<string> GetTenantSchemaAsync(Guid tenantId)

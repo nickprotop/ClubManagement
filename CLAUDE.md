@@ -190,6 +190,98 @@ Facilities and Hardware use dynamic property schemas:
 - **Member**: `member@demo.localhost` / `Member123!` (member portal access)
 - **Coach**: `coach@demo.localhost` / `Coach123!` (coaching and training access)
 
+## CRITICAL: Multi-Tenant Schema Switching Requirements
+
+⚠️ **SECURITY CRITICAL** ⚠️
+
+**EVERY API endpoint that accesses tenant-specific data MUST implement proper tenant schema switching. Failure to do this will result in:**
+- Data leakage between tenants
+- Authentication failures  
+- Authorization bypasses
+- Complete security breach
+
+### **MANDATORY Pattern for ALL Tenant-Specific Endpoints**
+
+```csharp
+[HttpGet]
+[Authorize] // All tenant endpoints MUST have [Authorize]
+public async Task<ActionResult<ApiResponse<T>>> YourEndpoint()
+{
+    try
+    {
+        // STEP 1: Extract user and tenant from JWT token
+        var userId = this.GetCurrentUserId();
+        var tenantId = this.GetCurrentTenantId();
+        
+        // STEP 2: Resolve tenant and validate
+        var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+        if (tenant == null)
+            return BadRequest(ApiResponse<T>.ErrorResult("Invalid tenant"));
+            
+        // STEP 3: CRITICAL - Switch to tenant schema BEFORE any DB operations
+        await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+        
+        // STEP 4: Now safe to perform tenant-specific operations
+        var result = await _context.YourTenantTable.ToListAsync();
+        return Ok(ApiResponse<T>.SuccessResult(result));
+    }
+    catch (UnauthorizedAccessException ex)
+    {
+        return Unauthorized(ApiResponse<T>.ErrorResult($"Unauthorized: {ex.Message}"));
+    }
+    catch (Exception ex)
+    {
+        return StatusCode(500, ApiResponse<T>.ErrorResult($"Error: {ex.Message}"));
+    }
+}
+```
+
+### **CRITICAL Rules - ALWAYS Follow These:**
+
+1. **NEVER access `_context` (DbContext) without tenant schema switching first**
+2. **ALWAYS use `this.GetCurrentTenantId()` to get tenant from JWT**
+3. **ALWAYS validate tenant exists before schema switching** 
+4. **ALWAYS apply `[Authorize]` attribute to tenant-specific endpoints**
+5. **ALWAYS switch schema BEFORE any database queries**
+
+### **Endpoints That MUST Have Tenant Switching:**
+
+- Any endpoint accessing: Users, Members, Events, Facilities, Hardware, Registrations, etc.
+- Any endpoint with `[Authorize]` attribute
+- Any endpoint that queries `_context` (DbContext)
+
+### **Endpoints That DON'T Need Tenant Switching:**
+
+- Health checks (`/health`)
+- Public authentication endpoints (login - but these handle tenants differently)
+- Endpoints accessing only public schema data (Tenants table)
+
+### **Required Services in Controller:**
+
+```csharp
+public class YourController : ControllerBase
+{
+    private readonly ClubManagementDbContext _context;
+    private readonly ITenantService _tenantService; // REQUIRED for tenant resolution
+    
+    public YourController(ClubManagementDbContext context, ITenantService tenantService)
+    {
+        _context = context;
+        _tenantService = tenantService; // MUST inject this
+    }
+}
+```
+
+### **Testing Tenant Isolation:**
+
+When implementing new endpoints, ALWAYS test:
+1. User from Tenant A cannot access Tenant B's data
+2. Schema switching works correctly
+3. JWT token contains valid tenant_id claim
+4. Proper error handling for invalid tenants
+
+**⚠️ REMEMBER: Multi-tenant security is CRITICAL. One missing schema switch can expose ALL tenant data. ALWAYS review tenant switching in code reviews.**
+
 ## Authorization System (Hybrid Approach)
 
 **Use this approach for ALL new controllers and features requiring authorization.**
