@@ -1,0 +1,453 @@
+@page "/events"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@inject IEventService EventService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Events - Club Management</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbItems" />
+
+<MudStack Spacing="4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h4">Events</MudText>
+        <MudButtonGroup Variant="Variant.Filled">
+            @if (_generalPermissions?.CanCreate == true)
+            {
+                <MudButton Color="Color.Primary" 
+                           StartIcon="@Icons.Material.Filled.EventAvailable"
+                           Href="/events/create">
+                    Create Event
+                </MudButton>
+            }
+            <MudButton Color="Color.Secondary" 
+                       StartIcon="@Icons.Material.Filled.CalendarMonth"
+                       Href="/events/calendar">
+                Calendar View
+            </MudButton>
+        </MudButtonGroup>
+    </MudStack>
+
+    <MudCard>
+        <MudCardContent>
+            <MudStack Spacing="3">
+                <MudGrid>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudTextField @bind-Value="_searchRequest.SearchTerm" 
+                                      Label="Search events" 
+                                      Variant="Variant.Outlined"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Search"
+                                      OnKeyUp="@(async (e) => { if (e.Key == "Enter") await SearchEvents(); })" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="2">
+                        <MudSelect T="EventType?" @bind-Value="_searchRequest.Type" 
+                                   Label="Event Type" 
+                                   Variant="Variant.Outlined"
+                                   Clearable="true">
+                            @foreach (EventType type in Enum.GetValues<EventType>())
+                            {
+                                <MudSelectItem T="EventType?" Value="type">@type</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="2">
+                        <MudSelect T="EventStatus?" @bind-Value="_searchRequest.Status" 
+                                   Label="Status" 
+                                   Variant="Variant.Outlined"
+                                   Clearable="true">
+                            @foreach (EventStatus status in Enum.GetValues<EventStatus>())
+                            {
+                                <MudSelectItem T="EventStatus?" Value="status">@status</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="2">
+                        <MudDatePicker @bind-Date="_searchRequest.StartDate" 
+                                       Label="Start Date" 
+                                       Variant="Variant.Outlined"
+                                       Clearable="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudDatePicker @bind-Date="_searchRequest.EndDate" 
+                                       Label="End Date" 
+                                       Variant="Variant.Outlined"
+                                       Clearable="true" />
+                    </MudItem>
+                    
+                    <!-- Action buttons on separate row for better responsive behavior -->
+                    <MudItem xs="12" Class="d-flex justify-end">
+                        <MudStack Row="true" Spacing="2">
+                            <MudButton Variant="Variant.Filled" 
+                                       Color="Color.Primary" 
+                                       OnClick="SearchEvents"
+                                       StartIcon="@Icons.Material.Filled.Search">
+                                Search
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" 
+                                       OnClick="ClearSearch"
+                                       StartIcon="@Icons.Material.Filled.Clear">
+                                Clear
+                            </MudButton>
+                        </MudStack>
+                    </MudItem>
+                </MudGrid>
+            </MudStack>
+        </MudCardContent>
+    </MudCard>
+
+    @if (_isLoading)
+    {
+        <MudStack AlignItems="AlignItems.Center" Class="pa-8">
+            <MudProgressCircular Size="Size.Large" Indeterminate="true" />
+            <MudText>Loading events...</MudText>
+        </MudStack>
+    }
+    else if (_events?.Items?.Any() == true)
+    {
+        <MudCard>
+            <MudTable Items="@_events.Items" 
+                      Hover="true" 
+                      Striped="true" 
+                      Dense="true">
+                <HeaderContent>
+                    <MudTh>Event</MudTh>
+                    <MudTh>Type</MudTh>
+                    <MudTh>Date & Time</MudTh>
+                    <MudTh>Facility</MudTh>
+                    <MudTh>Instructor</MudTh>
+                    <MudTh>Capacity</MudTh>
+                    <MudTh>Price</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Event">
+                        <MudStack Spacing="1">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudText Typo="Typo.body1"><strong>@context.Title</strong></MudText>
+                                @if (context.IsRecurringMaster || context.MasterEventId.HasValue)
+                                {
+                                    <MudTooltip Text="@GetRecurrenceTooltip(context)">
+                                        <MudIcon Icon="@Icons.Material.Filled.Repeat" Size="Size.Small" Color="Color.Primary" />
+                                    </MudTooltip>
+                                }
+                            </MudStack>
+                            @if (context.MasterEventId.HasValue && context.OccurrenceNumber.HasValue)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    Occurrence #@context.OccurrenceNumber
+                                </MudText>
+                            }
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Type">
+                        <MudChip T="string" Size="Size.Small" Color="@GetTypeColor(context.Type)">@context.Type</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Date & Time">
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.body2">@context.StartDateTime.ToString("MMM dd, yyyy")</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @context.StartDateTime.ToString("HH:mm") - @context.EndDateTime.ToString("HH:mm")
+                            </MudText>
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Facility">
+                        @if (!string.IsNullOrEmpty(context.FacilityName))
+                        {
+                            <MudText>@context.FacilityName</MudText>
+                        }
+                        else
+                        {
+                            <MudText Color="Color.Secondary">No facility</MudText>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Instructor">
+                        @if (!string.IsNullOrEmpty(context.InstructorName))
+                        {
+                            <MudText>@context.InstructorName</MudText>
+                        }
+                        else
+                        {
+                            <MudText Color="Color.Secondary">No instructor</MudText>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Capacity">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudText>@context.CurrentEnrollment/@context.MaxCapacity</MudText>
+                            <MudProgressLinear Value="@((double)context.CurrentEnrollment / context.MaxCapacity * 100)" 
+                                               Color="@GetCapacityColor(context.CurrentEnrollment, context.MaxCapacity)"
+                                               Size="Size.Small" />
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Price">
+                        @if (context.Price.HasValue)
+                        {
+                            <MudText>$@context.Price.Value.ToString("F2")</MudText>
+                        }
+                        else
+                        {
+                            <MudText Color="Color.Success">Free</MudText>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Actions">
+                        <MudButtonGroup Size="Size.Small" Variant="Variant.Text">
+                            <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
+                                           Color="Color.Primary" 
+                                           OnClick="@(() => ViewEvent(context.Id))" 
+                                           Title="View Details" />
+                            @if (_generalPermissions?.CanEdit == true)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit" 
+                                               Color="Color.Secondary" 
+                                               OnClick="@(() => EditEvent(context.Id))" 
+                                               Title="Edit Event" />
+                            }
+                            @if (_generalPermissions?.CanDelete == true)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                               Color="Color.Error" 
+                                               OnClick="@(() => DeleteEvent(context.Id))" 
+                                               Title="Delete Event" />
+                            }
+                            @if (_generalPermissions?.CanRegisterSelf == true)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.PersonAdd" 
+                                               Color="Color.Success" 
+                                               OnClick="@(() => RegisterForEvent(context.Id))" 
+                                               Title="Register" />
+                            }
+                        </MudButtonGroup>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            @if (_events.TotalPages > 1)
+            {
+                <MudCardActions>
+                    <MudPagination Count="@_events.TotalPages" 
+                                   Selected="@_searchRequest.Page" 
+                                   SelectedChanged="@OnPageChanged"
+                                   ShowFirstLast="true" />
+                </MudCardActions>
+            }
+        </MudCard>
+    }
+    else
+    {
+        <MudCard>
+            <MudCardContent>
+                <MudStack AlignItems="AlignItems.Center" Class="pa-8">
+                    <MudIcon Icon="@Icons.Material.Filled.EventBusy" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.h6" Color="Color.Secondary">No events found</MudText>
+                    <MudText Color="Color.Secondary">Try adjusting your search criteria or create a new event.</MudText>
+                    <MudButton Variant="Variant.Filled" 
+                               Color="Color.Primary" 
+                               StartIcon="@Icons.Material.Filled.EventAvailable"
+                               Href="/events/create"
+                               Class="mt-4">
+                        Create First Event
+                    </MudButton>
+                </MudStack>
+            </MudCardContent>
+        </MudCard>
+    }
+</MudStack>
+
+@code {
+    private List<BreadcrumbItem> _breadcrumbItems = new()
+    {
+        new BreadcrumbItem("Home", href: "/", icon: Icons.Material.Filled.Home),
+        new BreadcrumbItem("Events", href: null, disabled: true, icon: Icons.Material.Filled.Event)
+    };
+
+    private EventSearchRequest _searchRequest = new();
+    private PagedResult<EventListDto>? _events;
+    private bool _isLoading = true;
+    private EventPermissions? _generalPermissions;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissionsAsync();
+        await LoadEvents();
+    }
+
+    private async Task LoadPermissionsAsync()
+    {
+        try
+        {
+            _generalPermissions = await EventService.GetGeneralEventPermissionsAsync();
+        }
+        catch (Exception ex)
+        {
+            // Permissions loading error - continue with no permissions
+            Console.WriteLine($"Error loading permissions: {ex.Message}");
+        }
+    }
+
+    private async Task LoadEvents()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var response = await EventService.GetEventsAsync(_searchRequest);
+            if (response?.Success == true)
+            {
+                _events = response.Data;
+            }
+            else
+            {
+                Snackbar.Add(response?.Message ?? "Failed to load events", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading events: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SearchEvents()
+    {
+        _searchRequest.Page = 1;
+        await LoadEvents();
+    }
+
+    private async Task ClearSearch()
+    {
+        _searchRequest = new EventSearchRequest();
+        await LoadEvents();
+    }
+
+    private async Task OnPageChanged(int page)
+    {
+        _searchRequest.Page = page;
+        await LoadEvents();
+    }
+
+    private void ViewEvent(Guid id)
+    {
+        Navigation.NavigateTo($"/events/{id}");
+    }
+
+    private void EditEvent(Guid id)
+    {
+        Navigation.NavigateTo($"/events/{id}/edit");
+    }
+
+    private async Task DeleteEvent(Guid id)
+    {
+        var eventItem = _events?.Items?.FirstOrDefault(e => e.Id == id);
+        if (eventItem == null) return;
+
+        var result = await DialogService.ShowMessageBox(
+            "Delete Event",
+            $"Are you sure you want to delete '{eventItem.Title}'? This action cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (result == true)
+        {
+            try
+            {
+                var response = await EventService.DeleteEventAsync(id);
+                if (response?.Success == true)
+                {
+                    Snackbar.Add($"'{eventItem.Title}' has been deleted", Severity.Success);
+                    await LoadEvents();
+                }
+                else
+                {
+                    Snackbar.Add(response?.Message ?? "Failed to delete event", Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting event: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task RegisterForEvent(Guid eventId)
+    {
+        try
+        {
+            var request = new EventRegistrationRequest(); // Self-registration (MemberId is null)
+            var response = await EventService.RegisterForEventAsync(eventId, request);
+            
+            if (response?.Success == true)
+            {
+                Snackbar.Add(response.Message ?? "Successfully registered for event", Severity.Success);
+                await LoadEvents(); // Refresh the list
+            }
+            else
+            {
+                Snackbar.Add(response?.Message ?? "Failed to register for event", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error registering for event: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private Color GetTypeColor(EventType type) => type switch
+    {
+        EventType.Class => Color.Primary,
+        EventType.Workshop => Color.Secondary,
+        EventType.Tournament => Color.Warning,
+        EventType.Event => Color.Info,
+        EventType.Private => Color.Success,
+        EventType.Maintenance => Color.Error,
+        _ => Color.Default
+    };
+
+    private Color GetStatusColor(EventStatus status) => status switch
+    {
+        EventStatus.Scheduled => Color.Info,
+        EventStatus.InProgress => Color.Warning,
+        EventStatus.Completed => Color.Success,
+        EventStatus.Cancelled => Color.Error,
+        EventStatus.Rescheduled => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private Color GetCapacityColor(int current, int max)
+    {
+        var percentage = (double)current / max;
+        return percentage switch
+        {
+            >= 0.9 => Color.Error,
+            >= 0.7 => Color.Warning,
+            _ => Color.Success
+        };
+    }
+
+    private string GetRecurrenceTooltip(EventListDto eventDto)
+    {
+        if (eventDto.IsRecurringMaster)
+        {
+            var recurrenceType = eventDto.RecurrenceType?.ToString() ?? "Unknown";
+            return $"Recurring {recurrenceType} Event (Master)";
+        }
+        else if (eventDto.MasterEventId.HasValue)
+        {
+            var recurrenceType = eventDto.RecurrenceType?.ToString() ?? "Unknown";
+            return $"Recurring {recurrenceType} Event Occurrence";
+        }
+        return "Recurring Event";
+    }
+}

@@ -1,0 +1,158 @@
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using MudBlazor
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="4">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.Repeat" Color="Color.Primary" Size="Size.Large" />
+                <MudText Typo="Typo.h5">Edit Recurring Event</MudText>
+            </MudStack>
+
+            <MudText Typo="Typo.body1" Color="Color.Secondary">
+                This event is part of a recurring series. What would you like to edit?
+            </MudText>
+
+            <MudCard Outlined="true">
+                <MudCardContent>
+                    <MudStack Spacing="3">
+                        <MudStack Spacing="2">
+                            <MudPaper Outlined="true" Class="pa-3" Style="@GetSelectionStyle(EditChoice.ThisOccurrence)">
+                                <MudButton FullWidth="true" 
+                                           StartIcon="@GetSelectionIcon(EditChoice.ThisOccurrence)"
+                                           Color="@GetSelectionColor(EditChoice.ThisOccurrence)"
+                                           Variant="Variant.Text"
+                                           OnClick="@(() => SelectChoice(EditChoice.ThisOccurrence))">
+                                    <MudStack Spacing="1" AlignItems="AlignItems.Start">
+                                        <MudText Typo="Typo.subtitle1">
+                                            <strong>This occurrence only</strong>
+                                        </MudText>
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                            Changes will only affect this specific event on @EventDate.ToString("MMMM dd, yyyy")
+                                        </MudText>
+                                    </MudStack>
+                                </MudButton>
+                            </MudPaper>
+
+                            <MudPaper Outlined="true" Class="pa-3" Style="@GetSelectionStyle(EditChoice.EntireSeries)">
+                                <MudButton FullWidth="true" 
+                                           StartIcon="@GetSelectionIcon(EditChoice.EntireSeries)"
+                                           Color="@GetSelectionColor(EditChoice.EntireSeries)"
+                                           Variant="Variant.Text"
+                                           OnClick="@(() => SelectChoice(EditChoice.EntireSeries))">
+                                    <MudStack Spacing="1" AlignItems="AlignItems.Start">
+                                        <MudText Typo="Typo.subtitle1">
+                                            <strong>The entire series</strong>
+                                        </MudText>
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                            Changes will affect this and all future occurrences in the series
+                                        </MudText>
+                                        @if (HasRegistrations)
+                                        {
+                                            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                                                <MudText Typo="Typo.caption">
+                                                    ⚠️ Some events in this series have registrations. You'll be able to choose how to handle them.
+                                                </MudText>
+                                            </MudAlert>
+                                        }
+                                    </MudStack>
+                                </MudButton>
+                            </MudPaper>
+                        </MudStack>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+
+            @if (!string.IsNullOrEmpty(EventTitle))
+            {
+                <MudCard Outlined="true" Class="mud-theme-secondary">
+                    <MudCardContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@GetEventTypeIcon(EventType)" />
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.subtitle2">@EventTitle</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @EventDate.ToString("dddd, MMMM dd, yyyy 'at' h:mm tt")
+                                    @if (OccurrenceNumber.HasValue)
+                                    {
+                                        <text> • Occurrence #@OccurrenceNumber</text>
+                                    }
+                                </MudText>
+                            </MudStack>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Color="Color.Secondary">Cancel</MudButton>
+        <MudButton OnClick="Continue" 
+                   Color="Color.Primary" 
+                   Variant="Variant.Filled"
+                   StartIcon="@Icons.Material.Filled.Edit"
+                   Disabled="@(!_hasSelection)">
+            Continue
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public string EventTitle { get; set; } = string.Empty;
+    [Parameter] public DateTime EventDate { get; set; }
+    [Parameter] public EventType EventType { get; set; }
+    [Parameter] public int? OccurrenceNumber { get; set; }
+    [Parameter] public bool HasRegistrations { get; set; }
+
+    private EditChoice? _selectedChoice;
+    private bool _hasSelection = false;
+    
+    private void SelectChoice(EditChoice choice)
+    {
+        _selectedChoice = choice;
+        _hasSelection = true;
+        StateHasChanged();
+    }
+    
+    private string GetSelectionStyle(EditChoice choice)
+    {
+        return _selectedChoice == choice 
+            ? "border: 2px solid var(--mud-palette-primary); background-color: var(--mud-palette-primary-lighten);" 
+            : "";
+    }
+    
+    private string GetSelectionIcon(EditChoice choice)
+    {
+        return _selectedChoice == choice 
+            ? Icons.Material.Filled.RadioButtonChecked 
+            : Icons.Material.Filled.RadioButtonUnchecked;
+    }
+    
+    private Color GetSelectionColor(EditChoice choice)
+    {
+        return _selectedChoice == choice ? Color.Primary : Color.Default;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Continue()
+    {
+        if (_hasSelection && _selectedChoice.HasValue)
+        {
+            MudDialog.Close(DialogResult.Ok(_selectedChoice.Value));
+        }
+    }
+
+    private string GetEventTypeIcon(EventType type) => type switch
+    {
+        EventType.Class => Icons.Material.Filled.School,
+        EventType.Workshop => Icons.Material.Filled.Build,
+        EventType.Tournament => Icons.Material.Filled.EmojiEvents,
+        EventType.Event => Icons.Material.Filled.Event,
+        EventType.Maintenance => Icons.Material.Filled.Build,
+        _ => Icons.Material.Filled.Event
+    };
+}

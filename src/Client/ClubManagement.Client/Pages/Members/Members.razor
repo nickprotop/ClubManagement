@@ -1,0 +1,306 @@
+@page "/members"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@inject IMemberService MemberService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Members - Club Management</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbItems" />
+
+<MudStack Spacing="4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h4">Members</MudText>
+        <MudButton Variant="Variant.Filled" 
+                   Color="Color.Primary" 
+                   StartIcon="@Icons.Material.Filled.PersonAdd"
+                   Href="/members/create">
+            Add Member
+        </MudButton>
+    </MudStack>
+
+    <MudCard>
+        <MudCardContent>
+            <MudStack Spacing="3">
+                <MudGrid>
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudTextField @bind-Value="_searchRequest.SearchTerm" 
+                                      Label="Search members" 
+                                      Variant="Variant.Outlined"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Search"
+                                      OnKeyUp="@(async (e) => { if (e.Key == "Enter") await SearchMembers(); })" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudSelect @bind-Value="_searchRequest.Tier" 
+                                   Label="Membership Tier" 
+                                   Variant="Variant.Outlined"
+                                   Clearable="true">
+                            @foreach (MembershipTier tier in Enum.GetValues<MembershipTier>())
+                            {
+                                <MudSelectItem Value="tier">@tier</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudSelect @bind-Value="_searchRequest.Status" 
+                                   Label="Status" 
+                                   Variant="Variant.Outlined"
+                                   Clearable="true">
+                            @foreach (MembershipStatus status in Enum.GetValues<MembershipStatus>())
+                            {
+                                <MudSelectItem Value="status">@status</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="2">
+                        <MudStack Row="true" Spacing="2">
+                            <MudButton Variant="Variant.Filled" 
+                                       Color="Color.Primary" 
+                                       OnClick="SearchMembers"
+                                       StartIcon="@Icons.Material.Filled.Search">
+                                Search
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" 
+                                       OnClick="ClearSearch"
+                                       StartIcon="@Icons.Material.Filled.Clear">
+                                Clear
+                            </MudButton>
+                        </MudStack>
+                    </MudItem>
+                </MudGrid>
+            </MudStack>
+        </MudCardContent>
+    </MudCard>
+
+    @if (_isLoading)
+    {
+        <MudStack AlignItems="AlignItems.Center" Class="pa-8">
+            <MudProgressCircular Size="Size.Large" Indeterminate="true" />
+            <MudText>Loading members...</MudText>
+        </MudStack>
+    }
+    else if (_members?.Items?.Any() == true)
+    {
+        <MudCard>
+            <MudTable Items="@_members.Items" 
+                      Hover="true" 
+                      Striped="true" 
+                      Dense="true">
+                <HeaderContent>
+                    <MudTh>Member #</MudTh>
+                    <MudTh>Name</MudTh>
+                    <MudTh>Email</MudTh>
+                    <MudTh>Tier</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Joined</MudTh>
+                    <MudTh>Last Visit</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Member #">
+                        <MudText Typo="Typo.body2">@context.MembershipNumber</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Name">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudAvatar Size="Size.Small" Color="Color.Primary">
+                                @context.FirstName.ToUpper().First()@context.LastName.ToUpper().First()
+                            </MudAvatar>
+                            <MudText>@context.FullName</MudText>
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Email">@context.Email</MudTd>
+                    <MudTd DataLabel="Tier">
+                        <MudChip T="string" Size="Size.Small" Color="@GetTierColor(context.Tier)">@context.Tier</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Joined">@context.JoinedAt.ToString("MMM dd, yyyy")</MudTd>
+                    <MudTd DataLabel="Last Visit">
+                        @if (context.LastVisitAt.HasValue)
+                        {
+                            @context.LastVisitAt.Value.ToString("MMM dd, yyyy")
+                        }
+                        else
+                        {
+                            <MudText Color="Color.Secondary">Never</MudText>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Actions">
+                        <MudButtonGroup Size="Size.Small" Variant="Variant.Text">
+                            <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
+                                           Color="Color.Primary" 
+                                           OnClick="@(() => ViewMember(context.Id))" 
+                                           Title="View Details" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" 
+                                           Color="Color.Secondary" 
+                                           OnClick="@(() => EditMember(context.Id))" 
+                                           Title="Edit Member" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                           Color="Color.Error" 
+                                           OnClick="@(() => DeleteMember(context.Id))" 
+                                           Title="Delete Member" />
+                        </MudButtonGroup>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            @if (_members.TotalPages > 1)
+            {
+                <MudCardActions>
+                    <MudPagination Count="@_members.TotalPages" 
+                                   Selected="@_searchRequest.Page" 
+                                   SelectedChanged="@OnPageChanged"
+                                   ShowFirstLast="true" />
+                </MudCardActions>
+            }
+        </MudCard>
+    }
+    else
+    {
+        <MudCard>
+            <MudCardContent>
+                <MudStack AlignItems="AlignItems.Center" Class="pa-8">
+                    <MudIcon Icon="@Icons.Material.Filled.PersonSearch" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.h6" Color="Color.Secondary">No members found</MudText>
+                    <MudText Color="Color.Secondary">Try adjusting your search criteria or add a new member.</MudText>
+                    <MudButton Variant="Variant.Filled" 
+                               Color="Color.Primary" 
+                               StartIcon="@Icons.Material.Filled.PersonAdd"
+                               Href="/members/create"
+                               Class="mt-4">
+                        Add First Member
+                    </MudButton>
+                </MudStack>
+            </MudCardContent>
+        </MudCard>
+    }
+</MudStack>
+
+@code {
+    private List<BreadcrumbItem> _breadcrumbItems = new()
+    {
+        new BreadcrumbItem("Home", href: "/", icon: Icons.Material.Filled.Home),
+        new BreadcrumbItem("Members", href: null, disabled: true, icon: Icons.Material.Filled.People)
+    };
+
+    private MemberSearchRequest _searchRequest = new();
+    private PagedResult<MemberListDto>? _members;
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadMembers();
+    }
+
+    private async Task LoadMembers()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var response = await MemberService.GetMembersAsync(_searchRequest);
+            if (response?.Success == true)
+            {
+                _members = response.Data;
+            }
+            else
+            {
+                Snackbar.Add(response?.Message ?? "Failed to load members", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading members: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SearchMembers()
+    {
+        _searchRequest.Page = 1;
+        await LoadMembers();
+    }
+
+    private async Task ClearSearch()
+    {
+        _searchRequest = new MemberSearchRequest();
+        await LoadMembers();
+    }
+
+    private async Task OnPageChanged(int page)
+    {
+        _searchRequest.Page = page;
+        await LoadMembers();
+    }
+
+    private void ViewMember(Guid id)
+    {
+        Navigation.NavigateTo($"/members/{id}");
+    }
+
+    private void EditMember(Guid id)
+    {
+        Navigation.NavigateTo($"/members/{id}/edit");
+    }
+
+    private async Task DeleteMember(Guid id)
+    {
+        var member = _members?.Items?.FirstOrDefault(m => m.Id == id);
+        if (member == null) return;
+
+        var result = await DialogService.ShowMessageBox(
+            "Delete Member",
+            $"Are you sure you want to delete {member.FullName}? This action cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (result == true)
+        {
+            try
+            {
+                var response = await MemberService.DeleteMemberAsync(id);
+                if (response?.Success == true)
+                {
+                    Snackbar.Add($"{member.FullName} has been deleted", Severity.Success);
+                    await LoadMembers();
+                }
+                else
+                {
+                    Snackbar.Add(response?.Message ?? "Failed to delete member", Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting member: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private Color GetTierColor(MembershipTier tier) => tier switch
+    {
+        MembershipTier.Basic => Color.Default,
+        MembershipTier.Premium => Color.Primary,
+        MembershipTier.VIP => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private Color GetStatusColor(MembershipStatus status) => status switch
+    {
+        MembershipStatus.Active => Color.Success,
+        MembershipStatus.Expired => Color.Warning,
+        MembershipStatus.Suspended => Color.Error,
+        MembershipStatus.Pending => Color.Info,
+        MembershipStatus.Cancelled => Color.Default,
+        _ => Color.Default
+    };
+}

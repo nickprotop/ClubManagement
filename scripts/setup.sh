@@ -199,6 +199,9 @@ CERT_PASSWORD="password"
 # Create .env file in docker folder
 echo "📝 Writing configuration to docker/.env file..."
 cat > docker/.env << EOF
+# Docker Compose Project Name (prevents conflicts with other projects)
+COMPOSE_PROJECT_NAME=clubmanagement
+
 # Database Configuration
 POSTGRES_HOST=$POSTGRES_HOST
 POSTGRES_PORT=$POSTGRES_PORT

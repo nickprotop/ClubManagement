@@ -90,6 +90,8 @@ namespace ClubManagement.Infrastructure.Migrations
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     Email = table.Column<string>(type: "text", nullable: false),
+                    PasswordHash = table.Column<string>(type: "text", nullable: false),
+                    PasswordSalt = table.Column<string>(type: "text", nullable: true),
                     FirstName = table.Column<string>(type: "text", nullable: false),
                     LastName = table.Column<string>(type: "text", nullable: false),
                     PhoneNumber = table.Column<string>(type: "text", nullable: false),
@@ -98,6 +100,7 @@ namespace ClubManagement.Infrastructure.Migrations
                     ProfilePhotoUrl = table.Column<string>(type: "text", nullable: true),
                     LastLoginAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     EmailVerified = table.Column<bool>(type: "boolean", nullable: false),
+                    PasswordChangedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     CustomFields = table.Column<string>(type: "jsonb", nullable: false),
                     TenantId = table.Column<Guid>(type: "uuid", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),

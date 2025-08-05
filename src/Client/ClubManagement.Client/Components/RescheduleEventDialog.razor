@@ -1,0 +1,126 @@
+@using ClubManagement.Shared.DTOs
+@using MudBlazor
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudText Typo="Typo.h6">Reschedule Event</MudText>
+            <MudText>Reschedule "<strong>@EventTitle</strong>" to a new date and time.</MudText>
+            
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker @bind-Date="_newStartDate"
+                                   Label="New Date"
+                                   Variant="Variant.Outlined"
+                                   Required="true" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTimePicker @bind-Time="_newStartTime"
+                                   Label="New Start Time"
+                                   Variant="Variant.Outlined"
+                                   Required="true" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTimePicker @bind-Time="_newEndTime"
+                                   Label="New End Time"
+                                   Variant="Variant.Outlined"
+                                   Required="true" />
+                </MudItem>
+            </MudGrid>
+            
+            <MudTextField @bind-Value="_reason"
+                          Label="Reason for rescheduling (optional)"
+                          Variant="Variant.Outlined"
+                          Lines="3"
+                          MaxLength="500" />
+            
+            <MudCheckBox @bind-Value="_notifyRegistrants" 
+                         Label="Notify all registered members" 
+                         Color="Color.Primary" />
+                         
+            @if (!string.IsNullOrEmpty(_validationError))
+            {
+                <MudAlert Severity="Severity.Error">@_validationError</MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" 
+                   Variant="Variant.Filled" 
+                   OnClick="Submit"
+                   Disabled="!IsValid()">
+            Reschedule Event
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    
+    [Parameter] public string EventTitle { get; set; } = "";
+    [Parameter] public DateTime CurrentStartTime { get; set; }
+    [Parameter] public DateTime CurrentEndTime { get; set; }
+    
+    private DateTime? _newStartDate;
+    private TimeSpan? _newStartTime;
+    private TimeSpan? _newEndTime;
+    private string _reason = "";
+    private bool _notifyRegistrants = true;
+    private string _validationError = "";
+
+    protected override void OnInitialized()
+    {
+        _newStartDate = CurrentStartTime.Date;
+        _newStartTime = CurrentStartTime.TimeOfDay;
+        _newEndTime = CurrentEndTime.TimeOfDay;
+    }
+
+    private bool IsValid()
+    {
+        _validationError = "";
+        
+        if (!_newStartDate.HasValue || !_newStartTime.HasValue || !_newEndTime.HasValue)
+        {
+            _validationError = "All date and time fields are required";
+            return false;
+        }
+
+        var newStart = _newStartDate.Value.Date + _newStartTime.Value;
+        var newEnd = _newStartDate.Value.Date + _newEndTime.Value;
+        
+        if (newEnd <= newStart)
+        {
+            _validationError = "End time must be after start time";
+            return false;
+        }
+        
+        if (newStart <= DateTime.Now)
+        {
+            _validationError = "Event cannot be scheduled in the past";
+            return false;
+        }
+
+        return true;
+    }
+
+    void Submit()
+    {
+        if (!IsValid()) return;
+        
+        var newStart = _newStartDate!.Value.Date + _newStartTime!.Value;
+        var newEnd = _newStartDate!.Value.Date + _newEndTime!.Value;
+        
+        var request = new RescheduleEventRequest
+        {
+            NewStartDateTime = newStart,
+            NewEndDateTime = newEnd,
+            Reason = string.IsNullOrWhiteSpace(_reason) ? null : _reason,
+            NotifyRegistrants = _notifyRegistrants
+        };
+        
+        MudDialog.Close(DialogResult.Ok(request));
+    }
+    
+    void Cancel() => MudDialog.Cancel();
+}

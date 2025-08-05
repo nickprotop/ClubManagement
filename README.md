@@ -170,8 +170,24 @@ docker-compose up -d
 
 ### **4. Demo Access**
 - **Domain**: `demo.localhost`
-- **Admin Email**: `admin@demo.localhost`
-- **Schema**: `demo_club`
+- **Database Schema**: `demo_club`
+
+**Demo Admin Account:**
+- **Email**: `admin@demo.localhost`
+- **Password**: `Admin123!`
+- **Role**: Administrator (full system access)
+
+**Demo Member Account:**
+- **Email**: `member@demo.localhost`
+- **Password**: `Member123!`
+- **Role**: Member (member portal access)
+- **Membership**: Basic tier, active status
+
+**Demo Coach Account:**
+- **Email**: `coach@demo.localhost`
+- **Password**: `Coach123!`
+- **Role**: Coach (coaching and training access)
+- **Purpose**: For trainers, instructors, and coaching staff
 
 ## 📁 Project Structure
 

@@ -12,15 +12,15 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ClubManagement.Infrastructure.Migrations
 {
     [DbContext(typeof(ClubManagementDbContext))]
-    [Migration("20250803220341_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20250804221215_AddRecurrenceSupport")]
+    partial class AddRecurrenceSupport
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.0")
+                .HasAnnotation("ProductVersion", "9.0.7")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -197,7 +197,19 @@ namespace ClubManagement.Infrastructure.Migrations
                     b.Property<Guid?>("InstructorId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("IsRecurringMaster")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastGeneratedUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("MasterEventId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("MaxCapacity")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("OccurrenceNumber")
                         .HasColumnType("integer");
 
                     b.Property<decimal?>("Price")
@@ -205,6 +217,9 @@ namespace ClubManagement.Infrastructure.Migrations
 
                     b.Property<string>("Recurrence")
                         .HasColumnType("jsonb");
+
+                    b.Property<int>("RecurrenceStatus")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("RegistrationDeadline")
                         .HasColumnType("timestamp with time zone");
@@ -243,6 +258,14 @@ namespace ClubManagement.Infrastructure.Migrations
                     b.HasIndex("FacilityId");
 
                     b.HasIndex("InstructorId");
+
+                    b.HasIndex("IsRecurringMaster");
+
+                    b.HasIndex("MasterEventId");
+
+                    b.HasIndex("MasterEventId", "StartDateTime");
+
+                    b.HasIndex("RecurrenceStatus", "LastGeneratedUntil");
 
                     b.ToTable("Events");
                 });
@@ -1073,6 +1096,16 @@ namespace ClubManagement.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("PasswordChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PasswordSalt")
+                        .HasColumnType("text");
+
                     b.Property<string>("PhoneNumber")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1141,9 +1174,16 @@ namespace ClubManagement.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("InstructorId");
 
+                    b.HasOne("ClubManagement.Shared.Models.Event", "MasterEvent")
+                        .WithMany("Occurrences")
+                        .HasForeignKey("MasterEventId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.Navigation("Facility");
 
                     b.Navigation("Instructor");
+
+                    b.Navigation("MasterEvent");
                 });
 
             modelBuilder.Entity("ClubManagement.Shared.Models.EventRegistration", b =>
@@ -1333,6 +1373,8 @@ namespace ClubManagement.Infrastructure.Migrations
 
             modelBuilder.Entity("ClubManagement.Shared.Models.Event", b =>
                 {
+                    b.Navigation("Occurrences");
+
                     b.Navigation("Registrations");
                 });
 

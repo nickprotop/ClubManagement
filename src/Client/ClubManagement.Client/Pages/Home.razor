@@ -1,7 +1,228 @@
-﻿@page "/"
+@page "/"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Dashboard - Club Management</PageTitle>
 
-<h1>Hello, world!</h1>
+<MudBreadcrumbs Items="_breadcrumbItems" />
 
-Welcome to your new app.
+<MudStack Spacing="4">
+    <MudText Typo="Typo.h4">Dashboard</MudText>
+    
+    @if (_currentUser != null)
+    {
+        <MudAlert Severity="Severity.Info" ContentAlignment="HorizontalAlignment.Center">
+            Welcome back, @_currentUser.FirstName! Last login: @(_currentUser.LastLoginAt?.ToString("MMM dd, yyyy HH:mm") ?? "First time")
+        </MudAlert>
+    }
+
+    <!-- Key Metrics Cards -->
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Total Members</MudText>
+                            <MudText Typo="Typo.h4">1,247</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Success">+12% from last month</MudText>
+                        </MudStack>
+                        <MudIcon Icon="@Icons.Material.Filled.People" Size="Size.Large" Color="Color.Primary" />
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Active Events</MudText>
+                            <MudText Typo="Typo.h4">24</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Success">3 this week</MudText>
+                        </MudStack>
+                        <MudIcon Icon="@Icons.Material.Filled.Event" Size="Size.Large" Color="Color.Secondary" />
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Monthly Revenue</MudText>
+                            <MudText Typo="Typo.h4">$45,230</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Success">+8% from last month</MudText>
+                        </MudStack>
+                        <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Size="Size.Large" Color="Color.Success" />
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Facility Usage</MudText>
+                            <MudText Typo="Typo.h4">87%</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Warning">Peak hours busy</MudText>
+                        </MudStack>
+                        <MudIcon Icon="@Icons.Material.Filled.Business" Size="Size.Large" Color="Color.Warning" />
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Quick Actions -->
+    <MudCard>
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">Quick Actions</MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudButton Variant="Variant.Outlined" 
+                               Color="Color.Primary" 
+                               StartIcon="@Icons.Material.Filled.PersonAdd"
+                               FullWidth="true"
+                               Href="/members/create">
+                        Add New Member
+                    </MudButton>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudButton Variant="Variant.Outlined" 
+                               Color="Color.Secondary" 
+                               StartIcon="@Icons.Material.Filled.EventAvailable"
+                               FullWidth="true"
+                               Href="/events/create">
+                        Create Event
+                    </MudButton>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudButton Variant="Variant.Outlined" 
+                               Color="Color.Tertiary" 
+                               StartIcon="@Icons.Material.Filled.BookOnline"
+                               FullWidth="true"
+                               Href="/facilities/bookings">
+                        View Bookings
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+    </MudCard>
+
+    <!-- Recent Activity -->
+    <MudGrid>
+        <MudItem xs="12" md="8">
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Recent Activity</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudTimeline TimelineOrientation="TimelineOrientation.Vertical">
+                        <MudTimelineItem Color="Color.Success" Icon="@Icons.Material.Filled.PersonAdd" TimelineAlign="TimelineAlign.Start">
+                            <ItemContent>
+                                <MudText Typo="Typo.body1">New member registered</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">John Smith joined as a Premium member - 2 hours ago</MudText>
+                            </ItemContent>
+                        </MudTimelineItem>
+                        <MudTimelineItem Color="Color.Primary" Icon="@Icons.Material.Filled.Event" TimelineAlign="TimelineAlign.Start">
+                            <ItemContent>
+                                <MudText Typo="Typo.body1">Event created</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Yoga Class scheduled for tomorrow - 4 hours ago</MudText>
+                            </ItemContent>
+                        </MudTimelineItem>
+                        <MudTimelineItem Color="Color.Warning" Icon="@Icons.Material.Filled.Payment" TimelineAlign="TimelineAlign.Start">
+                            <ItemContent>
+                                <MudText Typo="Typo.body1">Payment processed</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Monthly subscription payment received - 6 hours ago</MudText>
+                            </ItemContent>
+                        </MudTimelineItem>
+                        <MudTimelineItem Color="Color.Secondary" Icon="@Icons.Material.Filled.BookOnline" TimelineAlign="TimelineAlign.Start">
+                            <ItemContent>
+                                <MudText Typo="Typo.body1">Facility booked</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Tennis Court A reserved for Saturday - 8 hours ago</MudText>
+                            </ItemContent>
+                        </MudTimelineItem>
+                    </MudTimeline>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton StartIcon="@Icons.Material.Filled.History" Variant="Variant.Text">View All Activity</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Upcoming Events</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudStack Spacing="3">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudStack Spacing="1">
+                                <MudText Typo="Typo.body2">Yoga Class</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Tomorrow 9:00 AM</MudText>
+                            </MudStack>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success">12/15 spots</MudChip>
+                        </MudStack>
+                        
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudStack Spacing="1">
+                                <MudText Typo="Typo.body2">Tennis Tournament</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Saturday 2:00 PM</MudText>
+                            </MudStack>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">8/8 spots</MudChip>
+                        </MudStack>
+                        
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudStack Spacing="1">
+                                <MudText Typo="Typo.body2">Swimming Lesson</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Sunday 10:00 AM</MudText>
+                            </MudStack>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary">5/10 spots</MudChip>
+                        </MudStack>
+                    </MudStack>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton StartIcon="@Icons.Material.Filled.Event" Variant="Variant.Text" Href="/events">View All Events</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</MudStack>
+
+@code {
+    private List<BreadcrumbItem> _breadcrumbItems = new()
+    {
+        new BreadcrumbItem("Dashboard", href: "/", disabled: true, icon: Icons.Material.Filled.Dashboard)
+    };
+
+    private UserProfileDto? _currentUser;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check authentication
+        if (!await AuthService.IsAuthenticatedAsync())
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        _currentUser = await AuthService.GetCurrentUserAsync();
+    }
+}

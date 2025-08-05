@@ -1,0 +1,54 @@
+@using ClubManagement.Shared.DTOs
+@using MudBlazor
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudText Typo="Typo.h6">Cancel Event</MudText>
+            <MudAlert Severity="Severity.Warning">
+                <MudText>Are you sure you want to cancel "<strong>@EventTitle</strong>"?</MudText>
+                <MudText>This action will cancel all registrations and cannot be undone.</MudText>
+            </MudAlert>
+            
+            <MudTextField @bind-Value="_reason"
+                          Label="Reason for cancellation (optional)"
+                          Variant="Variant.Outlined"
+                          Lines="3"
+                          MaxLength="500" />
+            
+            <MudCheckBox @bind-Value="_notifyRegistrants" 
+                         Label="Notify all registered members" 
+                         Color="Color.Primary" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Error" 
+                   Variant="Variant.Filled" 
+                   OnClick="Submit">
+            Cancel Event
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    
+    [Parameter] public string EventTitle { get; set; } = "";
+    
+    private string _reason = "";
+    private bool _notifyRegistrants = true;
+
+    void Submit()
+    {
+        var request = new CancelEventRequest
+        {
+            Reason = string.IsNullOrWhiteSpace(_reason) ? null : _reason,
+            NotifyRegistrants = _notifyRegistrants
+        };
+        
+        MudDialog.Close(DialogResult.Ok(request));
+    }
+    
+    void Cancel() => MudDialog.Cancel();
+}

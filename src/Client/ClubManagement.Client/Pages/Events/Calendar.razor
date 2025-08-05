@@ -1,0 +1,173 @@
+@page "/events/calendar"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using Heron.MudCalendar
+@inject IEventService EventService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Events Calendar - Club Management</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbItems" />
+
+<MudStack Spacing="4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h4">Events Calendar</MudText>
+        <MudButtonGroup Variant="Variant.Filled">
+            <MudButton Color="Color.Secondary" 
+                       StartIcon="@Icons.Material.Filled.List"
+                       Href="/events">
+                List View
+            </MudButton>
+            <MudButton Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.EventAvailable"
+                       Href="/events/create">
+                Create Event
+            </MudButton>
+        </MudButtonGroup>
+    </MudStack>
+
+    <MudCard>
+        <MudCardContent>
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" />
+                <MudText Align="Align.Center" Class="pa-4">Loading events...</MudText>
+            }
+            else
+            {
+                <MudCalendar T="CalendarItem" 
+                             @ref="calendar" 
+                             Items="_calendarEvents"
+                             CellClicked="OnCellClicked"
+                             ItemClicked="OnEventClicked" />
+            }
+        </MudCardContent>
+    </MudCard>
+</MudStack>
+
+@code {
+    private MudCalendar<CalendarItem>? calendar;
+    private List<CalendarItem> _calendarEvents = new();
+    private Dictionary<string, EventListDto> _eventMap = new();
+    private bool _loading = true;
+    
+    private List<BreadcrumbItem> _breadcrumbItems = new()
+    {
+        new BreadcrumbItem("Home", href: "/", icon: Icons.Material.Filled.Home),
+        new BreadcrumbItem("Events", href: "/events", icon: Icons.Material.Filled.Event),
+        new BreadcrumbItem("Calendar", href: null, disabled: true, icon: Icons.Material.Filled.CalendarMonth)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEvents();
+    }
+
+    private async Task LoadEvents()
+    {
+        _loading = true;
+        
+        try
+        {
+            var request = new EventSearchRequest
+            {
+                Page = 1,
+                PageSize = 1000 // Get all events for calendar
+            };
+            
+            var response = await EventService.GetEventsAsync(request);
+            if (response?.Data?.Items != null)
+            {
+                _calendarEvents = response.Data.Items.Select(e => new CalendarItem
+                {
+                    Start = e.StartDateTime,
+                    End = e.EndDateTime,
+                    Text = GetEventDisplayTitle(e)
+                }).ToList();
+                
+                // Store events in a dictionary for click handling
+                _eventMap.Clear();
+                foreach (var evt in response.Data.Items)
+                {
+                    _eventMap[GetEventDisplayTitle(evt)] = evt;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading events: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string GetEventColor(EventType eventType)
+    {
+        return eventType switch
+        {
+            EventType.Class => "var(--mud-palette-primary)",
+            EventType.Workshop => "var(--mud-palette-secondary)", 
+            EventType.Tournament => "var(--mud-palette-error)",
+            EventType.Event => "var(--mud-palette-success)",
+            EventType.Maintenance => "var(--mud-palette-warning)",
+            _ => "var(--mud-palette-info)"
+        };
+    }
+
+    private async Task OnCellClicked(DateTime date)
+    {
+        // Navigate to create event with pre-filled date
+        Navigation.NavigateTo($"/events/create?date={date:yyyy-MM-dd}");
+    }
+
+    private async Task OnEventClicked(CalendarItem calendarItem)
+    {
+        if (_eventMap.TryGetValue(calendarItem.Text, out var eventDto))
+        {
+            Navigation.NavigateTo($"/events/{eventDto.Id}");
+        }
+        else
+        {
+            Snackbar.Add($"Clicked event: {calendarItem.Text}", Severity.Info);
+        }
+    }
+
+    private string GetEventDisplayTitle(EventListDto eventDto)
+    {
+        var title = eventDto.Title;
+        
+        // Add recurrence indicators
+        if (eventDto.IsRecurringMaster)
+        {
+            var recurrenceIcon = GetRecurrenceIcon(eventDto.RecurrenceType);
+            title = $"{recurrenceIcon} {title} (Master)";
+        }
+        else if (eventDto.MasterEventId.HasValue)
+        {
+            var recurrenceIcon = GetRecurrenceIcon(eventDto.RecurrenceType);
+            title = $"{recurrenceIcon} {title}";
+            if (eventDto.OccurrenceNumber.HasValue)
+            {
+                title += $" #{eventDto.OccurrenceNumber}";
+            }
+        }
+        
+        return title;
+    }
+
+    private string GetRecurrenceIcon(RecurrenceType? recurrenceType)
+    {
+        return recurrenceType switch
+        {
+            RecurrenceType.Daily => "🗓️",
+            RecurrenceType.Weekly => "📅",
+            RecurrenceType.Monthly => "📆",
+            RecurrenceType.Yearly => "🎂",
+            _ => "🔄"
+        };
+    }
+}

@@ -1,0 +1,117 @@
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using MudBlazor
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudText Typo="Typo.h6">Edit Registration</MudText>
+            <MudText>Edit registration for <strong>@Registration.MemberName</strong> in "<strong>@EventTitle</strong>"</MudText>
+            
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="RegistrationStatus" @bind-Value="_status" 
+                               Label="Registration Status" 
+                               Variant="Variant.Outlined"
+                               Required="true">
+                        @foreach (RegistrationStatus status in Enum.GetValues<RegistrationStatus>())
+                        {
+                            <MudSelectItem T="RegistrationStatus" Value="status">@status</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                
+                @if (_status == RegistrationStatus.Waitlisted)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudNumericField @bind-Value="_waitlistPosition" 
+                                         Label="Waitlist Position" 
+                                         Variant="Variant.Outlined"
+                                         Min="1" />
+                    </MudItem>
+                }
+            </MudGrid>
+            
+            <MudTextField @bind-Value="_notes" 
+                          Label="Notes (optional)" 
+                          Variant="Variant.Outlined"
+                          Lines="3"
+                          MaxLength="500" />
+            
+            <MudCheckBox @bind-Value="_notifyMember" 
+                         Label="Notify member of status change" 
+                         Color="Color.Primary" />
+                         
+            @if (_status == RegistrationStatus.Cancelled || _status == RegistrationStatus.Declined)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true">
+                    <MudText>This action will remove the member from the event and may affect waitlist positions.</MudText>
+                </MudAlert>
+            }
+            
+            @if (!string.IsNullOrEmpty(_validationError))
+            {
+                <MudAlert Severity="Severity.Error">@_validationError</MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" 
+                   Variant="Variant.Filled" 
+                   OnClick="Submit"
+                   Disabled="!IsValid()">
+            Update Registration
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    
+    [Parameter] public EventRegistrationDto Registration { get; set; } = default!;
+    [Parameter] public string EventTitle { get; set; } = "";
+    
+    private RegistrationStatus _status;
+    private int? _waitlistPosition;
+    private string _notes = "";
+    private bool _notifyMember = true;
+    private string _validationError = "";
+
+    protected override void OnInitialized()
+    {
+        _status = Registration.Status;
+        _waitlistPosition = Registration.WaitlistPosition;
+        _notes = Registration.Notes ?? "";
+    }
+
+    private bool IsValid()
+    {
+        _validationError = "";
+        
+        if (_status == RegistrationStatus.Waitlisted && (!_waitlistPosition.HasValue || _waitlistPosition <= 0))
+        {
+            _validationError = "Waitlist position is required and must be greater than 0";
+            return false;
+        }
+        
+        return true;
+    }
+
+    void Submit()
+    {
+        if (!IsValid()) return;
+        
+        var request = new UpdateRegistrationRequest
+        {
+            Status = _status,
+            WaitlistPosition = _status == RegistrationStatus.Waitlisted ? _waitlistPosition : null,
+            Notes = string.IsNullOrWhiteSpace(_notes) ? null : _notes,
+            NotifyMember = _notifyMember
+        };
+        
+        MudDialog.Close(DialogResult.Ok(request));
+    }
+    
+    void Cancel() => MudDialog.Cancel();
+}

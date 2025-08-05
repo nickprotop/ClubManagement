@@ -1,0 +1,238 @@
+@page "/register"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Register - Club Management</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="d-flex align-center justify-center" Style="min-height: 100vh;">
+    <MudPaper Elevation="4" Class="pa-8" Style="width: 100%; max-width: 400px;">
+        <MudStack Spacing="6">
+            <MudStack Spacing="2" AlignItems="AlignItems.Center">
+                <MudIcon Icon="@Icons.Material.Filled.PersonAdd" Size="Size.Large" Color="Color.Primary" />
+                <MudText Typo="Typo.h4" Align="Align.Center">Join Club</MudText>
+                <MudText Typo="Typo.body1" Align="Align.Center" Color="Color.Secondary">
+                    Create your Club Management account
+                </MudText>
+            </MudStack>
+
+            <MudForm @ref="form" @bind-IsValid="@success" @bind-Errors="@errors">
+                <MudStack Spacing="4">
+                    <MudTextField @bind-Value="registerRequest.TenantDomain" 
+                                  Label="Club Domain" 
+                                  Variant="Variant.Outlined" 
+                                  Required="true"
+                                  RequiredError="Club domain is required!"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Domain" />
+
+                    <MudGrid>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="registerRequest.FirstName" 
+                                          Label="First Name" 
+                                          Variant="Variant.Outlined" 
+                                          Required="true"
+                                          RequiredError="First name is required!" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="registerRequest.LastName" 
+                                          Label="Last Name" 
+                                          Variant="Variant.Outlined" 
+                                          Required="true"
+                                          RequiredError="Last name is required!" />
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudTextField @bind-Value="registerRequest.Email" 
+                                  Label="Email" 
+                                  Variant="Variant.Outlined" 
+                                  Required="true"
+                                  RequiredError="Email is required!"
+                                  Validation="@(new EmailAddressAttribute() {ErrorMessage = "The email address is invalid"})"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Email" />
+
+                    <MudTextField @bind-Value="registerRequest.PhoneNumber" 
+                                  Label="Phone Number (Optional)" 
+                                  Variant="Variant.Outlined" 
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Phone" />
+
+                    <MudTextField @bind-Value="registerRequest.Password" 
+                                  Label="Password" 
+                                  Variant="Variant.Outlined" 
+                                  InputType="@_passwordInput" 
+                                  Required="true"
+                                  RequiredError="Password is required!"
+                                  Validation="@(new Func<string, IEnumerable<string>>(PasswordStrength))"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@_passwordInputIcon"
+                                  OnAdornmentClick="TogglePasswordVisibility" />
+
+                    <MudTextField @bind-Value="confirmPassword" 
+                                  Label="Confirm Password" 
+                                  Variant="Variant.Outlined" 
+                                  InputType="@_confirmPasswordInput" 
+                                  Required="true"
+                                  RequiredError="Please confirm your password!"
+                                  Validation="@(new Func<string, string>(PasswordMatch))"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@_confirmPasswordInputIcon"
+                                  OnAdornmentClick="ToggleConfirmPasswordVisibility" />
+
+                    <MudCheckBox @bind-Value="acceptTerms" 
+                                 Label="I agree to the Terms of Service and Privacy Policy" 
+                                 Color="Color.Primary" 
+                                 Required="true"
+                                 RequiredError="You must accept the terms and conditions!" />
+
+                    <MudButton Variant="Variant.Filled" 
+                               Color="Color.Primary" 
+                               Size="Size.Large" 
+                               FullWidth="true"
+                               OnClick="HandleRegister"
+                               Disabled="@_isLoading">
+                        @if (_isLoading)
+                        {
+                            <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                            <MudText Class="ms-2">Creating account...</MudText>
+                        }
+                        else
+                        {
+                            <MudText>Create Account</MudText>
+                        }
+                    </MudButton>
+
+                    <MudDivider />
+
+                    <MudStack Row="true" Justify="Justify.Center" AlignItems="AlignItems.Center">
+                        <MudText>Already have an account?</MudText>
+                        <MudLink Href="/login" Underline="Underline.Hover">Sign in</MudLink>
+                    </MudStack>
+                </MudStack>
+            </MudForm>
+        </MudStack>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private MudForm form = null!;
+    private RegisterRequest registerRequest = new();
+    private string confirmPassword = "";
+    private bool acceptTerms = false;
+    private bool success;
+    private string[] errors = Array.Empty<string>();
+    private bool _isLoading = false;
+
+    private bool _isPasswordVisible;
+    private InputType _passwordInput = InputType.Password;
+    private string _passwordInputIcon = Icons.Material.Filled.VisibilityOff;
+
+    private bool _isConfirmPasswordVisible;
+    private InputType _confirmPasswordInput = InputType.Password;
+    private string _confirmPasswordInputIcon = Icons.Material.Filled.VisibilityOff;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if already authenticated
+        if (await AuthService.IsAuthenticatedAsync())
+        {
+            Navigation.NavigateTo("/");
+        }
+
+        // Pre-fill demo values for development
+        if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development")
+        {
+            registerRequest.TenantDomain = "demo";
+        }
+    }
+
+    private async Task HandleRegister()
+    {
+        if (!success || !acceptTerms) return;
+
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var response = await AuthService.RegisterAsync(registerRequest);
+
+            if (response?.Success == true)
+            {
+                Snackbar.Add("Registration successful! Welcome to Club Management.", Severity.Success);
+                Navigation.NavigateTo("/");
+            }
+            else
+            {
+                var errorMessage = response?.Message ?? "Registration failed. Please try again.";
+                Snackbar.Add(errorMessage, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"An error occurred: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private IEnumerable<string> PasswordStrength(string pw)
+    {
+        if (string.IsNullOrWhiteSpace(pw))
+        {
+            yield return "Password is required!";
+            yield break;
+        }
+        if (pw.Length < 6)
+            yield return "Password must be at least 6 characters";
+        if (!pw.Any(char.IsDigit))
+            yield return "Password must contain at least one digit";
+        if (!pw.Any(char.IsLetter))
+            yield return "Password must contain at least one letter";
+    }
+
+    private string PasswordMatch(string arg)
+    {
+        if (registerRequest.Password != arg)
+            return "Passwords don't match";
+        return null!;
+    }
+
+    private void TogglePasswordVisibility()
+    {
+        if (_isPasswordVisible)
+        {
+            _isPasswordVisible = false;
+            _passwordInputIcon = Icons.Material.Filled.VisibilityOff;
+            _passwordInput = InputType.Password;
+        }
+        else
+        {
+            _isPasswordVisible = true;
+            _passwordInputIcon = Icons.Material.Filled.Visibility;
+            _passwordInput = InputType.Text;
+        }
+    }
+
+    private void ToggleConfirmPasswordVisibility()
+    {
+        if (_isConfirmPasswordVisible)
+        {
+            _isConfirmPasswordVisible = false;
+            _confirmPasswordInputIcon = Icons.Material.Filled.VisibilityOff;
+            _confirmPasswordInput = InputType.Password;
+        }
+        else
+        {
+            _isConfirmPasswordVisible = true;
+            _confirmPasswordInputIcon = Icons.Material.Filled.Visibility;
+            _confirmPasswordInput = InputType.Text;
+        }
+    }
+}

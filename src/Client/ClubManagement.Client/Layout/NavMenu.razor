@@ -1,39 +1,34 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">ClubManagement.Client</a>
-        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-    </div>
-</div>
-
-<div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
-            </NavLink>
-        </div>
-    </nav>
-</div>
-
-@code {
-    private bool collapseNavMenu = true;
-
-    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
-
-    private void ToggleNavMenu()
-    {
-        collapseNavMenu = !collapseNavMenu;
-    }
-}
+﻿<MudNavMenu>
+    <MudNavLink Href="/" Icon="@Icons.Material.Filled.Dashboard" Match="NavLinkMatch.All">Dashboard</MudNavLink>
+    
+    <MudNavGroup Text="Members" Icon="@Icons.Material.Filled.People" Expanded="false">
+        <MudNavLink Href="/members" Icon="@Icons.Material.Filled.PersonSearch">All Members</MudNavLink>
+        <MudNavLink Href="/members/create" Icon="@Icons.Material.Filled.PersonAdd">Add Member</MudNavLink>
+    </MudNavGroup>
+    
+    <MudNavGroup Text="Events" Icon="@Icons.Material.Filled.Event" Expanded="false">
+        <MudNavLink Href="/events" Icon="@Icons.Material.Filled.EventNote">All Events</MudNavLink>
+        <MudNavLink Href="/events/create" Icon="@Icons.Material.Filled.EventAvailable">Create Event</MudNavLink>
+        <MudNavLink Href="/events/calendar" Icon="@Icons.Material.Filled.CalendarMonth">Calendar</MudNavLink>
+    </MudNavGroup>
+    
+    <MudNavGroup Text="Facilities" Icon="@Icons.Material.Filled.Business" Expanded="false">
+        <MudNavLink Href="/facilities" Icon="@Icons.Material.Filled.Store">All Facilities</MudNavLink>
+        <MudNavLink Href="/facilities/bookings" Icon="@Icons.Material.Filled.BookOnline">Bookings</MudNavLink>
+    </MudNavGroup>
+    
+    <MudNavGroup Text="Payments" Icon="@Icons.Material.Filled.Payment" Expanded="false">
+        <MudNavLink Href="/payments" Icon="@Icons.Material.Filled.Receipt">All Payments</MudNavLink>
+        <MudNavLink Href="/subscriptions" Icon="@Icons.Material.Filled.Subscriptions">Subscriptions</MudNavLink>
+    </MudNavGroup>
+    
+    <MudNavGroup Text="Communication" Icon="@Icons.Material.Filled.Email" Expanded="false">
+        <MudNavLink Href="/communications" Icon="@Icons.Material.Filled.Announcement">Messages</MudNavLink>
+        <MudNavLink Href="/communications/templates" Icon="@Icons.Material.Filled.Description">Templates</MudNavLink>
+    </MudNavGroup>
+    
+    <MudDivider Class="my-2" />
+    
+    <MudNavLink Href="/reports" Icon="@Icons.Material.Filled.Analytics">Reports</MudNavLink>
+    <MudNavLink Href="/settings" Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
+</MudNavMenu>

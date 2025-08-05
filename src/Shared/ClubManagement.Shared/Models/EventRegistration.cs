@@ -31,5 +31,6 @@ public enum RegistrationStatus
     Cancelled,
     Waitlisted,
     NoShow,
-    Completed
+    Completed,
+    Declined
 }

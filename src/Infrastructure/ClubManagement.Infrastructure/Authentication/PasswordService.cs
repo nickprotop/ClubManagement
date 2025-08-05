@@ -6,7 +6,9 @@ namespace ClubManagement.Infrastructure.Authentication;
 public interface IPasswordService
 {
     string HashPassword(string password);
+    (string hash, string salt) HashPasswordWithSeparateSalt(string password);
     bool VerifyPassword(string password, string hashedPassword);
+    bool VerifyPassword(string password, string hashedPassword, string? salt);
 }
 
 public class PasswordService : IPasswordService
@@ -31,6 +33,18 @@ public class PasswordService : IPasswordService
         return Convert.ToBase64String(hashBytes);
     }
 
+    public (string hash, string salt) HashPasswordWithSeparateSalt(string password)
+    {
+        using var rng = RandomNumberGenerator.Create();
+        var salt = new byte[SaltSize];
+        rng.GetBytes(salt);
+
+        using var pbkdf2 = new Rfc2898DeriveBytes(password, salt, Iterations, HashAlgorithmName.SHA256);
+        var hash = pbkdf2.GetBytes(HashSize);
+
+        return (Convert.ToBase64String(hash), Convert.ToBase64String(salt));
+    }
+
     public bool VerifyPassword(string password, string hashedPassword)
     {
         try
@@ -50,6 +64,30 @@ public class PasswordService : IPasswordService
             var computedHash = pbkdf2.GetBytes(HashSize);
 
             return CryptographicOperations.FixedTimeEquals(storedHash, computedHash);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public bool VerifyPassword(string password, string hashedPassword, string? salt)
+    {
+        if (string.IsNullOrEmpty(salt))
+        {
+            // Fall back to combined hash+salt method
+            return VerifyPassword(password, hashedPassword);
+        }
+
+        try
+        {
+            var hashBytes = Convert.FromBase64String(hashedPassword);
+            var saltBytes = Convert.FromBase64String(salt);
+
+            using var pbkdf2 = new Rfc2898DeriveBytes(password, saltBytes, Iterations, HashAlgorithmName.SHA256);
+            var computedHash = pbkdf2.GetBytes(HashSize);
+
+            return CryptographicOperations.FixedTimeEquals(hashBytes, computedHash);
         }
         catch
         {

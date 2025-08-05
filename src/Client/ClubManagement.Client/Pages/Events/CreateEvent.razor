@@ -1,0 +1,384 @@
+@page "/events/create"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@inject IEventService EventService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Create Event - Club Management</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbItems" />
+
+<MudStack Spacing="4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h4">Create Event</MudText>
+        <MudButton Color="Color.Secondary" 
+                   StartIcon="@Icons.Material.Filled.ArrowBack"
+                   Href="/events">
+            Back to Events
+        </MudButton>
+    </MudStack>
+
+    <MudForm @ref="_form" @bind-IsValid="_isFormValid">
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Event Details</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudGrid>
+                    <MudItem xs="12" md="8">
+                        <MudTextField @bind-Value="_request.Title" 
+                                      Label="Event Title" 
+                                      Variant="Variant.Outlined"
+                                      Required="true"
+                                      RequiredError="Event title is required" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudSelect T="EventType" @bind-Value="_request.Type" 
+                                   Label="Event Type" 
+                                   Variant="Variant.Outlined"
+                                   Required="true">
+                            @foreach (EventType type in Enum.GetValues<EventType>())
+                            {
+                                <MudSelectItem T="EventType" Value="type">@type</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_request.Description" 
+                                      Label="Description" 
+                                      Variant="Variant.Outlined"
+                                      Lines="3"
+                                      Required="true"
+                                      RequiredError="Event description is required" />
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Schedule</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <MudDatePicker @bind-Date="_startDate" 
+                                       Label="Start Date" 
+                                       Variant="Variant.Outlined"
+                                       Required="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudTimePicker @bind-Time="_startTime" 
+                                       Label="Start Time" 
+                                       Variant="Variant.Outlined"
+                                       Required="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudTimePicker @bind-Time="_endTime" 
+                                       Label="End Time" 
+                                       Variant="Variant.Outlined"
+                                       Required="true" />
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Recurrence Settings</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudGrid>
+                    <MudItem xs="12" md="4">
+                        <MudSelect T="RecurrenceType" @bind-Value="_request.RecurrenceType" 
+                                   Label="Recurrence Type" 
+                                   Variant="Variant.Outlined">
+                            @foreach (RecurrenceType type in Enum.GetValues<RecurrenceType>())
+                            {
+                                <MudSelectItem T="RecurrenceType" Value="type">@GetRecurrenceTypeDisplayName(type)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    
+                    @if (_request.RecurrenceType != RecurrenceType.None)
+                    {
+                        <MudItem xs="12" md="4">
+                            <MudNumericField @bind-Value="_request.RecurrenceInterval" 
+                                             Label="Repeat Every" 
+                                             Variant="Variant.Outlined"
+                                             Min="1"
+                                             Max="99" />
+                        </MudItem>
+                        
+                        @if (_request.RecurrenceType == RecurrenceType.Weekly)
+                        {
+                            <MudItem xs="12">
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">Days of Week</MudText>
+                                <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                                    @foreach (DayOfWeek day in Enum.GetValues<DayOfWeek>())
+                                    {
+                                        <MudCheckBox T="bool" @bind-Checked="@_selectedDays[day]" 
+                                                     Label="@day.ToString()"
+                                                     Color="Color.Primary" />
+                                    }
+                                </MudStack>
+                            </MudItem>
+                        }
+                        
+                        <!-- Recurrence End Options -->
+                        <MudItem xs="12">
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">Recurrence Ends</MudText>
+                            <MudRadioGroup T="RecurrenceEndType" @bind-SelectedOption="_recurrenceEndType">
+                                <MudRadio T="RecurrenceEndType" Option="RecurrenceEndType.Never" Color="Color.Primary">
+                                    Never
+                                </MudRadio>
+                                <MudRadio T="RecurrenceEndType" Option="RecurrenceEndType.On" Color="Color.Primary">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                        <MudText>On</MudText>
+                                        <MudDatePicker @bind-Date="_recurrenceEndDate" 
+                                                       Label="End Date" 
+                                                       Variant="Variant.Outlined"
+                                                       Disabled="@(_recurrenceEndType != RecurrenceEndType.On)"
+                                                       Class="flex-grow-0" 
+                                                       Style="width: 200px;" />
+                                    </MudStack>
+                                </MudRadio>
+                                <MudRadio T="RecurrenceEndType" Option="RecurrenceEndType.After" Color="Color.Primary">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                        <MudText>After</MudText>
+                                        <MudNumericField @bind-Value="_maxOccurrences"
+                                                         Label="Occurrences"
+                                                         Variant="Variant.Outlined"
+                                                         Disabled="@(_recurrenceEndType != RecurrenceEndType.After)"
+                                                         Min="1"
+                                                         Max="365"
+                                                         Class="flex-grow-0"
+                                                         Style="width: 120px;" />
+                                        <MudText>occurrences</MudText>
+                                    </MudStack>
+                                </MudRadio>
+                            </MudRadioGroup>
+                        </MudItem>
+                    }
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Event Details</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudGrid>
+                    <MudItem xs="12" md="4">
+                        <MudNumericField @bind-Value="_request.MaxCapacity" 
+                                         Label="Max Capacity" 
+                                         Variant="Variant.Outlined"
+                                         Min="0"
+                                         Required="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudNumericField @bind-Value="_request.Price" 
+                                         Label="Price ($)" 
+                                         Variant="Variant.Outlined"
+                                         Min="0"
+                                         Format="F2" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudSwitch T="bool" @bind-Checked="_request.AllowWaitlist" 
+                                   Label="Allow Waitlist" 
+                                   Color="Color.Primary" />
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard>
+            <MudCardActions>
+                <MudButton Variant="Variant.Filled" 
+                           Color="Color.Primary" 
+                           StartIcon="@Icons.Material.Filled.Save"
+                           OnClick="SaveEvent"
+                           Disabled="@(!_isFormValid || _isSaving)">
+                    @if (_isSaving)
+                    {
+                        <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                        <MudText Class="ms-2">Creating...</MudText>
+                    }
+                    else
+                    {
+                        <MudText>Create Event</MudText>
+                    }
+                </MudButton>
+                <MudButton Variant="Variant.Text" 
+                           Color="Color.Secondary"
+                           Href="/events">
+                    Cancel
+                </MudButton>
+            </MudCardActions>
+        </MudCard>
+    </MudForm>
+</MudStack>
+
+@code {
+    [Parameter] [SupplyParameterFromQuery] public string? Date { get; set; }
+
+    private MudForm? _form;
+    private bool _isFormValid;
+    private bool _isSaving;
+    private CreateEventRequest _request = new();
+    
+    private DateTime? _startDate;
+    private TimeSpan? _startTime;
+    private TimeSpan? _endTime;
+    private Dictionary<DayOfWeek, bool> _selectedDays = new();
+    
+    // Recurrence end options
+    private RecurrenceEndType _recurrenceEndType = RecurrenceEndType.Never;
+    private DateTime? _recurrenceEndDate;
+    private int? _maxOccurrences;
+    
+    public enum RecurrenceEndType
+    {
+        Never,
+        On,
+        After
+    }
+    
+    private List<BreadcrumbItem> _breadcrumbItems = new()
+    {
+        new BreadcrumbItem("Home", href: "/", icon: Icons.Material.Filled.Home),
+        new BreadcrumbItem("Events", href: "/events", icon: Icons.Material.Filled.Event),
+        new BreadcrumbItem("Create", href: null, disabled: true, icon: Icons.Material.Filled.Add)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        InitializeDaysOfWeek();
+        
+        // Set default date if provided from query parameter
+        if (!string.IsNullOrEmpty(Date) && DateTime.TryParse(Date, out var parsedDate))
+        {
+            _startDate = parsedDate;
+        }
+        else
+        {
+            _startDate = DateTime.Today.AddDays(1);
+        }
+
+        _startTime = new TimeSpan(9, 0, 0);
+        _endTime = new TimeSpan(10, 0, 0);
+    }
+
+    private void InitializeDaysOfWeek()
+    {
+        foreach (DayOfWeek day in Enum.GetValues<DayOfWeek>())
+        {
+            _selectedDays[day] = false;
+        }
+    }
+
+    private async Task SaveEvent()
+    {
+        if (!_isFormValid)
+        {
+            Snackbar.Add("Please correct the validation errors", Severity.Error);
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            // Combine date and time
+            if (_startDate.HasValue && _startTime.HasValue)
+            {
+                _request.StartDateTime = _startDate.Value.Date.Add(_startTime.Value);
+            }
+
+            if (_startDate.HasValue && _endTime.HasValue)
+            {
+                _request.EndDateTime = _startDate.Value.Date.Add(_endTime.Value);
+            }
+
+            // Validate end time is after start time
+            if (_request.EndDateTime <= _request.StartDateTime)
+            {
+                Snackbar.Add("End time must be after start time", Severity.Error);
+                return;
+            }
+
+            // Handle recurrence settings
+            if (_request.RecurrenceType != RecurrenceType.None)
+            {
+                // Set days of week for weekly recurrence
+                if (_request.RecurrenceType == RecurrenceType.Weekly)
+                {
+                    _request.DaysOfWeek = _selectedDays.Where(kvp => kvp.Value).Select(kvp => kvp.Key).ToList();
+                }
+                
+                // Set recurrence end options
+                switch (_recurrenceEndType)
+                {
+                    case RecurrenceEndType.On:
+                        _request.RecurrenceEndDate = _recurrenceEndDate;
+                        _request.MaxOccurrences = null;
+                        break;
+                    case RecurrenceEndType.After:
+                        _request.RecurrenceEndDate = null;
+                        _request.MaxOccurrences = _maxOccurrences;
+                        break;
+                    case RecurrenceEndType.Never:
+                    default:
+                        _request.RecurrenceEndDate = null;
+                        _request.MaxOccurrences = null;
+                        break;
+                }
+            }
+
+            var response = await EventService.CreateEventAsync(_request);
+            
+            if (response?.Success == true)
+            {
+                var successMessage = _request.RecurrenceType == RecurrenceType.None 
+                    ? "Event created successfully" 
+                    : "Recurring event series created successfully";
+                
+                Snackbar.Add(successMessage, Severity.Success);
+                Navigation.NavigateTo("/events");
+            }
+            else
+            {
+                Snackbar.Add(response?.Message ?? "Failed to create event", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating event: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private string GetRecurrenceTypeDisplayName(RecurrenceType type) => type switch
+    {
+        RecurrenceType.None => "No Recurrence",
+        RecurrenceType.Daily => "Daily",
+        RecurrenceType.Weekly => "Weekly",
+        RecurrenceType.Monthly => "Monthly",
+        RecurrenceType.Yearly => "Yearly",
+        _ => type.ToString()
+    };
+}

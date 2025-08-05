@@ -1,0 +1,160 @@
+@page "/login"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Login - Club Management</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="d-flex align-center justify-center" Style="min-height: 100vh;">
+    <MudPaper Elevation="4" Class="pa-8" Style="width: 100%; max-width: 400px;">
+        <MudStack Spacing="6">
+            <MudStack Spacing="2" AlignItems="AlignItems.Center">
+                <MudIcon Icon="@Icons.Material.Filled.AccountCircle" Size="Size.Large" Color="Color.Primary" />
+                <MudText Typo="Typo.h4" Align="Align.Center">Welcome Back</MudText>
+                <MudText Typo="Typo.body1" Align="Align.Center" Color="Color.Secondary">
+                    Sign in to your Club Management account
+                </MudText>
+            </MudStack>
+
+            <MudForm @ref="form" @bind-IsValid="@success" @bind-Errors="@errors">
+                <MudStack Spacing="4">
+                    <MudTextField @bind-Value="loginRequest.TenantDomain" 
+                                  Label="Club Domain" 
+                                  Variant="Variant.Outlined" 
+                                  Required="true"
+                                  RequiredError="Club domain is required!"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Domain" />
+
+                    <MudTextField @bind-Value="loginRequest.Email" 
+                                  Label="Email" 
+                                  Variant="Variant.Outlined" 
+                                  Required="true"
+                                  RequiredError="Email is required!"
+                                  Validation="@(new EmailAddressAttribute() {ErrorMessage = "The email address is invalid"})"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Email" />
+
+                    <MudTextField @bind-Value="loginRequest.Password" 
+                                  Label="Password" 
+                                  Variant="Variant.Outlined" 
+                                  InputType="@_passwordInput" 
+                                  Required="true"
+                                  RequiredError="Password is required!"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@_passwordInputIcon"
+                                  OnAdornmentClick="TogglePasswordVisibility" />
+
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudCheckBox @bind-Value="rememberMe" Label="Remember me" Color="Color.Primary" />
+                        <MudLink Href="/forgot-password" Underline="Underline.Hover">Forgot password?</MudLink>
+                    </MudStack>
+
+                    <MudButton Variant="Variant.Filled" 
+                               Color="Color.Primary" 
+                               Size="Size.Large" 
+                               FullWidth="true"
+                               OnClick="HandleLogin"
+                               Disabled="@_isLoading">
+                        @if (_isLoading)
+                        {
+                            <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                            <MudText Class="ms-2">Signing in...</MudText>
+                        }
+                        else
+                        {
+                            <MudText>Sign In</MudText>
+                        }
+                    </MudButton>
+
+                    <MudDivider />
+
+                    <MudStack Row="true" Justify="Justify.Center" AlignItems="AlignItems.Center">
+                        <MudText>Don't have an account?</MudText>
+                        <MudLink Href="/register" Underline="Underline.Hover">Sign up</MudLink>
+                    </MudStack>
+                </MudStack>
+            </MudForm>
+        </MudStack>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private MudForm form = null!;
+    private LoginRequest loginRequest = new();
+    private bool success;
+    private string[] errors = Array.Empty<string>();
+    private bool rememberMe = false;
+    private bool _isLoading = false;
+
+    private bool _isPasswordVisible;
+    private InputType _passwordInput = InputType.Password;
+    private string _passwordInputIcon = Icons.Material.Filled.VisibilityOff;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if already authenticated
+        if (await AuthService.IsAuthenticatedAsync())
+        {
+            Navigation.NavigateTo("/");
+        }
+
+        // Pre-fill demo values for development
+        if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development")
+        {
+            loginRequest.TenantDomain = "demo";
+            loginRequest.Email = "admin@demo.com";
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        if (!success) return;
+
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var response = await AuthService.LoginAsync(loginRequest);
+
+            if (response?.Success == true)
+            {
+                Snackbar.Add("Login successful! Welcome back.", Severity.Success);
+                Navigation.NavigateTo("/");
+            }
+            else
+            {
+                var errorMessage = response?.Message ?? "Login failed. Please try again.";
+                Snackbar.Add(errorMessage, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"An error occurred: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void TogglePasswordVisibility()
+    {
+        @if (_isPasswordVisible)
+        {
+            _isPasswordVisible = false;
+            _passwordInputIcon = Icons.Material.Filled.VisibilityOff;
+            _passwordInput = InputType.Password;
+        }
+        else
+        {
+            _isPasswordVisible = true;
+            _passwordInputIcon = Icons.Material.Filled.Visibility;
+            _passwordInput = InputType.Text;
+        }
+    }
+}

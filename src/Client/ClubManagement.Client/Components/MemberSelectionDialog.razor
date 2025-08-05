@@ -1,0 +1,100 @@
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using MudBlazor
+@inject IMemberService MemberService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudText Typo="Typo.h6">@Title</MudText>
+            
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" />
+                <MudText>Loading members...</MudText>
+            }
+            else
+            {
+                <MudSelect T="Guid?" @bind-Value="_selectedMemberId" 
+                           Label="Select Member" 
+                           Variant="Variant.Outlined"
+                           AnchorOrigin="Origin.BottomCenter"
+                           OpenIcon="@Icons.Material.Filled.PersonSearch">
+                    @foreach (var member in _members)
+                    {
+                        <MudSelectItem T="Guid?" Value="member.Id">
+                            @member.FirstName @member.LastName (@member.MembershipNumber)
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+                
+                @if (_members.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info">No active members found</MudAlert>
+                }
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" 
+                   Variant="Variant.Filled" 
+                   OnClick="Submit"
+                   Disabled="!_selectedMemberId.HasValue">
+            Register Member
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    
+    [Parameter] public string Title { get; set; } = "Select Member";
+    [Parameter] public Guid EventId { get; set; }
+    
+    private List<MemberListDto> _members = new();
+    private Guid? _selectedMemberId;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadMembersAsync();
+    }
+
+    private async Task LoadMembersAsync()
+    {
+        _loading = true;
+        
+        try
+        {
+            var request = new MemberSearchRequest
+            {
+                PageSize = 100, // Get more members for selection
+                Status = MembershipStatus.Active
+            };
+            
+            var response = await MemberService.GetMembersAsync(request);
+            if (response?.Success == true)
+            {
+                _members = response.Data?.Items ?? new();
+            }
+            else
+            {
+                Snackbar.Add("Failed to load members", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading members: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    void Submit() => MudDialog.Close(DialogResult.Ok(_selectedMemberId));
+    void Cancel() => MudDialog.Cancel();
+}

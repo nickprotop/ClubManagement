@@ -1,0 +1,200 @@
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using MudBlazor
+@inject IEventService EventService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudText Typo="Typo.h6">Bulk Check-in: @EventTitle</MudText>
+            
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" />
+                <MudText>Processing check-ins...</MudText>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    Select members to check in for this event. Only confirmed registrations are shown.
+                </MudAlert>
+                
+                <MudStack Spacing="2">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.subtitle1">Members (@_filteredRegistrations.Count available)</MudText>
+                        <MudStack Row="true" Spacing="2">
+                            <MudButton Size="Size.Small" 
+                                       Variant="Variant.Text" 
+                                       OnClick="SelectAll">
+                                Select All
+                            </MudButton>
+                            <MudButton Size="Size.Small" 
+                                       Variant="Variant.Text" 
+                                       OnClick="ClearAll">
+                                Clear All
+                            </MudButton>
+                        </MudStack>
+                    </MudStack>
+                    
+                    <MudPaper Class="pa-2" Style="max-height: 300px; overflow-y: auto;">
+                        @if (_filteredRegistrations.Any())
+                        {
+                            @foreach (var registration in _filteredRegistrations)
+                            {
+                                <MudCheckBox @bind-Value="@_selectedMembers[registration.Id]"
+                                             Color="Color.Primary"
+                                             Dense="true">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Style="width: 100%;">
+                                        <MudText>@registration.MemberName</MudText>
+                                        @if (registration.IsWaitlisted && registration.WaitlistPosition.HasValue)
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">
+                                                Waitlist #@registration.WaitlistPosition
+                                            </MudChip>
+                                        }
+                                    </MudStack>
+                                </MudCheckBox>
+                            }
+                        }
+                        else
+                        {
+                            <MudText Align="Align.Center" Color="Color.Secondary">
+                                No members available for check-in
+                            </MudText>
+                        }
+                    </MudPaper>
+                    
+                    @if (_selectedCount > 0)
+                    {
+                        <MudAlert Severity="Severity.Success" Dense="true">
+                            @_selectedCount member(s) selected for check-in
+                        </MudAlert>
+                    }
+                </MudStack>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_loading">Cancel</MudButton>
+        <MudButton Color="Color.Primary" 
+                   Variant="Variant.Filled" 
+                   OnClick="Submit"
+                   Disabled="_selectedCount == 0 || _loading"
+                   StartIcon="@Icons.Material.Filled.CheckCircle">
+            Check In (@_selectedCount)
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    
+    [Parameter] public Guid EventId { get; set; }
+    [Parameter] public string EventTitle { get; set; } = "";
+    [Parameter] public List<EventRegistrationDto> Registrations { get; set; } = new();
+    
+    private List<EventRegistrationDto> _filteredRegistrations = new();
+    private Dictionary<Guid, bool> _selectedMembers = new();
+    private bool _loading = false;
+    private int _selectedCount => _selectedMembers.Values.Count(v => v);
+
+    protected override void OnInitialized()
+    {
+        // Filter to only show confirmed registrations that aren't already checked in
+        _filteredRegistrations = Registrations
+            .Where(r => r.Status == RegistrationStatus.Confirmed && !r.CheckedInAt.HasValue)
+            .ToList();
+            
+        // Initialize selection dictionary
+        _selectedMembers = _filteredRegistrations.ToDictionary(r => r.Id, r => false);
+    }
+
+    private void SelectAll()
+    {
+        foreach (var key in _selectedMembers.Keys.ToList())
+        {
+            _selectedMembers[key] = true;
+        }
+        StateHasChanged();
+    }
+
+    private void ClearAll()
+    {
+        foreach (var key in _selectedMembers.Keys.ToList())
+        {
+            _selectedMembers[key] = false;
+        }
+        StateHasChanged();
+    }
+
+    private async Task Submit()
+    {
+        if (_selectedCount == 0) return;
+        
+        _loading = true;
+        StateHasChanged();
+        
+        try
+        {
+            var selectedRegistrationIds = _selectedMembers
+                .Where(kvp => kvp.Value)
+                .Select(kvp => kvp.Key)
+                .ToList();
+                
+            var selectedRegistrations = _filteredRegistrations
+                .Where(r => selectedRegistrationIds.Contains(r.Id))
+                .ToList();
+            
+            var successCount = 0;
+            var errorCount = 0;
+            
+            foreach (var registration in selectedRegistrations)
+            {
+                try
+                {
+                    var response = await EventService.CheckInMemberAsync(EventId, registration.MemberId);
+                    if (response?.Success == true)
+                    {
+                        successCount++;
+                    }
+                    else
+                    {
+                        errorCount++;
+                    }
+                }
+                catch
+                {
+                    errorCount++;
+                }
+            }
+            
+            if (successCount > 0)
+            {
+                var message = errorCount > 0 
+                    ? $"Checked in {successCount} member(s). {errorCount} failed."
+                    : $"Successfully checked in {successCount} member(s)";
+                    
+                Snackbar.Add(message, errorCount > 0 ? Severity.Warning : Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Failed to check in any members", Severity.Error);
+            }
+            
+            MudDialog.Close(DialogResult.Ok(successCount));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error during bulk check-in: {ex.Message}", Severity.Error);
+            MudDialog.Close(DialogResult.Ok(0));
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+    
+    void Cancel() => MudDialog.Cancel();
+}

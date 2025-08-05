@@ -21,10 +21,19 @@ public class Event : BaseEntity
     public string? SpecialInstructions { get; set; }
     public List<string> RequiredEquipment { get; set; } = new();
     
+    // Recurrence-related properties
+    public Guid? MasterEventId { get; set; }              // Links to original recurring event
+    public bool IsRecurringMaster { get; set; } = false;  // True for original, false for occurrences
+    public int? OccurrenceNumber { get; set; }            // 1, 2, 3... for each occurrence
+    public DateTime? LastGeneratedUntil { get; set; }     // Track generation window for master events
+    public RecurrenceStatus RecurrenceStatus { get; set; } = RecurrenceStatus.Active;
+    
     // Navigation properties
     public Facility? Facility { get; set; }
     public User? Instructor { get; set; }
     public List<EventRegistration> Registrations { get; set; } = new();
+    public Event? MasterEvent { get; set; }               // Navigation to master event
+    public List<Event> Occurrences { get; set; } = new(); // Navigation to occurrences (for master events)
 }
 
 public enum EventType
@@ -62,4 +71,12 @@ public enum RecurrenceType
     Weekly,
     Monthly,
     Yearly
+}
+
+public enum RecurrenceStatus
+{
+    Active,      // Generating new occurrences
+    Paused,      // Temporarily stopped
+    Completed,   // Reached end date/max occurrences
+    Cancelled    // Manually stopped
 }

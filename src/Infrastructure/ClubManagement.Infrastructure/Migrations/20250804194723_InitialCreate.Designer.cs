@@ -3,6 +3,7 @@ using System;
 using ClubManagement.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ClubManagement.Infrastructure.Migrations
 {
     [DbContext(typeof(ClubManagementDbContext))]
-    partial class ClubManagementDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250804194723_InitialCreate")]
+    partial class InitialCreate
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,67 +24,6 @@ namespace ClubManagement.Infrastructure.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("ClubManagement.Domain.Entities.RefreshToken", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("text");
-
-                    b.Property<string>("CreatedByIp")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsRevoked")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("ReplacedByToken")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("RevokedByIp")
-                        .HasColumnType("text");
-
-                    b.Property<string>("RevokedReason")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Token")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Token")
-                        .IsUnique();
-
-                    b.HasIndex("UserId", "IsRevoked")
-                        .HasFilter("\"IsRevoked\" = false");
-
-                    b.ToTable("RefreshTokens");
-                });
 
             modelBuilder.Entity("ClubManagement.Shared.Models.Communication", b =>
                 {
@@ -255,19 +197,7 @@ namespace ClubManagement.Infrastructure.Migrations
                     b.Property<Guid?>("InstructorId")
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("IsRecurringMaster")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("LastGeneratedUntil")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("MasterEventId")
-                        .HasColumnType("uuid");
-
                     b.Property<int>("MaxCapacity")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("OccurrenceNumber")
                         .HasColumnType("integer");
 
                     b.Property<decimal?>("Price")
@@ -275,9 +205,6 @@ namespace ClubManagement.Infrastructure.Migrations
 
                     b.Property<string>("Recurrence")
                         .HasColumnType("jsonb");
-
-                    b.Property<int>("RecurrenceStatus")
-                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("RegistrationDeadline")
                         .HasColumnType("timestamp with time zone");
@@ -316,14 +243,6 @@ namespace ClubManagement.Infrastructure.Migrations
                     b.HasIndex("FacilityId");
 
                     b.HasIndex("InstructorId");
-
-                    b.HasIndex("IsRecurringMaster");
-
-                    b.HasIndex("MasterEventId");
-
-                    b.HasIndex("MasterEventId", "StartDateTime");
-
-                    b.HasIndex("RecurrenceStatus", "LastGeneratedUntil");
 
                     b.ToTable("Events");
                 });
@@ -1194,17 +1113,6 @@ namespace ClubManagement.Infrastructure.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("ClubManagement.Domain.Entities.RefreshToken", b =>
-                {
-                    b.HasOne("ClubManagement.Shared.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("ClubManagement.Shared.Models.Communication", b =>
                 {
                     b.HasOne("ClubManagement.Shared.Models.User", "Sender")
@@ -1243,16 +1151,9 @@ namespace ClubManagement.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("InstructorId");
 
-                    b.HasOne("ClubManagement.Shared.Models.Event", "MasterEvent")
-                        .WithMany("Occurrences")
-                        .HasForeignKey("MasterEventId")
-                        .OnDelete(DeleteBehavior.Cascade);
-
                     b.Navigation("Facility");
 
                     b.Navigation("Instructor");
-
-                    b.Navigation("MasterEvent");
                 });
 
             modelBuilder.Entity("ClubManagement.Shared.Models.EventRegistration", b =>
@@ -1442,8 +1343,6 @@ namespace ClubManagement.Infrastructure.Migrations
 
             modelBuilder.Entity("ClubManagement.Shared.Models.Event", b =>
                 {
-                    b.Navigation("Occurrences");
-
                     b.Navigation("Registrations");
                 });
 
