@@ -1,0 +1,506 @@
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@inject IPermissionsService PermissionsService
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+@* Inject parent layout reference for mobile sidebar closing *@
+
+<div class="collapsible-nav-menu">
+    <!-- Dashboard - Always visible -->
+    <div class="nav-item @(IsCurrentPage("/") ? "active" : "")" @onclick="@(() => NavigateTo("/"))">
+        <div class="nav-link">
+            <MudIcon Icon="@Icons.Material.Filled.Dashboard" Class="nav-icon" />
+            <span class="nav-text">Dashboard</span>
+        </div>
+    </div>
+    
+    @if (_permissions?.Navigation.ShowMembers == true)
+    {
+        <div class="nav-group" @onmouseenter="@(() => ShowSubmenu("members"))" @onmouseleave="@(() => HideSubmenu("members"))">
+            <div class="nav-item group-trigger @(IsCurrentGroup("members") ? "active" : "")">
+                <div class="nav-link">
+                    <MudIcon Icon="@Icons.Material.Filled.People" Class="nav-icon" />
+                    <span class="nav-text">Members</span>
+                    <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Class="nav-arrow" />
+                </div>
+            </div>
+            
+            <!-- Submenu - expanded view -->
+            <div class="nav-submenu expanded-only">
+                <div class="nav-item submenu-item @(IsCurrentPage("/members") ? "active" : "")" @onclick="@(() => NavigateTo("/members"))">
+                    <div class="nav-link">
+                        <MudIcon Icon="@Icons.Material.Filled.PersonSearch" Class="nav-icon" />
+                        <span class="nav-text">All Members</span>
+                    </div>
+                </div>
+                @if (_permissions.Navigation.ShowMemberManagement)
+                {
+                    <div class="nav-item submenu-item @(IsCurrentPage("/members/create") ? "active" : "")" @onclick="@(() => NavigateTo("/members/create"))">
+                        <div class="nav-link">
+                            <MudIcon Icon="@Icons.Material.Filled.PersonAdd" Class="nav-icon" />
+                            <span class="nav-text">Add Member</span>
+                        </div>
+                    </div>
+                }
+            </div>
+            
+            <!-- Popout submenu - collapsed view -->
+            <div class="submenu-popout @(_activePopout == "members" ? "show" : "")" style="top: @GetPopoutPosition("members"); left: 72px;">
+                <div class="popout-header">Members</div>
+                <div class="nav-item @(IsCurrentPage("/members") ? "active" : "")" @onclick="@(() => NavigateTo("/members"))">
+                    <MudIcon Icon="@Icons.Material.Filled.PersonSearch" Size="Size.Small" />
+                    <span>All Members</span>
+                </div>
+                @if (_permissions.Navigation.ShowMemberManagement)
+                {
+                    <div class="nav-item @(IsCurrentPage("/members/create") ? "active" : "")" @onclick="@(() => NavigateTo("/members/create"))">
+                        <MudIcon Icon="@Icons.Material.Filled.PersonAdd" Size="Size.Small" />
+                        <span>Add Member</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    
+    @if (_permissions?.Navigation.ShowEvents == true)
+    {
+        <div class="nav-group" @onmouseenter="@(() => ShowSubmenu("events"))" @onmouseleave="@(() => HideSubmenu("events"))">
+            <div class="nav-item group-trigger @(IsCurrentGroup("events") ? "active" : "")">
+                <div class="nav-link">
+                    <MudIcon Icon="@Icons.Material.Filled.Event" Class="nav-icon" />
+                    <span class="nav-text">Events</span>
+                    <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Class="nav-arrow" />
+                </div>
+            </div>
+            
+            <!-- Submenu - expanded view -->
+            <div class="nav-submenu expanded-only">
+                <div class="nav-item submenu-item @(IsCurrentPage("/events") ? "active" : "")" @onclick="@(() => NavigateTo("/events"))">
+                    <div class="nav-link">
+                        <MudIcon Icon="@Icons.Material.Filled.EventNote" Class="nav-icon" />
+                        <span class="nav-text">All Events</span>
+                    </div>
+                </div>
+                @if (_permissions.Navigation.ShowEventManagement)
+                {
+                    <div class="nav-item submenu-item @(IsCurrentPage("/events/create") ? "active" : "")" @onclick="@(() => NavigateTo("/events/create"))">
+                        <div class="nav-link">
+                            <MudIcon Icon="@Icons.Material.Filled.EventAvailable" Class="nav-icon" />
+                            <span class="nav-text">Create Event</span>
+                        </div>
+                    </div>
+                }
+                <div class="nav-item submenu-item @(IsCurrentPage("/events/calendar") ? "active" : "")" @onclick="@(() => NavigateTo("/events/calendar"))">
+                    <div class="nav-link">
+                        <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Class="nav-icon" />
+                        <span class="nav-text">Calendar</span>
+                    </div>
+                </div>
+                <div class="nav-item submenu-item @(IsCurrentPage("/events/my-registrations") ? "active" : "")" @onclick="@(() => NavigateTo("/events/my-registrations"))">
+                    <div class="nav-link">
+                        <MudIcon Icon="@Icons.Material.Filled.PersonPin" Class="nav-icon" />
+                        <span class="nav-text">My Registrations</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Popout submenu - collapsed view -->
+            <div class="submenu-popout @(_activePopout == "events" ? "show" : "")" style="top: @GetPopoutPosition("events"); left: 72px;">
+                <div class="popout-header">Events</div>
+                <div class="nav-item @(IsCurrentPage("/events") ? "active" : "")" @onclick="@(() => NavigateTo("/events"))">
+                    <MudIcon Icon="@Icons.Material.Filled.EventNote" Size="Size.Small" />
+                    <span>All Events</span>
+                </div>
+                @if (_permissions.Navigation.ShowEventManagement)
+                {
+                    <div class="nav-item @(IsCurrentPage("/events/create") ? "active" : "")" @onclick="@(() => NavigateTo("/events/create"))">
+                        <MudIcon Icon="@Icons.Material.Filled.EventAvailable" Size="Size.Small" />
+                        <span>Create Event</span>
+                    </div>
+                }
+                <div class="nav-item @(IsCurrentPage("/events/calendar") ? "active" : "")" @onclick="@(() => NavigateTo("/events/calendar"))">
+                    <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Size="Size.Small" />
+                    <span>Calendar</span>
+                </div>
+                <div class="nav-item @(IsCurrentPage("/events/my-registrations") ? "active" : "")" @onclick="@(() => NavigateTo("/events/my-registrations"))">
+                    <MudIcon Icon="@Icons.Material.Filled.PersonPin" Size="Size.Small" />
+                    <span>My Registrations</span>
+                </div>
+            </div>
+        </div>
+    }
+    
+    @if (_permissions?.Navigation.ShowFacilities == true)
+    {
+        <div class="nav-group" @onmouseenter="@(() => ShowSubmenu("facilities"))" @onmouseleave="@(() => HideSubmenu("facilities"))">
+            <div class="nav-item group-trigger @(IsCurrentGroup("facilities") ? "active" : "")">
+                <div class="nav-link">
+                    <MudIcon Icon="@Icons.Material.Filled.Business" Class="nav-icon" />
+                    <span class="nav-text">Facilities</span>
+                    <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Class="nav-arrow" />
+                </div>
+            </div>
+            
+            <!-- Submenu - expanded view -->
+            <div class="nav-submenu expanded-only">
+                <div class="nav-item submenu-item @(IsCurrentPage("/facilities") ? "active" : "")" @onclick="@(() => NavigateTo("/facilities"))">
+                    <div class="nav-link">
+                        <MudIcon Icon="@Icons.Material.Filled.Store" Class="nav-icon" />
+                        <span class="nav-text">All Facilities</span>
+                    </div>
+                </div>
+                <div class="nav-item submenu-item @(IsCurrentPage("/facilities/bookings") ? "active" : "")" @onclick="@(() => NavigateTo("/facilities/bookings"))">
+                    <div class="nav-link">
+                        <MudIcon Icon="@Icons.Material.Filled.BookOnline" Class="nav-icon" />
+                        <span class="nav-text">Bookings</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Popout submenu - collapsed view -->
+            <div class="submenu-popout @(_activePopout == "facilities" ? "show" : "")" style="top: @GetPopoutPosition("facilities"); left: 72px;">
+                <div class="popout-header">Facilities</div>
+                <div class="nav-item @(IsCurrentPage("/facilities") ? "active" : "")" @onclick="@(() => NavigateTo("/facilities"))">
+                    <MudIcon Icon="@Icons.Material.Filled.Store" Size="Size.Small" />
+                    <span>All Facilities</span>
+                </div>
+                <div class="nav-item @(IsCurrentPage("/facilities/bookings") ? "active" : "")" @onclick="@(() => NavigateTo("/facilities/bookings"))">
+                    <MudIcon Icon="@Icons.Material.Filled.BookOnline" Size="Size.Small" />
+                    <span>Bookings</span>
+                </div>
+            </div>
+        </div>
+    }
+    
+    <!-- Single items -->
+    @if (_permissions?.Navigation.ShowReports == true)
+    {
+        <div class="nav-item @(IsCurrentPage("/reports") ? "active" : "")" @onclick="@(() => NavigateTo("/reports"))">
+            <div class="nav-link">
+                <MudIcon Icon="@Icons.Material.Filled.Analytics" Class="nav-icon" />
+                <span class="nav-text">Reports</span>
+            </div>
+        </div>
+    }
+    
+    @if (_permissions?.Navigation.ShowSettings == true)
+    {
+        <div class="nav-item @(IsCurrentPage("/settings") ? "active" : "")" @onclick="@(() => NavigateTo("/settings"))">
+            <div class="nav-link">
+                <MudIcon Icon="@Icons.Material.Filled.Settings" Class="nav-icon" />
+                <span class="nav-text">Settings</span>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .collapsible-nav-menu {
+        padding: 8px 0;
+    }
+    
+    .nav-item {
+        position: relative;
+        margin: 2px 8px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .nav-item:hover {
+        background-color: var(--mud-palette-action-hover);
+    }
+    
+    .nav-item.active {
+        background-color: var(--mud-palette-primary);
+        color: white;
+    }
+    
+    .nav-link {
+        display: flex;
+        align-items: center;
+        padding: 12px 16px;
+        gap: 12px;
+        min-height: 48px;
+        position: relative;
+    }
+    
+    .nav-icon {
+        flex-shrink: 0;
+        width: 24px;
+        height: 24px;
+    }
+    
+    .nav-text {
+        flex: 1;
+        font-size: 0.875rem;
+        font-weight: 500;
+        white-space: nowrap;
+        opacity: 1;
+        transition: opacity 0.2s ease;
+    }
+    
+    .nav-arrow {
+        flex-shrink: 0;
+        width: 20px;
+        height: 20px;
+        transition: transform 0.2s ease;
+        margin-left: auto;
+    }
+    
+    /* Ensure consistent icon alignment for items with and without arrows */
+    .nav-item:not(.group-trigger) .nav-link {
+        padding-right: 48px; /* Same as 16px + 20px (arrow width) + 12px gap */
+    }
+    
+    .nav-item.group-trigger .nav-link {
+        padding-right: 16px; /* Normal padding since arrow takes the space */
+    }
+    
+    .nav-group:hover .nav-arrow {
+        transform: rotate(180deg);
+    }
+    
+    .nav-submenu {
+        padding-left: 16px;
+    }
+    
+    .nav-item.submenu-item {
+        margin: 1px 8px;
+    }
+    
+    .nav-item.submenu-item .nav-link {
+        padding: 8px 16px;
+        min-height: 40px;
+    }
+    
+    /* Collapsed state styles */
+    .app-sidebar:not(.open) .nav-text {
+        opacity: 0;
+        width: 0;
+        overflow: hidden;
+    }
+    
+    .app-sidebar:not(.open) .nav-arrow {
+        display: none;
+    }
+    
+    .app-sidebar:not(.open) .nav-link {
+        justify-content: center;
+        padding: 12px;
+    }
+    
+    /* When collapsed, remove the different padding for items with/without arrows */
+    .app-sidebar:not(.open) .nav-item:not(.group-trigger) .nav-link {
+        padding: 12px;
+    }
+    
+    .app-sidebar:not(.open) .nav-item.group-trigger .nav-link {
+        padding: 12px;
+    }
+    
+    .app-sidebar:not(.open) .expanded-only {
+        display: none;
+    }
+    
+    /* Popout styles */
+    .popout-header {
+        padding: 12px 16px 8px;
+        font-weight: 600;
+        font-size: 0.875rem;
+        color: var(--mud-palette-text-secondary);
+        border-bottom: 1px solid var(--mud-palette-divider);
+        margin-bottom: 4px;
+    }
+    
+    .submenu-popout .nav-item {
+        margin: 1px 4px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        padding: 8px 12px;
+        gap: 8px;
+        font-size: 0.875rem;
+    }
+    
+    .submenu-popout .nav-item:hover {
+        background-color: var(--mud-palette-action-hover);
+    }
+    
+    .submenu-popout .nav-item.active {
+        background-color: var(--mud-palette-primary);
+        color: white;
+    }
+    
+    /* Hide popouts on expanded sidebar */
+    .app-sidebar.open .submenu-popout {
+        display: none;
+    }
+    
+    /* Only highlight parent groups when sidebar is collapsed (icon-only) */
+    .app-sidebar.open .nav-item.group-trigger.active {
+        background-color: transparent !important;
+        color: inherit !important;
+    }
+    
+    .app-sidebar.open .nav-item.group-trigger.active:hover {
+        background-color: var(--mud-palette-action-hover) !important;
+    }
+    
+    /* Show popouts only when sidebar is collapsed on desktop */
+    @@media (min-width: 1025px) {
+        .app-sidebar:not(.open) .submenu-popout {
+            display: block;
+        }
+        
+        .app-sidebar.open .submenu-popout {
+            display: none !important;
+        }
+    }
+    
+    /* Mobile and tablet styles */
+    @@media (max-width: 1024px) {
+        .submenu-popout {
+            display: none !important;
+        }
+        
+        .nav-text {
+            opacity: 1 !important;
+            width: auto !important;
+        }
+        
+        .nav-arrow {
+            opacity: 1 !important;
+            width: auto !important;
+        }
+        
+        .expanded-only {
+            display: block !important;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public EventCallback OnMobileMenuClick { get; set; }
+    
+    private GlobalPermissionsDto? _permissions;
+    private string? _activePopout;
+    private Dictionary<string, int> _groupPositions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissions();
+    }
+
+    private async Task LoadPermissions()
+    {
+        try
+        {
+            if (await AuthService.IsAuthenticatedAsync())
+            {
+                _permissions = await PermissionsService.GetCachedPermissionsAsync();
+            }
+            else
+            {
+                _permissions = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load permissions: {ex.Message}");
+            _permissions = null;
+        }
+    }
+
+    private void ShowSubmenu(string groupName)
+    {
+        Console.WriteLine($"ShowSubmenu called for: {groupName}");
+        _activePopout = groupName;
+        StateHasChanged();
+    }
+
+    private void HideSubmenu(string groupName)
+    {
+        Console.WriteLine($"HideSubmenu called for: {groupName}");
+        if (_activePopout == groupName)
+        {
+            _activePopout = null;
+            StateHasChanged();
+        }
+    }
+
+    private string GetPopoutPosition(string groupName)
+    {
+        // Calculate position based on group order and header height
+        var baseOffset = 64; // Header height
+        var itemHeight = 56; // Approximate height per nav item
+        
+        var position = groupName switch
+        {
+            "members" => $"{baseOffset + (itemHeight * 1)}px", // Dashboard + Members
+            "events" => $"{baseOffset + (itemHeight * 2)}px",   // Dashboard + Members + Events
+            "facilities" => $"{baseOffset + (itemHeight * 3)}px", // Dashboard + Members + Events + Facilities
+            _ => $"{baseOffset}px"
+        };
+        return position;
+    }
+
+    private bool IsCurrentPage(string path)
+    {
+        return Navigation.Uri.EndsWith(path) || (path == "/" && Navigation.Uri.EndsWith("/"));
+    }
+
+    private bool IsCurrentGroup(string groupName)
+    {
+        var currentPath = Navigation.Uri;
+        return groupName switch
+        {
+            "members" => currentPath.Contains("/members"),
+            "events" => currentPath.Contains("/events"),
+            "facilities" => currentPath.Contains("/facilities"),
+            "payments" => currentPath.Contains("/payments") || currentPath.Contains("/subscriptions"),
+            "communications" => currentPath.Contains("/communications"),
+            _ => false
+        };
+    }
+
+    private bool ShouldHighlightGroup(string groupName)
+    {
+        // Only highlight parent group when sidebar is collapsed (icon-only mode)
+        // When expanded, only highlight the specific submenu item
+        return IsCurrentGroup(groupName);
+    }
+
+    private async void NavigateTo(string path)
+    {
+        _activePopout = null; // Close any open popouts
+        
+        // Only close sidebar on mobile/tablet (overlay mode), not on desktop
+        try
+        {
+            var width = await JSRuntime.InvokeAsync<int>("eval", "window.innerWidth");
+            if (width <= 1024 && OnMobileMenuClick.HasDelegate)
+            {
+                await OnMobileMenuClick.InvokeAsync();
+            }
+        }
+        catch
+        {
+            // Fallback: if we can't detect screen size, assume mobile and close
+            if (OnMobileMenuClick.HasDelegate)
+            {
+                await OnMobileMenuClick.InvokeAsync();
+            }
+        }
+        
+        Navigation.NavigateTo(path);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Cleanup if needed
+    }
+}

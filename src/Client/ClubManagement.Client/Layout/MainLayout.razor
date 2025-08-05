@@ -8,64 +8,93 @@
 @implements IDisposable
 @inherits LayoutComponentBase
 
+<link href="css/main-layout.css" rel="stylesheet" />
+
 <MudThemeProvider @ref="@_mudThemeProvider" @bind-IsDarkMode="@_isDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
-<MudLayout>
-    @if (_isAuthenticated)
-    {
-        <MudAppBar Elevation="1" Dense="true">
-            <MudIconButton Icon="Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" 
-                          OnClick="@((e) => DrawerToggle())" />
+@if (_isAuthenticated)
+{
+    <div class="app-container">
+        <!-- Mobile Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <button class="hamburger-btn" @onclick="ToggleSidebar" aria-label="Toggle navigation">
+                    <span class="hamburger-line"></span>
+                    <span class="hamburger-line"></span>
+                    <span class="hamburger-line"></span>
+                </button>
+                
+                <div class="brand-section">
+                    <div class="brand-logo">
+                        <MudIcon Icon="Icons.Material.Filled.Waves" Size="Size.Medium" Color="Color.Primary" />
+                    </div>
+                    <h1 class="brand-title">Club Management</h1>
+                </div>
+                
+                <div class="header-actions">
+                    <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)" 
+                                  Color="Color.Inherit" 
+                                  Size="Size.Medium"
+                                  Class="theme-toggle"
+                                  OnClick="@ToggleTheme" />
+                    <ProfileDropdown />
+                </div>
+            </div>
+        </header>
+
+        <!-- Sidebar Overlay for Mobile -->
+        <div class="sidebar-overlay @(_sidebarOpen ? "active" : "")" @onclick="CloseSidebar"></div>
+
+        <!-- Sidebar -->
+        <aside class="app-sidebar @(_sidebarOpen ? "open" : "")" @onclick:stopPropagation="true">
+            <div class="sidebar-header">
+                <div class="sidebar-brand">
+                    <MudIcon Icon="Icons.Material.Filled.Waves" Size="Size.Large" Color="Color.Primary" />
+                    <span class="sidebar-brand-text">Club Management</span>
+                </div>
+                <button class="sidebar-close-btn" @onclick="CloseSidebar" aria-label="Close navigation">
+                    <MudIcon Icon="Icons.Material.Filled.Close" Size="Size.Medium" />
+                </button>
+            </div>
             
-            <MudSpacer />
-            
-            <MudText Typo="Typo.h6" Class="ml-3">Club Management</MudText>
-            
-            <MudSpacer />
-            
-            <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)" 
-                          Color="Color.Inherit" 
-                          OnClick="@ToggleTheme" />
-            
-            <ProfileDropdown />
-        </MudAppBar>
-        
-        <MudDrawer @bind-Open="_drawerOpen" Elevation="2" Variant="@DrawerVariant.Mini" OpenMiniOnHover="true">
-            <MudDrawerHeader>
-                <MudText Typo="Typo.h6">CM</MudText>
-            </MudDrawerHeader>
-            <NavMenu />
-        </MudDrawer>
-        
-        <MudMainContent>
-            <MudContainer MaxWidth="MaxWidth.False" Class="mt-4">
+            <nav class="sidebar-nav">
+                <CollapsibleNavMenu OnMobileMenuClick="@CloseSidebar" />
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="app-main @(_sidebarOpen ? "sidebar-open" : "")">
+            <div class="main-content">
                 <ImpersonationBanner />
                 @Body
-            </MudContainer>
-        </MudMainContent>
-    }
-    else
-    {
-        <MudMainContent>
-            @Body
-        </MudMainContent>
-    }
-</MudLayout>
+            </div>
+        </main>
+    </div>
+}
+else
+{
+    <div class="auth-container">
+        @Body
+    </div>
+}
 
 @code {
-    private bool _drawerOpen = true;
+    private bool _sidebarOpen = false;
     private bool _isDarkMode = false;
     private MudThemeProvider _mudThemeProvider = null!;
     private bool _isAuthenticated = false;
     private UserProfileDto? _currentUser;
+    private IJSObjectReference? _jsModule;
+    private DotNetObjectReference<MainLayout>? _dotNetRef;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
+            _dotNetRef = DotNetObjectReference.Create(this);
             AuthService.AuthenticationStateChanged += OnAuthenticationStateChanged;
             AuthService.SessionExpired += OnSessionExpired;
             
@@ -86,12 +115,83 @@
             {
                 _currentUser = await AuthService.GetCurrentUserAsync();
             }
+
+            // Set initial sidebar state based on screen size
+            await SetInitialSidebarState();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"MainLayout initialization error: {ex.Message}");
             _isAuthenticated = false;
             _currentUser = null;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                _jsModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "/js/main-layout.js");
+                if (_jsModule != null && _dotNetRef != null)
+                {
+                    await _jsModule.InvokeVoidAsync("initialize", _dotNetRef);
+                }
+                
+                // Ensure sidebar state is set correctly after JS loads
+                await SetInitialSidebarState();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"MainLayout JS initialization failed: {ex.Message}");
+                // Layout will still work, just without enhanced JavaScript functionality
+            }
+        }
+    }
+
+    private async Task SetInitialSidebarState()
+    {
+        try
+        {
+            var width = await JSRuntime.InvokeAsync<int>("eval", "window.innerWidth");
+            // Auto open/close based on screen size  
+            _sidebarOpen = width >= 1200; // Auto-expand on wide desktop (1200px+)
+            Console.WriteLine($"Initial sidebar state: {_sidebarOpen}, width: {width}");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SetInitialSidebarState error: {ex.Message}");
+            _sidebarOpen = false; // Default to collapsed/hidden if JS fails
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public void HandleResize(int width)
+    {
+        try
+        {
+            var shouldBeOpen = width >= 1200;
+            
+            if (_sidebarOpen != shouldBeOpen)
+            {
+                _sidebarOpen = shouldBeOpen;
+                Console.WriteLine($"Resize triggered sidebar change: {_sidebarOpen}, width: {width}");
+                StateHasChanged();
+            }
+        }
+        catch { /* Ignore resize errors */ }
+    }
+
+    [JSInvokable]
+    public void HandleEscapeKey()
+    {
+        if (_sidebarOpen)
+        {
+            _sidebarOpen = false;
+            StateHasChanged();
         }
     }
 
@@ -114,9 +214,14 @@
         StateHasChanged();
     }
 
-    private void DrawerToggle()
+    private void ToggleSidebar()
     {
-        _drawerOpen = !_drawerOpen;
+        _sidebarOpen = !_sidebarOpen;
+    }
+
+    private void CloseSidebar()
+    {
+        _sidebarOpen = false;
     }
 
     private async Task ToggleTheme()
@@ -124,7 +229,6 @@
         _isDarkMode = !_isDarkMode;
         await JSRuntime.InvokeVoidAsync("localStorage.setItem", "isDarkMode", _isDarkMode.ToString());
     }
-
 
     private void OnSessionExpired()
     {
@@ -139,5 +243,17 @@
     {
         AuthService.AuthenticationStateChanged -= OnAuthenticationStateChanged;
         AuthService.SessionExpired -= OnSessionExpired;
+        
+        if (_jsModule != null)
+        {
+            try
+            {
+                _jsModule.InvokeVoidAsync("dispose");
+                _jsModule.DisposeAsync();
+            }
+            catch { /* Ignore disposal errors */ }
+        }
+        
+        _dotNetRef?.Dispose();
     }
 }

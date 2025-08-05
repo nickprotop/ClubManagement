@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.IdentityModel.Tokens.Jwt;
 using ClubManagement.Shared.DTOs;
 using ClubManagement.Shared.Models;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ClubManagement.Client.Services;
 
@@ -11,6 +12,7 @@ public class AuthService : IAuthService
 {
     private readonly HttpClient _httpClient;
     private readonly IJSRuntime _jsRuntime;
+    private readonly IServiceProvider _serviceProvider;
     private UserProfileDto? _currentUser;
     private bool _isAuthenticated = false;
     private bool _isRefreshing = false;
@@ -19,10 +21,11 @@ public class AuthService : IAuthService
     public event Action<bool>? AuthenticationStateChanged;
     public event Action? SessionExpired;
 
-    public AuthService(HttpClient httpClient, IJSRuntime jsRuntime)
+    public AuthService(HttpClient httpClient, IJSRuntime jsRuntime, IServiceProvider serviceProvider)
     {
         _httpClient = httpClient;
         _jsRuntime = jsRuntime;
+        _serviceProvider = serviceProvider;
     }
 
     public async Task<ApiResponse<LoginResponse>?> LoginAsync(LoginRequest request)
@@ -207,6 +210,20 @@ public class AuthService : IAuthService
             _httpClient.DefaultRequestHeaders.Authorization = 
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", result.Data.AccessToken);
 
+            // Preload permissions after token refresh
+            try
+            {
+                var permissionsService = _serviceProvider.GetService<IPermissionsService>();
+                if (permissionsService != null)
+                {
+                    _ = Task.Run(() => permissionsService.PreloadPermissionsAsync()); // Fire and forget
+                }
+            }
+            catch
+            {
+                // Ignore preload errors - permissions will be loaded on demand
+            }
+
             return true;
         }
         catch
@@ -261,6 +278,20 @@ public class AuthService : IAuthService
         _isAuthenticated = true;
         _httpClient.DefaultRequestHeaders.Authorization = 
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", loginResponse.AccessToken);
+
+        // Preload permissions after successful authentication
+        try
+        {
+            var permissionsService = _serviceProvider.GetService<IPermissionsService>();
+            if (permissionsService != null)
+            {
+                _ = Task.Run(() => permissionsService.PreloadPermissionsAsync()); // Fire and forget
+            }
+        }
+        catch
+        {
+            // Ignore preload errors - permissions will be loaded on demand
+        }
 
         AuthenticationStateChanged?.Invoke(true);
     }
