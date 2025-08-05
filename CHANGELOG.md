@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Comprehensive Member Authorization System**: Complete role-based access control for member management
+  - **25+ Member Actions**: Granular permissions for all member-related operations (View, Create, Edit, Delete, ImpersonateMember, ViewMedicalInfo, EditBalance, etc.)
+  - **Role-Based Permission Matrix**: Detailed permissions for Member, Staff, Instructor, Coach, Admin, SuperAdmin roles
+  - **Context-Aware Authorization**: Business rules enforcement (e.g., sensitive data access restrictions, privilege escalation prevention)
+  - **Adaptive Frontend UI**: Permission-based button visibility and action availability
+  - **Admin Impersonation Feature**: Secure member impersonation with session management and audit trails
+  
+- **Advanced Audit Logging System**: Complete audit trail for all member-related actions
+  - **MemberAuditLog Entity**: Comprehensive logging with metadata, IP addresses, and user agents
+  - **Security Event Logging**: Permission denials, impersonation sessions, and sensitive action tracking
+  - **Database Integration**: Indexed audit logs with JSON metadata support for complex queries
+  - **Automatic Cleanup**: Session-based tracking with expiration and cleanup mechanisms
+
 - **Coach User Role**: Added new `Coach` user role to the system
   - Extended `UserRole` enum with `Coach` option
   - Added demo coach user in database seeder (`coach@demo.localhost` / `Coach123!`)
@@ -61,6 +74,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Eliminated migration synchronization issues
 
 ### Security
+- **Member Authorization Security**:
+  - **Multi-Layer Authorization**: Attribute-based + service-based authorization for double security
+  - **Privilege Escalation Prevention**: Cannot impersonate higher-privilege users
+  - **Session Management**: Secure impersonation sessions with automatic expiration (max 2 hours)
+  - **Audit Trail**: Complete logging of all permission checks and security events
+  - **Context-Aware Rules**: Business hours restrictions for sensitive data access
+  - **Self-Modification Protection**: Users cannot modify their own admin account status
+
 - **Enhanced Password Security**:
   - PBKDF2 with SHA256 hash algorithm
   - 100,000 iterations for computational security

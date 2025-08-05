@@ -135,6 +135,9 @@ builder.Services.AddHostedService<RecurrenceMaintenanceService>();
 
 // Authorization services
 builder.Services.AddScoped<ClubManagement.Infrastructure.Authorization.IEventAuthorizationService, ClubManagement.Infrastructure.Authorization.EventAuthorizationService>();
+builder.Services.AddScoped<ClubManagement.Infrastructure.Authorization.IMemberAuthorizationService, ClubManagement.Infrastructure.Authorization.MemberAuthorizationService>();
+builder.Services.AddScoped<ClubManagement.Infrastructure.Services.IImpersonationService, ClubManagement.Infrastructure.Services.ImpersonationService>();
+builder.Services.AddScoped<ClubManagement.Infrastructure.Services.IMemberAuditService, ClubManagement.Infrastructure.Services.MemberAuditService>();
 
 var app = builder.Build();
 

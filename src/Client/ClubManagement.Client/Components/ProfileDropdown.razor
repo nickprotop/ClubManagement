@@ -1,0 +1,399 @@
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<div class="profile-dropdown">
+    <MudButton Variant="Variant.Text" 
+               Color="Color.Inherit" 
+               Class="profile-trigger pa-2"
+               OnClick="ToggleDropdown"
+               @ref="triggerButton">
+        <div class="profile-info d-flex align-center">
+            <MudAvatar Size="Size.Small" Class="mr-2">
+                @if (!string.IsNullOrEmpty(_currentUser?.ProfilePhotoUrl))
+                {
+                    <MudImage Src="@_currentUser.ProfilePhotoUrl" Alt="Profile" />
+                }
+                else
+                {
+                    <MudIcon Icon="Icons.Material.Filled.Person" />
+                }
+            </MudAvatar>
+            <div class="profile-text d-none d-sm-block">
+                <MudText Typo="Typo.body2" Class="profile-name">
+                    @(_currentUser?.FirstName ?? "User")
+                </MudText>
+                <MudText Typo="Typo.caption" Class="profile-role text-secondary">
+                    @(_currentUser?.Role.ToString() ?? "Member")
+                </MudText>
+            </div>
+            <MudIcon Icon="@(_isOpen ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)" 
+                     Class="ml-2 d-none d-sm-block" 
+                     Size="Size.Small" />
+        </div>
+    </MudButton>
+
+    <MudPopover Open="_isOpen" 
+                AnchorOrigin="Origin.BottomRight" 
+                TransformOrigin="Origin.TopRight" 
+                OverflowBehavior="OverflowBehavior.FlipAlways"
+                Class="profile-popover"
+                Paper="false">
+        <div class="profile-dropdown-content">
+            <!-- User Info Header -->
+            <div class="profile-header pa-4">
+                <div class="d-flex align-center">
+                    <MudAvatar Size="Size.Medium" Class="mr-3">
+                        @if (!string.IsNullOrEmpty(_currentUser?.ProfilePhotoUrl))
+                        {
+                            <MudImage Src="@_currentUser.ProfilePhotoUrl" Alt="Profile" />
+                        }
+                        else
+                        {
+                            <MudIcon Icon="Icons.Material.Filled.Person" Size="Size.Medium" />
+                        }
+                    </MudAvatar>
+                    <div class="flex-grow-1">
+                        <MudText Typo="Typo.subtitle1" Class="font-weight-medium">
+                            @_currentUser?.FullName
+                        </MudText>
+                        <MudText Typo="Typo.body2" Class="text-secondary">
+                            @_currentUser?.Email
+                        </MudText>
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" 
+                                 Color="@GetRoleColor()" Class="mt-1">
+                            @_currentUser?.Role.ToString()
+                        </MudChip>
+                    </div>
+                </div>
+            </div>
+
+            <MudDivider />
+
+            <!-- Menu Items -->
+            <div class="profile-menu">
+                <MudMenuItem Class="profile-menu-item" OnClick="ViewProfile">
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="Icons.Material.Filled.Person" Class="mr-3" Size="Size.Small" />
+                        <div>
+                            <MudText Typo="Typo.body2">My Profile</MudText>
+                            <MudText Typo="Typo.caption" Class="text-secondary">View and edit your profile</MudText>
+                        </div>
+                    </div>
+                </MudMenuItem>
+
+                <MudMenuItem Class="profile-menu-item" OnClick="ViewSettings">
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="Icons.Material.Filled.Settings" Class="mr-3" Size="Size.Small" />
+                        <div>
+                            <MudText Typo="Typo.body2">Settings</MudText>
+                            <MudText Typo="Typo.caption" Class="text-secondary">Preferences and configuration</MudText>
+                        </div>
+                    </div>
+                </MudMenuItem>
+
+                @if (IsAdminOrHigher())
+                {
+                    <MudMenuItem Class="profile-menu-item" OnClick="ViewAdmin">
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="Icons.Material.Filled.AdminPanelSettings" Class="mr-3" Size="Size.Small" />
+                            <div>
+                                <MudText Typo="Typo.body2">Admin Panel</MudText>
+                                <MudText Typo="Typo.caption" Class="text-secondary">System administration</MudText>
+                            </div>
+                        </div>
+                    </MudMenuItem>
+                }
+
+                <MudMenuItem Class="profile-menu-item" OnClick="ViewActivity">
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="Icons.Material.Filled.History" Class="mr-3" Size="Size.Small" />
+                        <div>
+                            <MudText Typo="Typo.body2">Activity Log</MudText>
+                            <MudText Typo="Typo.caption" Class="text-secondary">Recent activities</MudText>
+                        </div>
+                    </div>
+                </MudMenuItem>
+
+                <MudDivider Class="my-2" />
+
+                <MudMenuItem Class="profile-menu-item logout-item" OnClick="ConfirmLogout">
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="Icons.Material.Filled.ExitToApp" Class="mr-3" Size="Size.Small" Color="Color.Error" />
+                        <div>
+                            <MudText Typo="Typo.body2" Color="Color.Error">Sign Out</MudText>
+                            <MudText Typo="Typo.caption" Class="text-secondary">End your session</MudText>
+                        </div>
+                    </div>
+                </MudMenuItem>
+            </div>
+        </div>
+    </MudPopover>
+</div>
+
+<style>
+    .profile-dropdown {
+        position: relative;
+    }
+
+    .profile-trigger {
+        border-radius: 12px !important;
+        transition: all 0.2s ease-in-out;
+        min-height: 48px;
+    }
+
+    .profile-trigger:hover {
+        background-color: rgba(255, 255, 255, 0.08) !important;
+        transform: translateY(-1px);
+    }
+
+    .profile-name {
+        line-height: 1.2;
+        font-weight: 500;
+    }
+
+    .profile-role {
+        line-height: 1;
+        font-size: 0.75rem;
+    }
+
+    .profile-popover {
+        margin-top: 8px;
+    }
+
+    .profile-dropdown-content {
+        background: var(--mud-palette-surface);
+        border-radius: 16px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+        border: 1px solid var(--mud-palette-divider);
+        min-width: 320px;
+        overflow: hidden;
+        backdrop-filter: blur(10px);
+    }
+
+    .profile-header {
+        background: linear-gradient(135deg, var(--mud-palette-primary) 0%, var(--mud-palette-secondary) 100%);
+        color: white;
+    }
+
+    .profile-menu {
+        padding: 8px 0;
+    }
+
+    .profile-menu-item {
+        padding: 12px 16px !important;
+        min-height: auto !important;
+        transition: all 0.2s ease-in-out;
+        border-radius: 0 !important;
+    }
+
+    .profile-menu-item:hover {
+        background-color: var(--mud-palette-action-hover) !important;
+        transform: translateX(4px);
+    }
+
+    .logout-item:hover {
+        background-color: rgba(244, 63, 94, 0.08) !important;
+    }
+
+    /* Dark mode adjustments */
+    .mud-theme-dark .profile-dropdown-content {
+        background: var(--mud-palette-surface);
+        border: 1px solid var(--mud-palette-lines-default);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .mud-theme-dark .profile-trigger:hover {
+        background-color: rgba(255, 255, 255, 0.05) !important;
+    }
+
+    /* Animation for dropdown */
+    .profile-dropdown-content {
+        animation: slideDown 0.2s ease-out;
+    }
+
+    @@keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Mobile responsive */
+    @@media (max-width: 600px) {
+        .profile-dropdown-content {
+            min-width: 280px;
+        }
+        
+        .profile-header {
+            padding: 16px !important;
+        }
+    }
+</style>
+
+@code {
+    private bool _isOpen = false;
+    private UserProfileDto? _currentUser;
+    private MudButton? triggerButton;
+    private IJSObjectReference? _jsModule;
+    private DotNetObjectReference<ProfileDropdown>? _dotNetRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currentUser = await AuthService.GetCurrentUserAsync();
+        AuthService.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        _dotNetRef = DotNetObjectReference.Create(this);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                _jsModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "/js/profile-dropdown.js");
+                if (_jsModule != null && _dotNetRef != null)
+                {
+                    await _jsModule.InvokeVoidAsync("initialize", _dotNetRef);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ProfileDropdown JS initialization failed: {ex.Message}");
+                // Profile dropdown will still work for opening/closing, just won't close on outside click
+            }
+        }
+    }
+
+    private void OnAuthenticationStateChanged(bool isAuthenticated)
+    {
+        if (isAuthenticated)
+        {
+            InvokeAsync(async () =>
+            {
+                _currentUser = await AuthService.GetCurrentUserAsync();
+                StateHasChanged();
+            });
+        }
+        else
+        {
+            _currentUser = null;
+            StateHasChanged();
+        }
+    }
+
+    private void ToggleDropdown()
+    {
+        _isOpen = !_isOpen;
+    }
+
+    [JSInvokable]
+    public void CloseDropdown()
+    {
+        if (_isOpen)
+        {
+            _isOpen = false;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Color GetRoleColor()
+    {
+        return (_currentUser?.Role) switch
+        {
+            UserRole.SuperAdmin => Color.Error,
+            UserRole.Admin => Color.Warning,
+            UserRole.Coach => Color.Success,
+            UserRole.Staff => Color.Info,
+            UserRole.Instructor => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+
+    private bool IsAdminOrHigher()
+    {
+        return _currentUser?.Role is UserRole.Admin or UserRole.SuperAdmin;
+    }
+
+    private void ViewProfile()
+    {
+        _isOpen = false;
+        Navigation.NavigateTo("/profile");
+    }
+
+    private void ViewSettings()
+    {
+        _isOpen = false;
+        Navigation.NavigateTo("/settings");
+    }
+
+    private void ViewAdmin()
+    {
+        _isOpen = false;
+        Navigation.NavigateTo("/admin");
+    }
+
+    private void ViewActivity()
+    {
+        _isOpen = false;
+        Navigation.NavigateTo("/activity");
+    }
+
+    private async Task ConfirmLogout()
+    {
+        _isOpen = false;
+        
+        var options = new DialogOptions 
+        { 
+            MaxWidth = MaxWidth.ExtraSmall,
+            FullWidth = true,
+            CloseButton = true
+        };
+
+        var parameters = new DialogParameters<ConfirmationDialog>
+        {
+            { x => x.Title, "Sign Out" },
+            { x => x.Message, "Are you sure you want to sign out?" },
+            { x => x.ConfirmText, "Sign Out" },
+            { x => x.CancelText, "Cancel" },
+            { x => x.ConfirmColor, Color.Error }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmationDialog>("Confirm Sign Out", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await AuthService.LogoutAsync();
+            Navigation.NavigateTo("/login");
+            Snackbar.Add("You have been signed out successfully", Severity.Success);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        AuthService.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+        
+        if (_jsModule != null)
+        {
+            try
+            {
+                await _jsModule.InvokeVoidAsync("dispose");
+                await _jsModule.DisposeAsync();
+            }
+            catch { /* Ignore disposal errors */ }
+        }
+        
+        _dotNetRef?.Dispose();
+    }
+}

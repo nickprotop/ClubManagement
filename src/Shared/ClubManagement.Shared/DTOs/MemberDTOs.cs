@@ -7,34 +7,86 @@ public class MemberDto
     public Guid Id { get; set; }
     public Guid UserId { get; set; }
     public string MembershipNumber { get; set; } = string.Empty;
+    
+    // Personal Information (flattened from User)
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string PhoneNumber { get; set; } = string.Empty;
+    public DateTime? DateOfBirth { get; set; }
+    public string? Gender { get; set; }
+    public string FullName => $"{FirstName} {LastName}".Trim();
+    
+    // Membership Information
     public MembershipTier Tier { get; set; }
     public MembershipStatus Status { get; set; }
     public DateTime JoinedAt { get; set; }
     public DateTime? MembershipExpiresAt { get; set; }
     public DateTime? LastVisitAt { get; set; }
     public decimal Balance { get; set; }
+    
+    // Related Information
     public EmergencyContact? EmergencyContact { get; set; }
     public MedicalInfo? MedicalInfo { get; set; }
     public Dictionary<string, object> CustomFields { get; set; } = new();
+    
+    // Original User object for backward compatibility
     public UserProfileDto User { get; set; } = null!;
 }
 
 public class CreateMemberRequest
 {
-    public Guid UserId { get; set; }
+    // User Information
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string PhoneNumber { get; set; } = string.Empty;
+    public DateTime? DateOfBirth { get; set; }
+    public string? Gender { get; set; }
+    
+    // Membership Information
     public MembershipTier Tier { get; set; } = MembershipTier.Basic;
+    public MembershipStatus Status { get; set; } = MembershipStatus.Active;
     public DateTime? MembershipExpiresAt { get; set; }
-    public EmergencyContact? EmergencyContact { get; set; }
-    public MedicalInfo? MedicalInfo { get; set; }
+    
+    // Emergency Contact
+    public string EmergencyContactName { get; set; } = string.Empty;
+    public string EmergencyContactPhone { get; set; } = string.Empty;
+    public string EmergencyContactRelationship { get; set; } = string.Empty;
+    
+    // Medical Information (optional)
+    public string? Allergies { get; set; }
+    public string? MedicalConditions { get; set; }
+    public string? Medications { get; set; }
+    
     public Dictionary<string, object> CustomFields { get; set; } = new();
 }
 
 public class UpdateMemberRequest
 {
+    // User Information
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string PhoneNumber { get; set; } = string.Empty;
+    public DateTime? DateOfBirth { get; set; }
+    public string? Gender { get; set; }
+    
+    // Membership Information
     public MembershipTier Tier { get; set; }
+    public MembershipStatus Status { get; set; }
     public DateTime? MembershipExpiresAt { get; set; }
-    public EmergencyContact? EmergencyContact { get; set; }
-    public MedicalInfo? MedicalInfo { get; set; }
+    
+    // Emergency Contact
+    public string EmergencyContactName { get; set; } = string.Empty;
+    public string EmergencyContactPhone { get; set; } = string.Empty;
+    public string EmergencyContactRelationship { get; set; } = string.Empty;
+    
+    // Medical Information (optional)
+    public string? Allergies { get; set; }
+    public string? MedicalConditions { get; set; }
+    public string? Medications { get; set; }
+    
     public Dictionary<string, object> CustomFields { get; set; } = new();
 }
 

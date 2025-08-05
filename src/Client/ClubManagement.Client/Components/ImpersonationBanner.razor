@@ -1,0 +1,149 @@
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@inject IImpersonationService ImpersonationService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@implements IDisposable
+
+@if (_impersonationStatus?.IsImpersonating == true)
+{
+    <MudAlert Severity="Severity.Warning" 
+              ContentAlignment="HorizontalAlignment.Center" 
+              Class="impersonation-banner" 
+              Style="position: sticky; top: 0; z-index: 1300; margin-bottom: 16px;">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="width: 100%;">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.PersonSearch" Size="Size.Medium" />
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.subtitle1">
+                        <strong>🎭 IMPERSONATION MODE</strong>
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        Viewing as <strong>@_impersonationStatus.TargetMemberName</strong>
+                        @if (_impersonationStatus.RemainingTime.HasValue)
+                        {
+                            <span> • Expires in @FormatTimeRemaining(_impersonationStatus.RemainingTime.Value)</span>
+                        }
+                    </MudText>
+                </MudStack>
+            </MudStack>
+            <MudButton Variant="Variant.Outlined" 
+                       Color="Color.Warning" 
+                       StartIcon="@Icons.Material.Filled.ExitToApp"
+                       OnClick="EndImpersonation"
+                       Disabled="_isEndingImpersonation">
+                @if (_isEndingImpersonation)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    <span class="ml-2">Exiting...</span>
+                }
+                else
+                {
+                    <span>Exit Impersonation</span>
+                }
+            </MudButton>
+        </MudStack>
+    </MudAlert>
+}
+
+@code {
+    private ImpersonationStatusDto? _impersonationStatus;
+    private bool _isEndingImpersonation = false;
+    private Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadImpersonationStatus();
+        
+        // Subscribe to impersonation status changes
+        ImpersonationService.ImpersonationStatusChanged += OnImpersonationStatusChanged;
+        
+        // Set up a timer to refresh the status every 30 seconds (to update remaining time)
+        _refreshTimer = new Timer(async _ => await InvokeAsync(LoadImpersonationStatus), null, TimeSpan.Zero, TimeSpan.FromSeconds(30));
+    }
+
+    private async Task LoadImpersonationStatus()
+    {
+        try
+        {
+            _impersonationStatus = await ImpersonationService.GetImpersonationStatusAsync();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading impersonation status: {ex.Message}");
+        }
+    }
+
+    private void OnImpersonationStatusChanged(ImpersonationStatusDto? status)
+    {
+        InvokeAsync(() =>
+        {
+            _impersonationStatus = status;
+            StateHasChanged();
+        });
+    }
+
+    private async Task EndImpersonation()
+    {
+        if (_isEndingImpersonation) return;
+
+        _isEndingImpersonation = true;
+        StateHasChanged();
+
+        try
+        {
+            var success = await ImpersonationService.EndImpersonationAsync("User manually ended impersonation from banner");
+            if (success)
+            {
+                Snackbar.Add("Impersonation ended successfully", Severity.Success);
+                // Reload the page to clear impersonation context
+                Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+            }
+            else
+            {
+                Snackbar.Add("Failed to end impersonation", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error ending impersonation: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isEndingImpersonation = false;
+            StateHasChanged();
+        }
+    }
+
+    private string FormatTimeRemaining(TimeSpan timeSpan)
+    {
+        if (timeSpan.TotalMinutes < 1)
+            return "Less than 1 minute";
+        
+        if (timeSpan.TotalHours < 1)
+            return $"{timeSpan.Minutes} minute{(timeSpan.Minutes != 1 ? "s" : "")}";
+        
+        return $"{timeSpan.Hours} hour{(timeSpan.Hours != 1 ? "s" : "")} {timeSpan.Minutes} minute{(timeSpan.Minutes != 1 ? "s" : "")}";
+    }
+
+    public void Dispose()
+    {
+        ImpersonationService.ImpersonationStatusChanged -= OnImpersonationStatusChanged;
+        _refreshTimer?.Dispose();
+    }
+}
+
+<style>
+    .impersonation-banner {
+        border-left: 5px solid var(--mud-palette-warning);
+        background-color: var(--mud-palette-warning-lighten);
+        animation: pulse-warning 2s infinite;
+    }
+
+    @@keyframes pulse-warning {
+        0% { opacity: 1; }
+        50% { opacity: 0.8; }
+        100% { opacity: 1; }
+    }
+</style>

@@ -1,0 +1,110 @@
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.Models.Authorization
+@using ClubManagement.Shared.DTOs
+@using MudBlazor
+@inject IImpersonationService ImpersonationService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="4">
+            <MudAlert Severity="Severity.Warning">
+                <MudText>
+                    <strong>⚠️ Important:</strong> You are about to impersonate <strong>@MemberName</strong>.
+                    This will allow you to view the application as this member would see it.
+                </MudText>
+            </MudAlert>
+
+            <MudTextField @bind-Value="_reason" 
+                          Label="Reason for impersonation" 
+                          Variant="Variant.Outlined"
+                          Lines="2"
+                          Required="true"
+                          HelperText="Please provide a business justification for this impersonation" />
+
+            <MudNumericField @bind-Value="_durationMinutes" 
+                             Label="Duration (minutes)" 
+                             Variant="Variant.Outlined"
+                             Min="5"
+                             Max="120"
+                             Step="5"
+                             HelperText="Session will automatically expire after this time (max 2 hours)" />
+
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                <strong>What you can do while impersonating:</strong>
+                <ul>
+                    <li>View the application as the member sees it</li>
+                    <li>Access only the data the member has permission to see</li>
+                    <li>Navigate through pages as the member would</li>
+                </ul>
+            </MudText>
+
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                <strong>Security notes:</strong>
+                <ul>
+                    <li>All actions will be logged with your admin identity</li>
+                    <li>The session will timeout automatically</li>
+                    <li>You can end impersonation at any time</li>
+                </ul>
+            </MudText>
+        </MudStack>
+    </DialogContent>
+    
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Warning" 
+                   Variant="Variant.Filled" 
+                   OnClick="StartImpersonation"
+                   Disabled="_isStarting || string.IsNullOrWhiteSpace(_reason)">
+            @if (_isStarting)
+            {
+                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                <MudText Class="ms-2">Starting...</MudText>
+            }
+            else
+            {
+                <MudText>Start Impersonation</MudText>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    
+    [Parameter] public string MemberName { get; set; } = string.Empty;
+    [Parameter] public Guid MemberId { get; set; }
+
+    private string _reason = string.Empty;
+    private int _durationMinutes = 30;
+    private bool _isStarting = false;
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task StartImpersonation()
+    {
+        if (string.IsNullOrWhiteSpace(_reason))
+        {
+            Snackbar.Add("Please provide a reason for impersonation", Severity.Warning);
+            return;
+        }
+
+        _isStarting = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await ImpersonationService.StartImpersonationAsync(MemberId, _reason, _durationMinutes);
+            MudDialog.Close(DialogResult.Ok(result));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error starting impersonation: {ex.Message}", Severity.Error);
+            MudDialog.Close(DialogResult.Cancel());
+        }
+        finally
+        {
+            _isStarting = false;
+        }
+    }
+}

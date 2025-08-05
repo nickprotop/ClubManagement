@@ -1,0 +1,251 @@
+@page "/members/{Id:guid}"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@inject IMemberService MemberService
+@inject IMemberPermissionService PermissionService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Member Details - Club Management</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbItems" />
+
+@if (_isLoading)
+{
+    <MudStack AlignItems="AlignItems.Center" Class="pa-8">
+        <MudProgressCircular Size="Size.Large" Indeterminate="true" />
+        <MudText>Loading member details...</MudText>
+    </MudStack>
+}
+else if (_member != null)
+{
+    <MudStack Spacing="4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4">@_member.FullName</MudText>
+            <MudStack Row="true" Spacing="2">
+                @if (_permissions.CanEdit)
+                {
+                    <MudButton Variant="Variant.Filled" 
+                               Color="Color.Primary" 
+                               StartIcon="@Icons.Material.Filled.Edit"
+                               OnClick="EditMember">
+                        Edit Member
+                    </MudButton>
+                }
+                <MudButton Variant="Variant.Outlined" 
+                           StartIcon="@Icons.Material.Filled.ArrowBack"
+                           OnClick="@(() => Navigation.NavigateTo("/members"))">
+                    Back to Members
+                </MudButton>
+            </MudStack>
+        </MudStack>
+
+        <MudGrid>
+            <!-- Basic Information -->
+            <MudItem xs="12" md="8">
+                <MudCard>
+                    <MudCardHeader>
+                        <MudText Typo="Typo.h6">Basic Information</MudText>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudGrid>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField Label="First Name" Value="@_member.FirstName" ReadOnly="true" Variant="Variant.Outlined" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField Label="Last Name" Value="@_member.LastName" ReadOnly="true" Variant="Variant.Outlined" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField Label="Email" Value="@_member.Email" ReadOnly="true" Variant="Variant.Outlined" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField Label="Phone" Value="@_member.PhoneNumber" ReadOnly="true" Variant="Variant.Outlined" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField Label="Date of Birth" Value="@_member.DateOfBirth?.ToString("MMM dd, yyyy")" ReadOnly="true" Variant="Variant.Outlined" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField Label="Gender" Value="@_member.Gender" ReadOnly="true" Variant="Variant.Outlined" />
+                            </MudItem>
+                        </MudGrid>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <!-- Membership Status -->
+            <MudItem xs="12" md="4">
+                <MudCard>
+                    <MudCardHeader>
+                        <MudText Typo="Typo.h6">Membership Status</MudText>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudStack Spacing="3">
+                            <MudTextField Label="Membership Number" Value="@_member.MembershipNumber" ReadOnly="true" Variant="Variant.Outlined" />
+                            <MudStack>
+                                <MudText Typo="Typo.subtitle2">Tier</MudText>
+                                <MudChip T="string" Color="@GetTierColor(_member.Tier)" Size="Size.Medium">@_member.Tier</MudChip>
+                            </MudStack>
+                            <MudStack>
+                                <MudText Typo="Typo.subtitle2">Status</MudText>
+                                <MudChip T="string" Color="@GetStatusColor(_member.Status)" Size="Size.Medium">@_member.Status</MudChip>
+                            </MudStack>
+                            <MudTextField Label="Joined" Value="@_member.JoinedAt.ToString("MMM dd, yyyy")" ReadOnly="true" Variant="Variant.Outlined" />
+                            @if (_member.LastVisitAt.HasValue)
+                            {
+                                <MudTextField Label="Last Visit" Value="@_member.LastVisitAt.Value.ToString("MMM dd, yyyy")" ReadOnly="true" Variant="Variant.Outlined" />
+                            }
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <!-- Emergency Contact -->
+            @if (_permissions.CanViewEmergencyContact && _member.EmergencyContact != null)
+            {
+                <MudItem xs="12" md="6">
+                    <MudCard>
+                        <MudCardHeader>
+                            <MudText Typo="Typo.h6">Emergency Contact</MudText>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudGrid>
+                                <MudItem xs="12">
+                                    <MudTextField Label="Name" Value="@_member.EmergencyContact.Name" ReadOnly="true" Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField Label="Phone" Value="@_member.EmergencyContact.PhoneNumber" ReadOnly="true" Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField Label="Relationship" Value="@_member.EmergencyContact.Relationship" ReadOnly="true" Variant="Variant.Outlined" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+
+            <!-- Medical Information -->
+            @if (_permissions.CanViewMedicalInfo && _member.MedicalInfo != null)
+            {
+                <MudItem xs="12" md="6">
+                    <MudCard>
+                        <MudCardHeader>
+                            <MudText Typo="Typo.h6">Medical Information</MudText>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudGrid>
+                                <MudItem xs="12">
+                                    <MudTextField Label="Allergies" Value="@_member.MedicalInfo.Allergies" ReadOnly="true" Variant="Variant.Outlined" Lines="2" />
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudTextField Label="Medical Conditions" Value="@_member.MedicalInfo.MedicalConditions" ReadOnly="true" Variant="Variant.Outlined" Lines="2" />
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudTextField Label="Medications" Value="@_member.MedicalInfo.Medications" ReadOnly="true" Variant="Variant.Outlined" Lines="2" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    </MudStack>
+}
+else
+{
+    <MudAlert Severity="Severity.Error">
+        Member not found or you don't have permission to view this member.
+    </MudAlert>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private List<BreadcrumbItem> _breadcrumbItems = new();
+    private MemberDto? _member;
+    private MemberPermissions _permissions = new();
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _breadcrumbItems = new List<BreadcrumbItem>
+        {
+            new BreadcrumbItem("Home", href: "/", icon: Icons.Material.Filled.Home),
+            new BreadcrumbItem("Members", href: "/members", icon: Icons.Material.Filled.People),
+            new BreadcrumbItem("Details", href: null, disabled: true, icon: Icons.Material.Filled.Person)
+        };
+
+        await Task.WhenAll(
+            LoadMember(),
+            LoadPermissions()
+        );
+    }
+
+    private async Task LoadMember()
+    {
+        try
+        {
+            var response = await MemberService.GetMemberAsync(Id);
+            if (response?.Success == true)
+            {
+                _member = response.Data;
+                
+                // Update breadcrumb with member name
+                if (_member != null)
+                {
+                    _breadcrumbItems[2] = new BreadcrumbItem($"{_member.FirstName} {_member.LastName}", href: null, disabled: true, icon: Icons.Material.Filled.Person);
+                }
+            }
+            else
+            {
+                Snackbar.Add(response?.Message ?? "Failed to load member", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading member: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task LoadPermissions()
+    {
+        try
+        {
+            _permissions = await PermissionService.GetMemberPermissionsAsync(Id);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading permissions: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private void EditMember()
+    {
+        Navigation.NavigateTo($"/members/{Id}/edit");
+    }
+
+    private Color GetTierColor(MembershipTier tier) => tier switch
+    {
+        MembershipTier.Basic => Color.Default,
+        MembershipTier.Premium => Color.Primary,
+        MembershipTier.VIP => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private Color GetStatusColor(MembershipStatus status) => status switch
+    {
+        MembershipStatus.Active => Color.Success,
+        MembershipStatus.Expired => Color.Warning,
+        MembershipStatus.Suspended => Color.Error,
+        MembershipStatus.Pending => Color.Info,
+        MembershipStatus.Cancelled => Color.Default,
+        _ => Color.Default
+    };
+}

@@ -3,6 +3,7 @@ using System;
 using ClubManagement.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ClubManagement.Infrastructure.Migrations
 {
     [DbContext(typeof(ClubManagementDbContext))]
-    partial class ClubManagementDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250805201335_AddImpersonationSessions")]
+    partial class AddImpersonationSessions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -84,49 +87,6 @@ namespace ClubManagement.Infrastructure.Migrations
                     b.HasIndex("TargetMemberId", "IsActive");
 
                     b.ToTable("ImpersonationSessions");
-                });
-
-            modelBuilder.Entity("ClubManagement.Domain.Entities.MemberAuditLog", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Action")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Details")
-                        .HasColumnType("text");
-
-                    b.Property<string>("IpAddress")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Metadata")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<Guid>("PerformedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("TargetMemberId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("Timestamp")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("UserAgent")
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Action", "Timestamp");
-
-                    b.HasIndex("PerformedBy", "Timestamp");
-
-                    b.HasIndex("TargetMemberId", "Timestamp");
-
-                    b.ToTable("MemberAuditLogs");
                 });
 
             modelBuilder.Entity("ClubManagement.Domain.Entities.RefreshToken", b =>
@@ -1243,9 +1203,6 @@ namespace ClubManagement.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
-                    b.Property<DateTime?>("DateOfBirth")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1256,12 +1213,6 @@ namespace ClubManagement.Infrastructure.Migrations
                     b.Property<string>("FirstName")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<string>("Gender")
-                        .HasColumnType("text");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
 
                     b.Property<DateTime?>("LastLoginAt")
                         .HasColumnType("timestamp with time zone");
@@ -1325,24 +1276,6 @@ namespace ClubManagement.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("AdminUser");
-
-                    b.Navigation("TargetMember");
-                });
-
-            modelBuilder.Entity("ClubManagement.Domain.Entities.MemberAuditLog", b =>
-                {
-                    b.HasOne("ClubManagement.Shared.Models.User", "PerformedByUser")
-                        .WithMany()
-                        .HasForeignKey("PerformedBy")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("ClubManagement.Shared.Models.Member", "TargetMember")
-                        .WithMany()
-                        .HasForeignKey("TargetMemberId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("PerformedByUser");
 
                     b.Navigation("TargetMember");
                 });

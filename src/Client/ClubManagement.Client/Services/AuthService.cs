@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.IdentityModel.Tokens.Jwt;
 using ClubManagement.Shared.DTOs;
+using ClubManagement.Shared.Models;
 
 namespace ClubManagement.Client.Services;
 
@@ -262,5 +263,38 @@ public class AuthService : IAuthService
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", loginResponse.AccessToken);
 
         AuthenticationStateChanged?.Invoke(true);
+    }
+
+    public async Task SetTokenAsync(string token)
+    {
+        // Parse the token to get expiration and user data
+        var handler = new JwtSecurityTokenHandler();
+        var jsonToken = handler.ReadJwtToken(token);
+        
+        // Extract user information from token claims
+        var userIdClaim = jsonToken.Claims.FirstOrDefault(x => x.Type == "sub")?.Value;
+        var usernameClaim = jsonToken.Claims.FirstOrDefault(x => x.Type == "email")?.Value;
+        var roleClaim = jsonToken.Claims.FirstOrDefault(x => x.Type == "role")?.Value;
+        
+        if (userIdClaim != null && usernameClaim != null)
+        {
+            var user = new UserProfileDto
+            {
+                Id = Guid.Parse(userIdClaim),
+                Email = usernameClaim,
+                Role = Enum.TryParse<UserRole>(roleClaim, out var role) ? role : UserRole.Member
+            };
+
+            await _jsRuntime.InvokeVoidAsync("localStorage.setItem", "authToken", token);
+            await _jsRuntime.InvokeVoidAsync("localStorage.setItem", "currentUser", JsonSerializer.Serialize(user));
+
+            _tokenExpiresAt = jsonToken.ValidTo;
+            _currentUser = user;
+            _isAuthenticated = true;
+            _httpClient.DefaultRequestHeaders.Authorization = 
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            AuthenticationStateChanged?.Invoke(true);
+        }
     }
 }

@@ -44,7 +44,8 @@ public class EmergencyContact
 
 public class MedicalInfo
 {
-    public List<string> Allergies { get; set; } = new();
-    public List<string> MedicalConditions { get; set; } = new();
+    public string Allergies { get; set; } = string.Empty;
+    public string MedicalConditions { get; set; } = string.Empty;
+    public string Medications { get; set; } = string.Empty;
     public string? Notes { get; set; }
 }

@@ -1,0 +1,261 @@
+@page "/members/create"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using System.ComponentModel.DataAnnotations
+@inject IMemberService MemberService
+@inject IMemberPermissionService PermissionService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Create Member - Club Management</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbItems" />
+
+@if (!_permissions.CanCreate)
+{
+    <MudAlert Severity="Severity.Error">
+        You don't have permission to create members.
+    </MudAlert>
+}
+else
+{
+    <MudStack Spacing="4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4">Create New Member</MudText>
+            <MudButton Variant="Variant.Outlined" 
+                       StartIcon="@Icons.Material.Filled.ArrowBack"
+                       OnClick="@(() => Navigation.NavigateTo("/members"))">
+                Back to Members
+            </MudButton>
+        </MudStack>
+
+        <MudForm @ref="_form" @bind-IsValid="@_isFormValid">
+            <MudGrid>
+                <!-- Basic Information -->
+                <MudItem xs="12">
+                    <MudCard>
+                        <MudCardHeader>
+                            <MudText Typo="Typo.h6">Basic Information</MudText>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudGrid>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="_request.FirstName" 
+                                                  Label="First Name" 
+                                                  Required="true"
+                                                  RequiredError="First name is required"
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="_request.LastName" 
+                                                  Label="Last Name" 
+                                                  Required="true"
+                                                  RequiredError="Last name is required"
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="_request.Email" 
+                                                  Label="Email" 
+                                                  Required="true"
+                                                  RequiredError="Email is required"
+                                                  Validation="@(new EmailAddressAttribute() { ErrorMessage = "Invalid email format" })"
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="_request.PhoneNumber" 
+                                                  Label="Phone Number" 
+                                                  Required="true"
+                                                  RequiredError="Phone number is required"
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudDatePicker @bind-Date="_request.DateOfBirth" 
+                                                   Label="Date of Birth" 
+                                                   Variant="Variant.Outlined"
+                                                   MaxDate="DateTime.Today.AddYears(-13)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudSelect @bind-Value="_request.Gender" 
+                                               Label="Gender" 
+                                               Variant="Variant.Outlined">
+                                        <MudSelectItem Value="@("Male")">Male</MudSelectItem>
+                                        <MudSelectItem Value="@("Female")">Female</MudSelectItem>
+                                        <MudSelectItem Value="@("Other")">Other</MudSelectItem>
+                                        <MudSelectItem Value="@("Prefer not to say")">Prefer not to say</MudSelectItem>
+                                    </MudSelect>
+                                </MudItem>
+                            </MudGrid>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+
+                <!-- Membership Information -->
+                <MudItem xs="12" md="6">
+                    <MudCard>
+                        <MudCardHeader>
+                            <MudText Typo="Typo.h6">Membership Information</MudText>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudGrid>
+                                <MudItem xs="12">
+                                    <MudSelect @bind-Value="_request.Tier" 
+                                               Label="Membership Tier" 
+                                               Required="true"
+                                               RequiredError="Membership tier is required"
+                                               Variant="Variant.Outlined">
+                                        @foreach (MembershipTier tier in Enum.GetValues<MembershipTier>())
+                                        {
+                                            <MudSelectItem Value="tier">@tier</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudSelect @bind-Value="_request.Status" 
+                                               Label="Status" 
+                                               Required="true"
+                                               RequiredError="Status is required"
+                                               Variant="Variant.Outlined">
+                                        @foreach (MembershipStatus status in Enum.GetValues<MembershipStatus>())
+                                        {
+                                            <MudSelectItem Value="status">@status</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                            </MudGrid>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+
+                <!-- Emergency Contact -->
+                <MudItem xs="12" md="6">
+                    <MudCard>
+                        <MudCardHeader>
+                            <MudText Typo="Typo.h6">Emergency Contact</MudText>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudGrid>
+                                <MudItem xs="12">
+                                    <MudTextField @bind-Value="_request.EmergencyContactName" 
+                                                  Label="Contact Name" 
+                                                  Required="true"
+                                                  RequiredError="Emergency contact name is required"
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="_request.EmergencyContactPhone" 
+                                                  Label="Contact Phone" 
+                                                  Required="true"
+                                                  RequiredError="Emergency contact phone is required"
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="_request.EmergencyContactRelationship" 
+                                                  Label="Relationship" 
+                                                  Required="true"
+                                                  RequiredError="Relationship is required"
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+
+                <!-- Actions -->
+                <MudItem xs="12">
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Filled" 
+                                   Color="Color.Primary" 
+                                   OnClick="CreateNewMember"
+                                   Disabled="@(!_isFormValid || _isCreating)"
+                                   StartIcon="@Icons.Material.Filled.Save">
+                            @if (_isCreating)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                <span class="ml-2">Creating...</span>
+                            }
+                            else
+                            {
+                                <span>Create Member</span>
+                            }
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" 
+                                   OnClick="@(() => Navigation.NavigateTo("/members"))"
+                                   Disabled="_isCreating">
+                            Cancel
+                        </MudButton>
+                    </MudCardActions>
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </MudStack>
+}
+
+@code {
+    private List<BreadcrumbItem> _breadcrumbItems = new()
+    {
+        new BreadcrumbItem("Home", href: "/", icon: Icons.Material.Filled.Home),
+        new BreadcrumbItem("Members", href: "/members", icon: Icons.Material.Filled.People),
+        new BreadcrumbItem("Create", href: null, disabled: true, icon: Icons.Material.Filled.PersonAdd)
+    };
+
+    private CreateMemberRequest _request = new()
+    {
+        Tier = MembershipTier.Basic,
+        Status = MembershipStatus.Active
+    };
+    
+    private MemberPermissions _permissions = new();
+    private MudForm _form = null!;
+    private bool _isFormValid = false;
+    private bool _isCreating = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissions();
+    }
+
+    private async Task LoadPermissions()
+    {
+        try
+        {
+            _permissions = await PermissionService.GetGeneralMemberPermissionsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading permissions: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private async Task CreateNewMember()
+    {
+        if (!_isFormValid || _isCreating) return;
+
+        _isCreating = true;
+        StateHasChanged();
+
+        try
+        {
+            var response = await MemberService.CreateMemberAsync(_request);
+            if (response?.Success == true)
+            {
+                Snackbar.Add($"Member {_request.FirstName} {_request.LastName} created successfully", Severity.Success);
+                Navigation.NavigateTo("/members");
+            }
+            else
+            {
+                Snackbar.Add(response?.Message ?? "Failed to create member", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating member: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isCreating = false;
+            StateHasChanged();
+        }
+    }
+}

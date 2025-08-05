@@ -22,6 +22,10 @@ builder.Services.AddScoped<IApiService, ApiService>();
 builder.Services.AddScoped<IMemberService, MemberService>();
 builder.Services.AddScoped<IEventService, EventService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IMemberPermissionService, MemberPermissionService>();
+builder.Services.AddScoped<IImpersonationService, ImpersonationService>();
+builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.AddScoped<IPermissionsService, PermissionsService>();
 
 // Add authentication
 builder.Services.AddAuthorizationCore();

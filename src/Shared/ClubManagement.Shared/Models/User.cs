@@ -8,8 +8,11 @@ public class User : BaseEntity
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public string PhoneNumber { get; set; } = string.Empty;
+    public DateTime? DateOfBirth { get; set; }
+    public string? Gender { get; set; }
     public UserRole Role { get; set; } = UserRole.Member;
     public UserStatus Status { get; set; } = UserStatus.Active;
+    public bool IsActive { get; set; } = true;
     public string? ProfilePhotoUrl { get; set; }
     public DateTime? LastLoginAt { get; set; }
     public bool EmailVerified { get; set; } = false;

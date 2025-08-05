@@ -1,4 +1,5 @@
 @using ClubManagement.Client.Services
+@using ClubManagement.Client.Components
 @using ClubManagement.Shared.DTOs
 @inject IAuthService AuthService
 @inject NavigationManager Navigation
@@ -29,21 +30,7 @@
                           Color="Color.Inherit" 
                           OnClick="@ToggleTheme" />
             
-            <MudMenu Icon="Icons.Material.Filled.AccountCircle" Color="Color.Inherit" Dense="true">
-                <MudMenuItem OnClick="ViewProfile">
-                    <MudIcon Icon="Icons.Material.Filled.Person" Class="mr-2" />
-                    Profile
-                </MudMenuItem>
-                <MudMenuItem OnClick="Settings">
-                    <MudIcon Icon="Icons.Material.Filled.Settings" Class="mr-2" />
-                    Settings
-                </MudMenuItem>
-                <MudDivider />
-                <MudMenuItem OnClick="Logout">
-                    <MudIcon Icon="Icons.Material.Filled.ExitToApp" Class="mr-2" />
-                    Logout
-                </MudMenuItem>
-            </MudMenu>
+            <ProfileDropdown />
         </MudAppBar>
         
         <MudDrawer @bind-Open="_drawerOpen" Elevation="2" Variant="@DrawerVariant.Mini" OpenMiniOnHover="true">
@@ -55,6 +42,7 @@
         
         <MudMainContent>
             <MudContainer MaxWidth="MaxWidth.False" Class="mt-4">
+                <ImpersonationBanner />
                 @Body
             </MudContainer>
         </MudMainContent>
@@ -137,21 +125,6 @@
         await JSRuntime.InvokeVoidAsync("localStorage.setItem", "isDarkMode", _isDarkMode.ToString());
     }
 
-    private void ViewProfile()
-    {
-        Navigation.NavigateTo("/profile");
-    }
-
-    private void Settings()
-    {
-        Navigation.NavigateTo("/settings");
-    }
-
-    private async Task Logout()
-    {
-        await AuthService.LogoutAsync();
-        Navigation.NavigateTo("/login");
-    }
 
     private void OnSessionExpired()
     {

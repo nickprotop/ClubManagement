@@ -1,8 +1,12 @@
 @page "/members"
 @using ClubManagement.Client.Services
+@using ClubManagement.Client.Components
 @using ClubManagement.Shared.DTOs
 @using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
 @inject IMemberService MemberService
+@inject IMemberPermissionService PermissionService
+@inject IImpersonationService ImpersonationService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -11,15 +15,44 @@
 
 <MudBreadcrumbs Items="_breadcrumbItems" />
 
+@if (_impersonationStatus?.IsImpersonating == true)
+{
+    <MudAlert Severity="Severity.Warning" ContentAlignment="HorizontalAlignment.Center" Class="mb-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="width: 100%;">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.PersonSearch" />
+                <MudText Typo="Typo.subtitle1">
+                    <strong>IMPERSONATION MODE</strong> - Viewing as @_impersonationStatus.TargetMemberName
+                </MudText>
+                @if (_impersonationStatus.RemainingTime.HasValue)
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        (Expires in @FormatTimeRemaining(_impersonationStatus.RemainingTime.Value))
+                    </MudText>
+                }
+            </MudStack>
+            <MudButton Variant="Variant.Outlined" 
+                       Color="Color.Warning" 
+                       StartIcon="@Icons.Material.Filled.ExitToApp"
+                       OnClick="EndImpersonation">
+                Exit Impersonation
+            </MudButton>
+        </MudStack>
+    </MudAlert>
+}
+
 <MudStack Spacing="4">
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
         <MudText Typo="Typo.h4">Members</MudText>
-        <MudButton Variant="Variant.Filled" 
-                   Color="Color.Primary" 
-                   StartIcon="@Icons.Material.Filled.PersonAdd"
-                   Href="/members/create">
-            Add Member
-        </MudButton>
+        @if (_permissions.CanCreate)
+        {
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.PersonAdd"
+                       Href="/members/create">
+                Add Member
+            </MudButton>
+        }
     </MudStack>
 
     <MudCard>
@@ -41,7 +74,7 @@
                                    Clearable="true">
                             @foreach (MembershipTier tier in Enum.GetValues<MembershipTier>())
                             {
-                                <MudSelectItem Value="tier">@tier</MudSelectItem>
+                                <MudSelectItem Value="@((MembershipTier?)tier)">@tier</MudSelectItem>
                             }
                         </MudSelect>
                     </MudItem>
@@ -52,7 +85,7 @@
                                    Clearable="true">
                             @foreach (MembershipStatus status in Enum.GetValues<MembershipStatus>())
                             {
-                                <MudSelectItem Value="status">@status</MudSelectItem>
+                                <MudSelectItem Value="@((MembershipStatus?)status)">@status</MudSelectItem>
                             }
                         </MudSelect>
                     </MudItem>
@@ -132,18 +165,34 @@
                     </MudTd>
                     <MudTd DataLabel="Actions">
                         <MudButtonGroup Size="Size.Small" Variant="Variant.Text">
-                            <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
-                                           Color="Color.Primary" 
-                                           OnClick="@(() => ViewMember(context.Id))" 
-                                           Title="View Details" />
-                            <MudIconButton Icon="@Icons.Material.Filled.Edit" 
-                                           Color="Color.Secondary" 
-                                           OnClick="@(() => EditMember(context.Id))" 
-                                           Title="Edit Member" />
-                            <MudIconButton Icon="@Icons.Material.Filled.Delete" 
-                                           Color="Color.Error" 
-                                           OnClick="@(() => DeleteMember(context.Id))" 
-                                           Title="Delete Member" />
+                            @if (_permissions.CanViewDetails)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
+                                               Color="Color.Primary" 
+                                               OnClick="@(() => ViewMember(context.Id))" 
+                                               Title="View Details" />
+                            }
+                            @if (_permissions.CanEdit)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit" 
+                                               Color="Color.Secondary" 
+                                               OnClick="@(() => EditMember(context.Id))" 
+                                               Title="Edit Member" />
+                            }
+                            @if (_permissions.CanImpersonateMember && !IsCurrentUser(context))
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.PersonSearch" 
+                                               Color="Color.Warning" 
+                                               OnClick="@(() => ImpersonateMember(context.Id, context.FullName))" 
+                                               Title="Impersonate Member" />
+                            }
+                            @if (_permissions.CanDelete)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                               Color="Color.Error" 
+                                               OnClick="@(() => DeleteMember(context.Id))" 
+                                               Title="Delete Member" />
+                            }
                         </MudButtonGroup>
                     </MudTd>
                 </RowTemplate>
@@ -191,10 +240,40 @@
     private MemberSearchRequest _searchRequest = new();
     private PagedResult<MemberListDto>? _members;
     private bool _isLoading = true;
+    private MemberPermissions _permissions = new();
+    private ImpersonationStatusDto? _impersonationStatus;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadMembers();
+        await Task.WhenAll(
+            LoadMembers(),
+            LoadPermissions(),
+            LoadImpersonationStatus()
+        );
+    }
+
+    private async Task LoadPermissions()
+    {
+        try
+        {
+            _permissions = await PermissionService.GetGeneralMemberPermissionsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading permissions: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private async Task LoadImpersonationStatus()
+    {
+        try
+        {
+            _impersonationStatus = await ImpersonationService.GetImpersonationStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading impersonation status: {ex.Message}", Severity.Warning);
+        }
     }
 
     private async Task LoadMembers()
@@ -303,4 +382,71 @@
         MembershipStatus.Cancelled => Color.Default,
         _ => Color.Default
     };
+
+    private async Task ImpersonateMember(Guid memberId, string memberName)
+    {
+        var parameters = new DialogParameters
+        {
+            ["MemberName"] = memberName,
+            ["MemberId"] = memberId
+        };
+
+        var dialog = await DialogService.ShowAsync<ImpersonationDialog>("Impersonate Member", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: ImpersonationResult impersonationResult })
+        {
+            if (impersonationResult.Succeeded)
+            {
+                Snackbar.Add($"Now impersonating {memberName}", Severity.Success);
+                // Reload the page to reflect impersonation context
+                Navigation.NavigateTo("/members", forceLoad: true);
+            }
+            else
+            {
+                var errorMessage = string.Join(", ", impersonationResult.Reasons);
+                Snackbar.Add($"Failed to start impersonation: {errorMessage}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task EndImpersonation()
+    {
+        try
+        {
+            var success = await ImpersonationService.EndImpersonationAsync("User manually ended impersonation");
+            if (success)
+            {
+                Snackbar.Add("Impersonation ended successfully", Severity.Success);
+                // Reload the page to clear impersonation context
+                Navigation.NavigateTo("/members", forceLoad: true);
+            }
+            else
+            {
+                Snackbar.Add("Failed to end impersonation", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error ending impersonation: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private bool IsCurrentUser(MemberListDto member)
+    {
+        // This would need to be implemented based on your current user context
+        // For now, return false to allow impersonation of any member
+        return false;
+    }
+
+    private string FormatTimeRemaining(TimeSpan timeSpan)
+    {
+        if (timeSpan.TotalMinutes < 1)
+            return "Less than 1 minute";
+        
+        if (timeSpan.TotalHours < 1)
+            return $"{timeSpan.Minutes} minute{(timeSpan.Minutes != 1 ? "s" : "")}";
+        
+        return $"{timeSpan.Hours} hour{(timeSpan.Hours != 1 ? "s" : "")} {timeSpan.Minutes} minute{(timeSpan.Minutes != 1 ? "s" : "")}";
+    }
 }

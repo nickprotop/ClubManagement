@@ -12,6 +12,7 @@ public interface IAuthService
     Task<bool> RefreshTokenAsync();
     Task<bool> ValidateAndRefreshTokenAsync();
     Task HandleSessionExpiredAsync();
+    Task SetTokenAsync(string token);
     event Action<bool> AuthenticationStateChanged;
     event Action? SessionExpired;
 }

@@ -17,6 +17,7 @@ public interface IJwtService
     bool ValidateToken(string token);
     ClubManagement.Shared.DTOs.TokenValidationResult ValidateTokenDetailed(string token);
     string GenerateJti();
+    Task<string> GenerateImpersonationTokenAsync(User targetUser, Guid adminUserId, Guid sessionId);
 }
 
 public class JwtService : IJwtService
@@ -158,5 +159,37 @@ public class JwtService : IJwtService
     public string GenerateJti()
     {
         return Guid.NewGuid().ToString();
+    }
+
+    public async Task<string> GenerateImpersonationTokenAsync(User targetUser, Guid adminUserId, Guid sessionId)
+    {
+        var tokenHandler = new JwtSecurityTokenHandler();
+        var key = Encoding.ASCII.GetBytes(_secretKey);
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, targetUser.Id.ToString()),
+            new(ClaimTypes.Email, targetUser.Email),
+            new(ClaimTypes.Name, $"{targetUser.FirstName} {targetUser.LastName}".Trim()),
+            new(ClaimTypes.Role, targetUser.Role.ToString()),
+            new("user_status", targetUser.Status.ToString()),
+            // Impersonation-specific claims
+            new("is_impersonating", "true"),
+            new("original_admin_id", adminUserId.ToString()),
+            new("impersonation_session_id", sessionId.ToString()),
+            new("impersonation_started_at", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString())
+        };
+
+        var tokenDescriptor = new SecurityTokenDescriptor
+        {
+            Subject = new ClaimsIdentity(claims),
+            Expires = DateTime.UtcNow.AddMinutes(_accessTokenExpirationMinutes),
+            Issuer = _issuer,
+            Audience = _audience,
+            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+        };
+
+        var token = tokenHandler.CreateToken(tokenDescriptor);
+        return tokenHandler.WriteToken(token);
     }
 }

@@ -76,7 +76,7 @@ public class RefreshTokenService : IRefreshTokenService
     public async Task RevokeUserRefreshTokensAsync(Guid userId, string ipAddress, string reason = "User logout")
     {
         var activeTokens = await _context.RefreshTokens
-            .Where(rt => rt.UserId == userId && !rt.IsRevoked && !rt.IsExpired)
+            .Where(rt => rt.UserId == userId && !rt.IsRevoked && rt.ExpiresAt >= DateTime.UtcNow)
             .ToListAsync();
 
         foreach (var token in activeTokens)

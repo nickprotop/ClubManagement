@@ -157,8 +157,9 @@ public class DbSeeder
             },
             MedicalInfo = new MedicalInfo
             {
-                Allergies = new List<string>(),
-                MedicalConditions = new List<string>()
+                Allergies = string.Empty,
+                MedicalConditions = string.Empty,
+                Medications = string.Empty
             },
             CustomFields = new Dictionary<string, object>(),
             TenantId = demoTenant.Id,
@@ -215,8 +216,9 @@ public class DbSeeder
             },
             MedicalInfo = new MedicalInfo
             {
-                Allergies = new List<string>(),
-                MedicalConditions = new List<string>()
+                Allergies = string.Empty,
+                MedicalConditions = string.Empty,
+                Medications = string.Empty
             },
             CustomFields = new Dictionary<string, object>
             {

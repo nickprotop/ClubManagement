@@ -27,6 +27,8 @@ public class ClubManagementDbContext : DbContext
     public DbSet<Communication> Communications { get; set; }
     public DbSet<CommunicationDelivery> CommunicationDeliveries { get; set; }
     public DbSet<RefreshToken> RefreshTokens { get; set; }
+    public DbSet<ImpersonationSession> ImpersonationSessions { get; set; }
+    public DbSet<MemberAuditLog> MemberAuditLogs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -234,5 +236,63 @@ public class ClubManagementDbContext : DbContext
         modelBuilder.Entity<RefreshToken>()
             .HasIndex(rt => new { rt.UserId, rt.IsRevoked })
             .HasFilter("\"IsRevoked\" = false");
+
+        // Configure ImpersonationSession
+        modelBuilder.Entity<ImpersonationSession>()
+            .Property(e => e.ActionsPerformed)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>())
+            .HasColumnType("jsonb");
+
+        modelBuilder.Entity<ImpersonationSession>()
+            .HasOne(s => s.AdminUser)
+            .WithMany()
+            .HasForeignKey(s => s.AdminUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ImpersonationSession>()
+            .HasOne(s => s.TargetMember)
+            .WithMany()
+            .HasForeignKey(s => s.TargetMemberId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ImpersonationSession>()
+            .HasIndex(s => new { s.AdminUserId, s.IsActive });
+
+        modelBuilder.Entity<ImpersonationSession>()
+            .HasIndex(s => new { s.TargetMemberId, s.IsActive });
+
+        modelBuilder.Entity<ImpersonationSession>()
+            .HasIndex(s => s.ExpiresAt);
+
+        // Configure MemberAuditLog
+        modelBuilder.Entity<MemberAuditLog>()
+            .Property(e => e.Metadata)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions?)null) ?? new Dictionary<string, object>())
+            .HasColumnType("jsonb");
+
+        modelBuilder.Entity<MemberAuditLog>()
+            .HasOne(log => log.PerformedByUser)
+            .WithMany()
+            .HasForeignKey(log => log.PerformedBy)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<MemberAuditLog>()
+            .HasOne(log => log.TargetMember)
+            .WithMany()
+            .HasForeignKey(log => log.TargetMemberId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<MemberAuditLog>()
+            .HasIndex(log => new { log.PerformedBy, log.Timestamp });
+
+        modelBuilder.Entity<MemberAuditLog>()
+            .HasIndex(log => new { log.TargetMemberId, log.Timestamp });
+
+        modelBuilder.Entity<MemberAuditLog>()
+            .HasIndex(log => new { log.Action, log.Timestamp });
     }
 }

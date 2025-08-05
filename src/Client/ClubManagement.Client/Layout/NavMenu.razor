@@ -1,35 +1,106 @@
-﻿<MudNavMenu>
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@inject IPermissionsService PermissionsService
+@inject IAuthService AuthService
+
+<MudNavMenu>
+    <!-- Dashboard - Always visible -->
     <MudNavLink Href="/" Icon="@Icons.Material.Filled.Dashboard" Match="NavLinkMatch.All">Dashboard</MudNavLink>
     
-    <MudNavGroup Text="Members" Icon="@Icons.Material.Filled.People" Expanded="false">
-        <MudNavLink Href="/members" Icon="@Icons.Material.Filled.PersonSearch">All Members</MudNavLink>
-        <MudNavLink Href="/members/create" Icon="@Icons.Material.Filled.PersonAdd">Add Member</MudNavLink>
-    </MudNavGroup>
+    @if (_permissions?.Navigation.ShowMembers == true)
+    {
+        <MudNavGroup Text="Members" Icon="@Icons.Material.Filled.People" Expanded="false">
+            <MudNavLink Href="/members" Icon="@Icons.Material.Filled.PersonSearch">All Members</MudNavLink>
+            @if (_permissions.Navigation.ShowMemberManagement)
+            {
+                <MudNavLink Href="/members/create" Icon="@Icons.Material.Filled.PersonAdd">Add Member</MudNavLink>
+            }
+        </MudNavGroup>
+    }
     
-    <MudNavGroup Text="Events" Icon="@Icons.Material.Filled.Event" Expanded="false">
-        <MudNavLink Href="/events" Icon="@Icons.Material.Filled.EventNote">All Events</MudNavLink>
-        <MudNavLink Href="/events/create" Icon="@Icons.Material.Filled.EventAvailable">Create Event</MudNavLink>
-        <MudNavLink Href="/events/calendar" Icon="@Icons.Material.Filled.CalendarMonth">Calendar</MudNavLink>
-        <MudNavLink Href="/events/my-registrations" Icon="@Icons.Material.Filled.PersonPin">My Registrations</MudNavLink>
-    </MudNavGroup>
+    @if (_permissions?.Navigation.ShowEvents == true)
+    {
+        <MudNavGroup Text="Events" Icon="@Icons.Material.Filled.Event" Expanded="false">
+            <MudNavLink Href="/events" Icon="@Icons.Material.Filled.EventNote">All Events</MudNavLink>
+            @if (_permissions.Navigation.ShowEventManagement)
+            {
+                <MudNavLink Href="/events/create" Icon="@Icons.Material.Filled.EventAvailable">Create Event</MudNavLink>
+            }
+            <MudNavLink Href="/events/calendar" Icon="@Icons.Material.Filled.CalendarMonth">Calendar</MudNavLink>
+            <MudNavLink Href="/events/my-registrations" Icon="@Icons.Material.Filled.PersonPin">My Registrations</MudNavLink>
+        </MudNavGroup>
+    }
     
-    <MudNavGroup Text="Facilities" Icon="@Icons.Material.Filled.Business" Expanded="false">
-        <MudNavLink Href="/facilities" Icon="@Icons.Material.Filled.Store">All Facilities</MudNavLink>
-        <MudNavLink Href="/facilities/bookings" Icon="@Icons.Material.Filled.BookOnline">Bookings</MudNavLink>
-    </MudNavGroup>
+    @if (_permissions?.Navigation.ShowFacilities == true)
+    {
+        <MudNavGroup Text="Facilities" Icon="@Icons.Material.Filled.Business" Expanded="false">
+            <MudNavLink Href="/facilities" Icon="@Icons.Material.Filled.Store">All Facilities</MudNavLink>
+            <MudNavLink Href="/facilities/bookings" Icon="@Icons.Material.Filled.BookOnline">Bookings</MudNavLink>
+        </MudNavGroup>
+    }
     
-    <MudNavGroup Text="Payments" Icon="@Icons.Material.Filled.Payment" Expanded="false">
-        <MudNavLink Href="/payments" Icon="@Icons.Material.Filled.Receipt">All Payments</MudNavLink>
-        <MudNavLink Href="/subscriptions" Icon="@Icons.Material.Filled.Subscriptions">Subscriptions</MudNavLink>
-    </MudNavGroup>
+    @if (_permissions?.Navigation.ShowPayments == true)
+    {
+        <MudNavGroup Text="Payments" Icon="@Icons.Material.Filled.Payment" Expanded="false">
+            <MudNavLink Href="/payments" Icon="@Icons.Material.Filled.Receipt">All Payments</MudNavLink>
+            <MudNavLink Href="/subscriptions" Icon="@Icons.Material.Filled.Subscriptions">Subscriptions</MudNavLink>
+        </MudNavGroup>
+    }
     
-    <MudNavGroup Text="Communication" Icon="@Icons.Material.Filled.Email" Expanded="false">
-        <MudNavLink Href="/communications" Icon="@Icons.Material.Filled.Announcement">Messages</MudNavLink>
-        <MudNavLink Href="/communications/templates" Icon="@Icons.Material.Filled.Description">Templates</MudNavLink>
-    </MudNavGroup>
+    @if (_permissions?.Navigation.ShowCommunications == true)
+    {
+        <MudNavGroup Text="Communication" Icon="@Icons.Material.Filled.Email" Expanded="false">
+            <MudNavLink Href="/communications" Icon="@Icons.Material.Filled.Announcement">Messages</MudNavLink>
+            @if (_permissions.Communications.CanManageTemplates)
+            {
+                <MudNavLink Href="/communications/templates" Icon="@Icons.Material.Filled.Description">Templates</MudNavLink>
+            }
+        </MudNavGroup>
+    }
     
-    <MudDivider Class="my-2" />
+    @if (_permissions?.Navigation.ShowReports == true || _permissions?.Navigation.ShowSettings == true)
+    {
+        <MudDivider Class="my-2" />
+    }
     
-    <MudNavLink Href="/reports" Icon="@Icons.Material.Filled.Analytics">Reports</MudNavLink>
-    <MudNavLink Href="/settings" Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
+    @if (_permissions?.Navigation.ShowReports == true)
+    {
+        <MudNavLink Href="/reports" Icon="@Icons.Material.Filled.Analytics">Reports</MudNavLink>
+    }
+    
+    @if (_permissions?.Navigation.ShowSettings == true)
+    {
+        <MudNavLink Href="/settings" Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
+    }
 </MudNavMenu>
+
+@code {
+    private GlobalPermissionsDto? _permissions;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissions();
+    }
+
+    private async Task LoadPermissions()
+    {
+        try
+        {
+            // Only load permissions if user is authenticated
+            if (await AuthService.IsAuthenticatedAsync())
+            {
+                _permissions = await PermissionsService.GetCachedPermissionsAsync();
+            }
+            else
+            {
+                _permissions = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            // If permissions fail to load, navigation will be minimal (dashboard only)
+            Console.WriteLine($"Failed to load permissions: {ex.Message}");
+            _permissions = null;
+        }
+    }
+}

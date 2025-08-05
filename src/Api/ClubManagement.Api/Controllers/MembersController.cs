@@ -3,8 +3,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ClubManagement.Infrastructure.Data;
 using ClubManagement.Infrastructure.Services;
+using ClubManagement.Infrastructure.Authorization;
 using ClubManagement.Shared.DTOs;
 using ClubManagement.Shared.Models;
+using ClubManagement.Shared.Models.Authorization;
 using ClubManagement.Api.Extensions;
 
 namespace ClubManagement.Api.Controllers;
@@ -16,11 +18,71 @@ public class MembersController : ControllerBase
 {
     private readonly ClubManagementDbContext _context;
     private readonly ITenantService _tenantService;
+    private readonly IMemberAuthorizationService _authService;
+    private readonly IImpersonationService _impersonationService;
 
-    public MembersController(ClubManagementDbContext context, ITenantService tenantService)
+    public MembersController(
+        ClubManagementDbContext context, 
+        ITenantService tenantService,
+        IMemberAuthorizationService authService,
+        IImpersonationService impersonationService)
     {
         _context = context;
         _tenantService = tenantService;
+        _authService = authService;
+        _impersonationService = impersonationService;
+    }
+
+    [HttpGet("{id}/permissions")]
+    public async Task<ActionResult<ApiResponse<MemberPermissions>>> GetMemberPermissions(Guid id)
+    {
+        try
+        {
+            var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<MemberPermissions>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
+            var permissions = await _authService.GetMemberPermissionsAsync(userId, id);
+            return Ok(ApiResponse<MemberPermissions>.SuccessResult(permissions));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<MemberPermissions>.ErrorResult($"Error retrieving member permissions: {ex.Message}"));
+        }
+    }
+
+    [HttpGet("permissions")]
+    public async Task<ActionResult<ApiResponse<MemberPermissions>>> GetGeneralMemberPermissions()
+    {
+        try
+        {
+            var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<MemberPermissions>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
+            var permissions = await _authService.GetMemberPermissionsAsync(userId);
+            return Ok(ApiResponse<MemberPermissions>.SuccessResult(permissions));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(ApiResponse<MemberPermissions>.ErrorResult($"Unauthorized: {ex.Message}"));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<MemberPermissions>.ErrorResult($"Error retrieving member permissions: {ex.Message}"));
+        }
     }
 
     [HttpGet]
@@ -28,6 +90,7 @@ public class MembersController : ControllerBase
     {
         try
         {
+            var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
             // Get tenant and switch to tenant schema
@@ -36,6 +99,11 @@ public class MembersController : ControllerBase
                 return BadRequest(ApiResponse<PagedResult<MemberListDto>>.ErrorResult("Invalid tenant"));
                 
             await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
+            // Check permissions
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.View);
+            if (!authResult.Succeeded)
+                return Forbid(string.Join(", ", authResult.Reasons));
             
             var query = _context.Members
                 .Include(m => m.User)
@@ -106,6 +174,7 @@ public class MembersController : ControllerBase
     {
         try
         {
+            var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
             // Get tenant and switch to tenant schema
@@ -114,6 +183,11 @@ public class MembersController : ControllerBase
                 return BadRequest(ApiResponse<MemberDto>.ErrorResult("Invalid tenant"));
                 
             await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
+            // Check permissions
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.ViewDetails, id);
+            if (!authResult.Succeeded)
+                return Forbid(string.Join(", ", authResult.Reasons));
             
             var member = await _context.Members
                 .Include(m => m.User)
@@ -127,15 +201,29 @@ public class MembersController : ControllerBase
                 Id = member.Id,
                 UserId = member.UserId,
                 MembershipNumber = member.MembershipNumber,
+                
+                // Flattened personal information
+                FirstName = member.User.FirstName,
+                LastName = member.User.LastName,
+                Email = member.User.Email,
+                PhoneNumber = member.User.PhoneNumber,
+                DateOfBirth = member.User.DateOfBirth,
+                Gender = member.User.Gender,
+                
+                // Membership information
                 Tier = member.Tier,
                 Status = member.Status,
                 JoinedAt = member.JoinedAt,
                 MembershipExpiresAt = member.MembershipExpiresAt,
                 LastVisitAt = member.LastVisitAt,
                 Balance = member.Balance,
+                
+                // Related information
                 EmergencyContact = member.EmergencyContact,
                 MedicalInfo = member.MedicalInfo,
                 CustomFields = member.CustomFields,
+                
+                // Original User object for backward compatibility
                 User = new UserProfileDto
                 {
                     Id = member.User.Id,
@@ -165,6 +253,7 @@ public class MembersController : ControllerBase
     {
         try
         {
+            var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
             // Get tenant and switch to tenant schema
@@ -174,31 +263,79 @@ public class MembersController : ControllerBase
                 
             await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
             
-            // Verify user exists
-            var user = await _context.Users.FindAsync(request.UserId);
-            if (user == null)
-                return BadRequest(ApiResponse<MemberDto>.ErrorResult("User not found"));
+            // Check permissions
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.Create);
+            if (!authResult.Succeeded)
+                return Forbid(string.Join(", ", authResult.Reasons));
+            
+            // Check if email already exists
+            var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+            if (existingUser != null)
+                return BadRequest(ApiResponse<MemberDto>.ErrorResult("A user with this email already exists"));
 
-            // Check if user is already a member
-            var existingMember = await _context.Members.FirstOrDefaultAsync(m => m.UserId == request.UserId);
-            if (existingMember != null)
-                return BadRequest(ApiResponse<MemberDto>.ErrorResult("User is already a member"));
+            // Create the User first
+            var newUser = new User
+            {
+                Id = Guid.NewGuid(),
+                Email = request.Email,
+                FirstName = request.FirstName,
+                LastName = request.LastName,
+                PhoneNumber = request.PhoneNumber,
+                DateOfBirth = request.DateOfBirth,
+                Gender = request.Gender,
+                Role = UserRole.Member,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = userId.ToString(),
+                PasswordHash = "TEMP_HASH", // This should be set when user first logs in
+                PasswordSalt = "TEMP_SALT",
+                PasswordChangedAt = DateTime.UtcNow
+            };
+
+            _context.Users.Add(newUser);
 
             // Generate membership number
             var membershipNumber = await GenerateMembershipNumberAsync();
 
+            // Create Emergency Contact
+            EmergencyContact? emergencyContact = null;
+            if (!string.IsNullOrEmpty(request.EmergencyContactName))
+            {
+                emergencyContact = new EmergencyContact
+                {
+                    Name = request.EmergencyContactName,
+                    PhoneNumber = request.EmergencyContactPhone,
+                    Relationship = request.EmergencyContactRelationship
+                };
+            }
+
+            // Create Medical Info
+            MedicalInfo? medicalInfo = null;
+            if (!string.IsNullOrEmpty(request.Allergies) || !string.IsNullOrEmpty(request.MedicalConditions) || !string.IsNullOrEmpty(request.Medications))
+            {
+                medicalInfo = new MedicalInfo
+                {
+                    Allergies = request.Allergies ?? string.Empty,
+                    MedicalConditions = request.MedicalConditions ?? string.Empty,
+                    Medications = request.Medications ?? string.Empty
+                };
+            }
+
+            // Create the Member
             var member = new Member
             {
-                UserId = request.UserId,
+                UserId = newUser.Id,
                 MembershipNumber = membershipNumber,
                 Tier = request.Tier,
-                Status = MembershipStatus.Active,
+                Status = request.Status,
                 JoinedAt = DateTime.UtcNow,
                 MembershipExpiresAt = request.MembershipExpiresAt,
-                EmergencyContact = request.EmergencyContact,
-                MedicalInfo = request.MedicalInfo,
+                EmergencyContact = emergencyContact,
+                MedicalInfo = medicalInfo,
                 CustomFields = request.CustomFields,
-                Balance = 0
+                Balance = 0,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = userId.ToString()
             };
 
             _context.Members.Add(member);
@@ -219,6 +356,7 @@ public class MembersController : ControllerBase
     {
         try
         {
+            var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
             // Get tenant and switch to tenant schema
@@ -228,16 +366,64 @@ public class MembersController : ControllerBase
                 
             await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
             
-            var member = await _context.Members.FindAsync(id);
+            // Check permissions
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.Edit, id);
+            if (!authResult.Succeeded)
+                return Forbid(string.Join(", ", authResult.Reasons));
+            
+            var member = await _context.Members
+                .Include(m => m.User)
+                .FirstOrDefaultAsync(m => m.Id == id);
             if (member == null)
                 return NotFound(ApiResponse<MemberDto>.ErrorResult("Member not found"));
 
+            // Update User information
+            member.User.FirstName = request.FirstName;
+            member.User.LastName = request.LastName;
+            member.User.Email = request.Email;
+            member.User.PhoneNumber = request.PhoneNumber;
+            member.User.DateOfBirth = request.DateOfBirth;
+            member.User.Gender = request.Gender;
+            member.User.UpdatedAt = DateTime.UtcNow;
+            member.User.UpdatedBy = userId.ToString();
+
+            // Update Member information
             member.Tier = request.Tier;
+            member.Status = request.Status;
             member.MembershipExpiresAt = request.MembershipExpiresAt;
-            member.EmergencyContact = request.EmergencyContact;
-            member.MedicalInfo = request.MedicalInfo;
             member.CustomFields = request.CustomFields;
             member.UpdatedAt = DateTime.UtcNow;
+            member.UpdatedBy = userId.ToString();
+
+            // Update Emergency Contact
+            if (!string.IsNullOrEmpty(request.EmergencyContactName))
+            {
+                member.EmergencyContact = new EmergencyContact
+                {
+                    Name = request.EmergencyContactName,
+                    PhoneNumber = request.EmergencyContactPhone,
+                    Relationship = request.EmergencyContactRelationship
+                };
+            }
+            else
+            {
+                member.EmergencyContact = null;
+            }
+
+            // Update Medical Info
+            if (!string.IsNullOrEmpty(request.Allergies) || !string.IsNullOrEmpty(request.MedicalConditions) || !string.IsNullOrEmpty(request.Medications))
+            {
+                member.MedicalInfo = new MedicalInfo
+                {
+                    Allergies = request.Allergies ?? string.Empty,
+                    MedicalConditions = request.MedicalConditions ?? string.Empty,
+                    Medications = request.Medications ?? string.Empty
+                };
+            }
+            else
+            {
+                member.MedicalInfo = null;
+            }
 
             await _context.SaveChangesAsync();
 
@@ -255,6 +441,7 @@ public class MembersController : ControllerBase
     {
         try
         {
+            var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
             // Get tenant and switch to tenant schema
@@ -263,6 +450,11 @@ public class MembersController : ControllerBase
                 return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
                 
             await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
+            // Check permissions
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.Delete, id);
+            if (!authResult.Succeeded)
+                return Forbid(string.Join(", ", authResult.Reasons));
             
             var member = await _context.Members.FindAsync(id);
             if (member == null)
@@ -284,6 +476,7 @@ public class MembersController : ControllerBase
     {
         try
         {
+            var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
             // Get tenant and switch to tenant schema
@@ -292,6 +485,11 @@ public class MembersController : ControllerBase
                 return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
                 
             await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
+            // Check permissions
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.ChangeStatus, id);
+            if (!authResult.Succeeded)
+                return Forbid(string.Join(", ", authResult.Reasons));
             
             var member = await _context.Members.FindAsync(id);
             if (member == null)
@@ -315,6 +513,7 @@ public class MembersController : ControllerBase
     {
         try
         {
+            var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
             // Get tenant and switch to tenant schema
@@ -323,6 +522,11 @@ public class MembersController : ControllerBase
                 return BadRequest(ApiResponse<List<MemberSearchDto>>.ErrorResult("Invalid tenant"));
                 
             await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
+            // Check permissions
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.View);
+            if (!authResult.Succeeded)
+                return Forbid(string.Join(", ", authResult.Reasons));
             
             if (string.IsNullOrWhiteSpace(request.SearchTerm) || request.SearchTerm.Length < 2)
                 return Ok(ApiResponse<List<MemberSearchDto>>.SuccessResult(new List<MemberSearchDto>()));
@@ -360,6 +564,103 @@ public class MembersController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, ApiResponse<List<MemberSearchDto>>.ErrorResult($"Error searching members: {ex.Message}"));
+        }
+    }
+
+    [HttpPost("{id}/impersonate")]
+    public async Task<ActionResult<ApiResponse<ImpersonationResult>>> StartImpersonation(Guid id, [FromBody] StartImpersonationRequest request)
+    {
+        try
+        {
+            var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<ImpersonationResult>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
+            // Check permissions
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.ImpersonateMember, id);
+            if (!authResult.Succeeded)
+                return Forbid(string.Join(", ", authResult.Reasons));
+            
+            // Set the target member ID from the route
+            request.TargetMemberId = id;
+            
+            var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+            var userAgent = Request.Headers.UserAgent.ToString();
+            
+            var result = await _impersonationService.StartImpersonationAsync(userId, request, ipAddress, userAgent);
+            
+            if (result.Succeeded)
+                return Ok(ApiResponse<ImpersonationResult>.SuccessResult(result));
+            else
+                return BadRequest(ApiResponse<ImpersonationResult>.ErrorResult(string.Join(", ", result.Reasons)));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<ImpersonationResult>.ErrorResult($"Error starting impersonation: {ex.Message}"));
+        }
+    }
+
+    [HttpPost("end-impersonation")]
+    public async Task<ActionResult<ApiResponse<bool>>> EndImpersonation([FromBody] EndImpersonationRequest request)
+    {
+        try
+        {
+            var userId = this.GetCurrentUserId();
+            
+            // Get current impersonation status
+            var status = await _impersonationService.GetCurrentImpersonationStatusAsync(userId);
+            if (status?.SessionId == null)
+                return BadRequest(ApiResponse<bool>.ErrorResult("No active impersonation session found"));
+            
+            var result = await _impersonationService.EndImpersonationAsync(status.SessionId.Value, request.Reason);
+            
+            if (result.Succeeded)
+                return Ok(ApiResponse<bool>.SuccessResult(true, "Impersonation ended successfully"));
+            else
+                return BadRequest(ApiResponse<bool>.ErrorResult(string.Join(", ", result.Reasons)));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<bool>.ErrorResult($"Error ending impersonation: {ex.Message}"));
+        }
+    }
+
+    [HttpGet("impersonation-status")]
+    public async Task<ActionResult<ApiResponse<ImpersonationStatusDto>>> GetImpersonationStatus()
+    {
+        try
+        {
+            var userId = this.GetCurrentUserId();
+            var status = await _impersonationService.GetCurrentImpersonationStatusAsync(userId);
+            return Ok(ApiResponse<ImpersonationStatusDto>.SuccessResult(status ?? new ImpersonationStatusDto { IsImpersonating = false }));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<ImpersonationStatusDto>.ErrorResult($"Error retrieving impersonation status: {ex.Message}"));
+        }
+    }
+
+    [HttpGet("impersonation-sessions")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
+    public async Task<ActionResult<ApiResponse<List<ImpersonationSessionDto>>>> GetImpersonationSessions([FromQuery] bool activeOnly = false)
+    {
+        try
+        {
+            var sessions = activeOnly 
+                ? await _impersonationService.GetActiveSessionsAsync()
+                : await _impersonationService.GetSessionHistoryAsync();
+                
+            return Ok(ApiResponse<List<ImpersonationSessionDto>>.SuccessResult(sessions));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<List<ImpersonationSessionDto>>.ErrorResult($"Error retrieving impersonation sessions: {ex.Message}"));
         }
     }
 
