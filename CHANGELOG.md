@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Extended `UserRole` enum with `Coach` option
   - Added demo coach user in database seeder (`coach@demo.localhost` / `Coach123!`)
   - Coach role can be used for trainers, class instructors, and coaching staff
+  - **Coach Event Registration Support**: Coaches now get Member profiles so they can register for events as participants
   
 - **Demo Member Account**: Added complete demo member user for testing
   - Demo member user with member portal access (`member@demo.localhost` / `Member123!`)

@@ -196,6 +196,40 @@ public class DbSeeder
         _context.Users.Add(coachUser);
         await _context.SaveChangesAsync(); // Save all users
 
+        // Create member profile for the demo coach user so they can register for events
+        var demoCoachMember = new Member
+        {
+            Id = Guid.NewGuid(),
+            UserId = coachUser.Id,
+            MembershipNumber = $"MB{DateTime.UtcNow.Year}000002",
+            Tier = MembershipTier.Premium, // Coaches get premium membership
+            Status = MembershipStatus.Active,
+            JoinedAt = DateTime.UtcNow.AddDays(-60), // Joined 60 days ago
+            MembershipExpiresAt = DateTime.UtcNow.AddYears(2), // Extended membership
+            Balance = 0,
+            EmergencyContact = new EmergencyContact
+            {
+                Name = "Coach Emergency Contact",
+                PhoneNumber = "+1-555-0888",
+                Relationship = "Spouse"
+            },
+            MedicalInfo = new MedicalInfo
+            {
+                Allergies = new List<string>(),
+                MedicalConditions = new List<string>()
+            },
+            CustomFields = new Dictionary<string, object>
+            {
+                { "staff_member", true },
+                { "coaching_specialties", new List<string> { "Tennis", "Fitness Training" } }
+            },
+            TenantId = demoTenant.Id,
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = "System"
+        };
+
+        _context.Members.Add(demoCoachMember);
+
         // Create facility types
         var facilityTypes = new List<FacilityType>
         {

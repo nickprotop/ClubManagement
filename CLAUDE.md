@@ -187,8 +187,8 @@ Facilities and Hardware use dynamic property schemas:
 
 **Demo Accounts:**
 - **Admin**: `admin@demo.localhost` / `Admin123!` (full system access)
-- **Member**: `member@demo.localhost` / `Member123!` (member portal access)
-- **Coach**: `coach@demo.localhost` / `Coach123!` (coaching and training access)
+- **Member**: `member@demo.localhost` / `Member123!` (member portal access, Basic tier)
+- **Coach**: `coach@demo.localhost` / `Coach123!` (coaching and training access, Premium membership, can register for events)
 
 ## CRITICAL: Multi-Tenant Schema Switching Requirements
 
