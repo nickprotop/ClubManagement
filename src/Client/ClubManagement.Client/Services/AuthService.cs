@@ -1,6 +1,7 @@
 using Microsoft.JSInterop;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.IdentityModel.Tokens.Jwt;
 using ClubManagement.Shared.DTOs;
 
 namespace ClubManagement.Client.Services;
@@ -11,8 +12,11 @@ public class AuthService : IAuthService
     private readonly IJSRuntime _jsRuntime;
     private UserProfileDto? _currentUser;
     private bool _isAuthenticated = false;
+    private bool _isRefreshing = false;
+    private DateTime? _tokenExpiresAt;
 
     public event Action<bool>? AuthenticationStateChanged;
+    public event Action? SessionExpired;
 
     public AuthService(HttpClient httpClient, IJSRuntime jsRuntime)
     {
@@ -62,12 +66,39 @@ public class AuthService : IAuthService
 
     public async Task LogoutAsync()
     {
+        try
+        {
+            // Call logout endpoint to revoke refresh token
+            await CallLogoutEndpointAsync();
+        }
+        catch
+        {
+            // Continue with local logout even if server call fails
+        }
+
+        await ClearAuthenticationDataAsync();
+    }
+
+    private async Task CallLogoutEndpointAsync()
+    {
+        var refreshToken = await _jsRuntime.InvokeAsync<string>("localStorage.getItem", "refreshToken");
+        if (!string.IsNullOrEmpty(refreshToken))
+        {
+            var request = new RefreshTokenRequest { RefreshToken = refreshToken };
+            await _httpClient.PostAsJsonAsync("api/auth/logout", request);
+        }
+    }
+
+    private async Task ClearAuthenticationDataAsync()
+    {
         await _jsRuntime.InvokeVoidAsync("localStorage.removeItem", "authToken");
         await _jsRuntime.InvokeVoidAsync("localStorage.removeItem", "refreshToken");
         await _jsRuntime.InvokeVoidAsync("localStorage.removeItem", "currentUser");
+        await _jsRuntime.InvokeVoidAsync("localStorage.removeItem", "tokenExpiresAt");
 
         _currentUser = null;
         _isAuthenticated = false;
+        _tokenExpiresAt = null;
         _httpClient.DefaultRequestHeaders.Authorization = null;
 
         AuthenticationStateChanged?.Invoke(false);
@@ -75,16 +106,41 @@ public class AuthService : IAuthService
 
     public async Task<bool> IsAuthenticatedAsync()
     {
-        if (_isAuthenticated)
-            return true;
+        try
+        {
+            if (_isAuthenticated && !IsTokenExpiringSoon())
+                return true;
 
+            return await ValidateAndRefreshTokenAsync();
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async Task<bool> ValidateAndRefreshTokenAsync()
+    {
         try
         {
             var token = await _jsRuntime.InvokeAsync<string>("localStorage.getItem", "authToken");
             if (string.IsNullOrEmpty(token))
                 return false;
 
-            // TODO: Validate token expiration
+            // Parse token to check expiration
+            var tokenExpiration = GetTokenExpiration(token);
+            if (tokenExpiration == null)
+                return false;
+
+            _tokenExpiresAt = tokenExpiration;
+
+            // If token is expired or expiring soon, try to refresh
+            if (IsTokenExpired() || IsTokenExpiringSoon())
+            {
+                return await RefreshTokenAsync();
+            }
+
+            // Token is still valid, restore authentication state
             var userJson = await _jsRuntime.InvokeAsync<string>("localStorage.getItem", "currentUser");
             if (!string.IsNullOrEmpty(userJson))
             {
@@ -98,6 +154,7 @@ public class AuthService : IAuthService
         }
         catch
         {
+            // Don't clear auth data on validation errors during startup
             return false;
         }
     }
@@ -111,12 +168,94 @@ public class AuthService : IAuthService
         return _currentUser;
     }
 
+    public async Task<bool> RefreshTokenAsync()
+    {
+        if (_isRefreshing)
+            return _isAuthenticated;
+
+        _isRefreshing = true;
+
+        try
+        {
+            var refreshToken = await _jsRuntime.InvokeAsync<string>("localStorage.getItem", "refreshToken");
+            if (string.IsNullOrEmpty(refreshToken))
+            {
+                return false;
+            }
+
+            var request = new RefreshTokenRequest { RefreshToken = refreshToken };
+            var response = await _httpClient.PostAsJsonAsync("api/auth/refresh", request);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                return false;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<ApiResponse<RefreshTokenResponse>>();
+            if (result?.Success != true || result.Data == null)
+            {
+                return false;
+            }
+
+            // Update tokens
+            await _jsRuntime.InvokeVoidAsync("localStorage.setItem", "authToken", result.Data.AccessToken);
+            await _jsRuntime.InvokeVoidAsync("localStorage.setItem", "refreshToken", result.Data.RefreshToken);
+
+            _tokenExpiresAt = result.Data.ExpiresAt;
+            _isAuthenticated = true;
+            _httpClient.DefaultRequestHeaders.Authorization = 
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", result.Data.AccessToken);
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            _isRefreshing = false;
+        }
+    }
+
+    public async Task HandleSessionExpiredAsync()
+    {
+        await ClearAuthenticationDataAsync();
+        SessionExpired?.Invoke();
+    }
+
+    private DateTime? GetTokenExpiration(string token)
+    {
+        try
+        {
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var jsonToken = tokenHandler.ReadJwtToken(token);
+            return jsonToken.ValidTo;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private bool IsTokenExpired()
+    {
+        return _tokenExpiresAt.HasValue && DateTime.UtcNow >= _tokenExpiresAt.Value;
+    }
+
+    private bool IsTokenExpiringSoon()
+    {
+        // Refresh token if it expires within 5 minutes
+        return _tokenExpiresAt.HasValue && DateTime.UtcNow >= _tokenExpiresAt.Value.AddMinutes(-5);
+    }
+
     private async Task SetAuthenticationDataAsync(LoginResponse loginResponse)
     {
         await _jsRuntime.InvokeVoidAsync("localStorage.setItem", "authToken", loginResponse.AccessToken);
         await _jsRuntime.InvokeVoidAsync("localStorage.setItem", "refreshToken", loginResponse.RefreshToken);
         await _jsRuntime.InvokeVoidAsync("localStorage.setItem", "currentUser", JsonSerializer.Serialize(loginResponse.User));
 
+        _tokenExpiresAt = loginResponse.ExpiresAt;
         _currentUser = loginResponse.User;
         _isAuthenticated = true;
         _httpClient.DefaultRequestHeaders.Authorization = 

@@ -9,5 +9,9 @@ public interface IAuthService
     Task LogoutAsync();
     Task<bool> IsAuthenticatedAsync();
     Task<UserProfileDto?> GetCurrentUserAsync();
+    Task<bool> RefreshTokenAsync();
+    Task<bool> ValidateAndRefreshTokenAsync();
+    Task HandleSessionExpiredAsync();
     event Action<bool> AuthenticationStateChanged;
+    event Action? SessionExpired;
 }

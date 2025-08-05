@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ClubManagement.Shared.Models;
+using ClubManagement.Domain.Entities;
 using System.Text.Json;
 
 namespace ClubManagement.Infrastructure.Data;
@@ -25,6 +26,7 @@ public class ClubManagementDbContext : DbContext
     public DbSet<Subscription> Subscriptions { get; set; }
     public DbSet<Communication> Communications { get; set; }
     public DbSet<CommunicationDelivery> CommunicationDeliveries { get; set; }
+    public DbSet<RefreshToken> RefreshTokens { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -115,6 +117,26 @@ public class ClubManagementDbContext : DbContext
                 v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>())
             .HasColumnType("jsonb");
 
+        // Event recurrence relationships
+        modelBuilder.Entity<Event>()
+            .HasOne(e => e.MasterEvent)
+            .WithMany(e => e.Occurrences)
+            .HasForeignKey(e => e.MasterEventId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Event recurrence indexes
+        modelBuilder.Entity<Event>()
+            .HasIndex(e => e.MasterEventId);
+
+        modelBuilder.Entity<Event>()
+            .HasIndex(e => e.IsRecurringMaster);
+
+        modelBuilder.Entity<Event>()
+            .HasIndex(e => new { e.MasterEventId, e.StartDateTime });
+
+        modelBuilder.Entity<Event>()
+            .HasIndex(e => new { e.RecurrenceStatus, e.LastGeneratedUntil });
+
         modelBuilder.Entity<Payment>()
             .Property(e => e.Metadata)
             .HasConversion(
@@ -197,5 +219,20 @@ public class ClubManagementDbContext : DbContext
             .WithMany()
             .HasForeignKey(ha => ha.MemberId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // RefreshToken configuration
+        modelBuilder.Entity<RefreshToken>()
+            .HasOne(rt => rt.User)
+            .WithMany()
+            .HasForeignKey(rt => rt.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<RefreshToken>()
+            .HasIndex(rt => rt.Token)
+            .IsUnique();
+
+        modelBuilder.Entity<RefreshToken>()
+            .HasIndex(rt => new { rt.UserId, rt.IsRevoked })
+            .HasFilter("\"IsRevoked\" = false");
     }
 }

@@ -1,0 +1,52 @@
+@page "/session-expired"
+@using ClubManagement.Client.Services
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+
+<PageTitle>Session Expired - Club Management</PageTitle>
+
+<div class="d-flex justify-center align-center" style="min-height: 80vh;">
+    <MudPaper Class="pa-8 ma-4" Style="max-width: 500px; width: 100%;" Elevation="4">
+        <div class="text-center mb-6">
+            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Large" Color="Color.Warning" Style="font-size: 4rem;" />
+        </div>
+        
+        <MudText Typo="Typo.h4" Align="Align.Center" Class="mb-4">
+            Session Expired
+        </MudText>
+        
+        <MudText Typo="Typo.body1" Align="Align.Center" Class="mb-6" Color="Color.Secondary">
+            Your session has expired for security reasons. Please log in again to continue using the application.
+        </MudText>
+        
+        <div class="text-center mb-4">
+            <MudButton 
+                Variant="Variant.Filled" 
+                Color="Color.Primary" 
+                Size="Size.Large"
+                OnClick="NavigateToLogin"
+                FullWidth="true">
+                Go to Login
+            </MudButton>
+        </div>
+        
+        <MudDivider Class="my-4" />
+        
+        <MudText Typo="Typo.caption" Align="Align.Center" Color="Color.Secondary">
+            Your data is safe. Simply log in again to continue where you left off.
+        </MudText>
+    </MudPaper>
+</div>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        // Clear any remaining authentication data
+        await AuthService.LogoutAsync();
+    }
+    
+    private void NavigateToLogin()
+    {
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+}

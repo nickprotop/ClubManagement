@@ -107,22 +107,14 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-// CORS - use client URL from config
-var allowedOrigins = new[] { 
-    "http://localhost:4002", 
-    "https://localhost:4003",  // Keep HTTPS for production
-    clientBaseUrl,
-    clientBaseUrl.Replace("https://", "http://").Replace(":4003", ":4002")
-};
-
+// CORS - allow all origins (development mode)
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowBlazorClient", policy =>
     {
-        policy.WithOrigins(allowedOrigins)
+        policy.AllowAnyOrigin()
               .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials();
+              .AllowAnyMethod();
     });
 });
 
@@ -131,7 +123,18 @@ builder.Services.AddScoped<ITenantService, TenantService>();
 builder.Services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IPasswordService, PasswordService>();
+builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 builder.Services.AddScoped<DbSeeder>();
+
+// Recurrence services
+builder.Services.AddScoped<IRecurrenceManager, RecurrenceManager>();
+builder.Services.AddScoped<IRecurrenceUpdateService, RecurrenceUpdateService>();
+builder.Services.Configure<RecurrenceSettings>(builder.Configuration.GetSection("Recurrence"));
+builder.Services.Configure<RecurrenceMaintenanceSettings>(builder.Configuration.GetSection("RecurrenceMaintenance"));
+builder.Services.AddHostedService<RecurrenceMaintenanceService>();
+
+// Authorization services
+builder.Services.AddScoped<ClubManagement.Infrastructure.Authorization.IEventAuthorizationService, ClubManagement.Infrastructure.Authorization.EventAuthorizationService>();
 
 var app = builder.Build();
 
@@ -177,8 +180,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
 app.UseCors("AllowBlazorClient");
+// TODO: Re-enable HTTPS redirection for production
+// app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();

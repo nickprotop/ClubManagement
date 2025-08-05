@@ -1,16 +1,170 @@
-﻿@inherits LayoutComponentBase
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
+@implements IDisposable
+@inherits LayoutComponentBase
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
+<MudThemeProvider @ref="@_mudThemeProvider" @bind-IsDarkMode="@_isDarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
 
-        <article class="content px-4">
+<MudLayout>
+    @if (_isAuthenticated)
+    {
+        <MudAppBar Elevation="1" Dense="true">
+            <MudIconButton Icon="Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" 
+                          OnClick="@((e) => DrawerToggle())" />
+            
+            <MudSpacer />
+            
+            <MudText Typo="Typo.h6" Class="ml-3">Club Management</MudText>
+            
+            <MudSpacer />
+            
+            <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)" 
+                          Color="Color.Inherit" 
+                          OnClick="@ToggleTheme" />
+            
+            <MudMenu Icon="Icons.Material.Filled.AccountCircle" Color="Color.Inherit" Dense="true">
+                <MudMenuItem OnClick="ViewProfile">
+                    <MudIcon Icon="Icons.Material.Filled.Person" Class="mr-2" />
+                    Profile
+                </MudMenuItem>
+                <MudMenuItem OnClick="Settings">
+                    <MudIcon Icon="Icons.Material.Filled.Settings" Class="mr-2" />
+                    Settings
+                </MudMenuItem>
+                <MudDivider />
+                <MudMenuItem OnClick="Logout">
+                    <MudIcon Icon="Icons.Material.Filled.ExitToApp" Class="mr-2" />
+                    Logout
+                </MudMenuItem>
+            </MudMenu>
+        </MudAppBar>
+        
+        <MudDrawer @bind-Open="_drawerOpen" Elevation="2" Variant="@DrawerVariant.Mini" OpenMiniOnHover="true">
+            <MudDrawerHeader>
+                <MudText Typo="Typo.h6">CM</MudText>
+            </MudDrawerHeader>
+            <NavMenu />
+        </MudDrawer>
+        
+        <MudMainContent>
+            <MudContainer MaxWidth="MaxWidth.False" Class="mt-4">
+                @Body
+            </MudContainer>
+        </MudMainContent>
+    }
+    else
+    {
+        <MudMainContent>
             @Body
-        </article>
-    </main>
-</div>
+        </MudMainContent>
+    }
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+    private bool _isDarkMode = false;
+    private MudThemeProvider _mudThemeProvider = null!;
+    private bool _isAuthenticated = false;
+    private UserProfileDto? _currentUser;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            AuthService.AuthenticationStateChanged += OnAuthenticationStateChanged;
+            AuthService.SessionExpired += OnSessionExpired;
+            
+            // Load theme preference from localStorage first
+            try
+            {
+                var isDarkModeStr = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "isDarkMode");
+                _isDarkMode = bool.TryParse(isDarkModeStr, out var isDarkMode) && isDarkMode;
+            }
+            catch
+            {
+                _isDarkMode = false;
+            }
+            
+            // Check authentication state
+            _isAuthenticated = await AuthService.IsAuthenticatedAsync();
+            if (_isAuthenticated)
+            {
+                _currentUser = await AuthService.GetCurrentUserAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"MainLayout initialization error: {ex.Message}");
+            _isAuthenticated = false;
+            _currentUser = null;
+        }
+    }
+
+    private void OnAuthenticationStateChanged(bool isAuthenticated)
+    {
+        _isAuthenticated = isAuthenticated;
+        if (isAuthenticated)
+        {
+            InvokeAsync(async () =>
+            {
+                _currentUser = await AuthService.GetCurrentUserAsync();
+                StateHasChanged();
+            });
+        }
+        else
+        {
+            _currentUser = null;
+            Navigation.NavigateTo("/login");
+        }
+        StateHasChanged();
+    }
+
+    private void DrawerToggle()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+
+    private async Task ToggleTheme()
+    {
+        _isDarkMode = !_isDarkMode;
+        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "isDarkMode", _isDarkMode.ToString());
+    }
+
+    private void ViewProfile()
+    {
+        Navigation.NavigateTo("/profile");
+    }
+
+    private void Settings()
+    {
+        Navigation.NavigateTo("/settings");
+    }
+
+    private async Task Logout()
+    {
+        await AuthService.LogoutAsync();
+        Navigation.NavigateTo("/login");
+    }
+
+    private void OnSessionExpired()
+    {
+        InvokeAsync(() =>
+        {
+            Snackbar.Add("Your session has expired. Redirecting to login...", Severity.Warning, configure => configure.RequireInteraction = true);
+            Navigation.NavigateTo("/session-expired", forceLoad: true);
+        });
+    }
+
+    public void Dispose()
+    {
+        AuthService.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+        AuthService.SessionExpired -= OnSessionExpired;
+    }
+}

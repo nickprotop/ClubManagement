@@ -48,3 +48,18 @@ public class ResetPasswordRequest
     public string Token { get; set; } = string.Empty;
     public string NewPassword { get; set; } = string.Empty;
 }
+
+public class RefreshTokenResponse
+{
+    public string AccessToken { get; set; } = string.Empty;
+    public string RefreshToken { get; set; } = string.Empty;
+    public DateTime ExpiresAt { get; set; }
+}
+
+public class TokenValidationResult
+{
+    public bool IsValid { get; set; }
+    public bool IsExpired { get; set; }
+    public DateTime? ExpiresAt { get; set; }
+    public string? ErrorMessage { get; set; }
+}

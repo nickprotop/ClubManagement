@@ -5,6 +5,7 @@ using ClubManagement.Infrastructure.Services;
 using ClubManagement.Infrastructure.Authentication;
 using ClubManagement.Shared.DTOs;
 using ClubManagement.Shared.Models;
+using System.Security.Claims;
 
 namespace ClubManagement.Api.Controllers;
 
@@ -16,17 +17,20 @@ public class AuthController : ControllerBase
     private readonly ITenantService _tenantService;
     private readonly IJwtService _jwtService;
     private readonly IPasswordService _passwordService;
+    private readonly IRefreshTokenService _refreshTokenService;
 
     public AuthController(
         ClubManagementDbContext context,
         ITenantService tenantService,
         IJwtService jwtService,
-        IPasswordService passwordService)
+        IPasswordService passwordService,
+        IRefreshTokenService refreshTokenService)
     {
         _context = context;
         _tenantService = tenantService;
         _jwtService = jwtService;
         _passwordService = passwordService;
+        _refreshTokenService = refreshTokenService;
     }
 
     [HttpPost("login")]
@@ -54,12 +58,11 @@ public class AuthController : ControllerBase
             return BadRequest(ApiResponse<LoginResponse>.ErrorResult("Invalid email or password"));
         }
 
-        // For now, we need to add password field to User model or create separate UserCredentials table
-        // TODO: Implement proper password verification
-        // if (!_passwordService.VerifyPassword(request.Password, user.PasswordHash))
-        // {
-        //     return BadRequest(ApiResponse<LoginResponse>.ErrorResult("Invalid email or password"));
-        // }
+        // Verify password
+        if (!_passwordService.VerifyPassword(request.Password, user.PasswordHash, user.PasswordSalt))
+        {
+            return BadRequest(ApiResponse<LoginResponse>.ErrorResult("Invalid email or password"));
+        }
 
         if (user.Status != UserStatus.Active)
         {
@@ -67,7 +70,10 @@ public class AuthController : ControllerBase
         }
 
         var accessToken = _jwtService.GenerateAccessToken(user, tenant.Id);
-        var refreshToken = _jwtService.GenerateRefreshToken();
+        
+        // Generate and store refresh token
+        var ipAddress = GetIpAddress();
+        var refreshTokenEntity = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, ipAddress);
 
         // Update last login
         user.LastLoginAt = DateTime.UtcNow;
@@ -91,7 +97,7 @@ public class AuthController : ControllerBase
         var loginResponse = new LoginResponse
         {
             AccessToken = accessToken,
-            RefreshToken = refreshToken,
+            RefreshToken = refreshTokenEntity.Token,
             ExpiresAt = DateTime.UtcNow.AddMinutes(60),
             User = userProfile
         };
@@ -119,23 +125,32 @@ public class AuthController : ControllerBase
             return BadRequest(ApiResponse<LoginResponse>.ErrorResult("User with this email already exists"));
         }
 
+        // Hash the password
+        var (passwordHash, passwordSalt) = _passwordService.HashPasswordWithSeparateSalt(request.Password);
+
         var user = new User
         {
             Email = request.Email,
+            PasswordHash = passwordHash,
+            PasswordSalt = passwordSalt,
             FirstName = request.FirstName,
             LastName = request.LastName,
             PhoneNumber = request.PhoneNumber,
             Role = UserRole.Member,
             Status = UserStatus.Active,
             TenantId = tenant.Id,
-            EmailVerified = false
+            EmailVerified = false,
+            PasswordChangedAt = DateTime.UtcNow
         };
 
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
 
         var accessToken = _jwtService.GenerateAccessToken(user, tenant.Id);
-        var refreshToken = _jwtService.GenerateRefreshToken();
+        
+        // Generate and store refresh token
+        var ipAddress = GetIpAddress();
+        var refreshTokenEntity = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, ipAddress);
 
         var userProfile = new UserProfileDto
         {
@@ -155,11 +170,93 @@ public class AuthController : ControllerBase
         var loginResponse = new LoginResponse
         {
             AccessToken = accessToken,
-            RefreshToken = refreshToken,
+            RefreshToken = refreshTokenEntity.Token,
             ExpiresAt = DateTime.UtcNow.AddMinutes(60),
             User = userProfile
         };
 
         return Ok(ApiResponse<LoginResponse>.SuccessResult(loginResponse, "Registration successful"));
+    }
+
+    [HttpPost("refresh")]
+    public async Task<ActionResult<ApiResponse<RefreshTokenResponse>>> RefreshToken([FromBody] RefreshTokenRequest request)
+    {
+        if (string.IsNullOrEmpty(request.RefreshToken))
+        {
+            return BadRequest(ApiResponse<RefreshTokenResponse>.ErrorResult("Refresh token is required"));
+        }
+
+        var refreshToken = await _refreshTokenService.GetRefreshTokenAsync(request.RefreshToken);
+        if (refreshToken == null || !refreshToken.IsActive)
+        {
+            return BadRequest(ApiResponse<RefreshTokenResponse>.ErrorResult("Invalid or expired refresh token"));
+        }
+
+        var user = refreshToken.User;
+        if (user.Status != UserStatus.Active)
+        {
+            return BadRequest(ApiResponse<RefreshTokenResponse>.ErrorResult("Account is not active"));
+        }
+
+        // Get tenant for token generation
+        var tenant = await _context.Tenants.FirstOrDefaultAsync(t => t.Id == user.TenantId);
+        if (tenant == null)
+        {
+            return BadRequest(ApiResponse<RefreshTokenResponse>.ErrorResult("Invalid tenant"));
+        }
+
+        // Switch to tenant schema
+        await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+
+        // Generate new tokens
+        var newAccessToken = _jwtService.GenerateAccessToken(user, tenant.Id);
+        var ipAddress = GetIpAddress();
+        var newRefreshToken = await _refreshTokenService.RotateRefreshTokenAsync(refreshToken, ipAddress);
+
+        var response = new RefreshTokenResponse
+        {
+            AccessToken = newAccessToken,
+            RefreshToken = newRefreshToken.Token,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(60)
+        };
+
+        return Ok(ApiResponse<RefreshTokenResponse>.SuccessResult(response, "Token refreshed successfully"));
+    }
+
+    [HttpPost("logout")]
+    public async Task<ActionResult<ApiResponse<object>>> Logout([FromBody] RefreshTokenRequest request)
+    {
+        if (!string.IsNullOrEmpty(request.RefreshToken))
+        {
+            var ipAddress = GetIpAddress();
+            await _refreshTokenService.RevokeRefreshTokenAsync(request.RefreshToken, ipAddress, "User logout");
+        }
+
+        return Ok(ApiResponse<object>.SuccessResult(new object(), "Logout successful"));
+    }
+
+    private string GetIpAddress()
+    {
+        // Try to get the real IP address from various headers
+        if (Request.Headers.ContainsKey("X-Forwarded-For"))
+        {
+            var forwardedFor = Request.Headers["X-Forwarded-For"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(forwardedFor))
+            {
+                return forwardedFor.Split(',').FirstOrDefault()?.Trim() ?? "Unknown";
+            }
+        }
+
+        if (Request.Headers.ContainsKey("X-Real-IP"))
+        {
+            var realIp = Request.Headers["X-Real-IP"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(realIp))
+            {
+                return realIp;
+            }
+        }
+
+        // Fall back to connection remote IP
+        return HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
     }
 }

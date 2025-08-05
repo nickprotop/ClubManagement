@@ -5,6 +5,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using ClubManagement.Shared.Models;
+using ClubManagement.Shared.DTOs;
 
 namespace ClubManagement.Infrastructure.Authentication;
 
@@ -14,6 +15,8 @@ public interface IJwtService
     string GenerateRefreshToken();
     ClaimsPrincipal? GetPrincipalFromExpiredToken(string token);
     bool ValidateToken(string token);
+    ClubManagement.Shared.DTOs.TokenValidationResult ValidateTokenDetailed(string token);
+    string GenerateJti();
 }
 
 public class JwtService : IJwtService
@@ -120,5 +123,40 @@ public class JwtService : IJwtService
         {
             return false;
         }
+    }
+
+    public ClubManagement.Shared.DTOs.TokenValidationResult ValidateTokenDetailed(string token)
+    {
+        try
+        {
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var jsonToken = tokenHandler.ReadJwtToken(token);
+            
+            var now = DateTime.UtcNow;
+            var expiresAt = jsonToken.ValidTo;
+            
+            return new ClubManagement.Shared.DTOs.TokenValidationResult
+            {
+                IsValid = now < expiresAt,
+                IsExpired = now >= expiresAt,
+                ExpiresAt = expiresAt,
+                ErrorMessage = now >= expiresAt ? "Token has expired" : null
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ClubManagement.Shared.DTOs.TokenValidationResult
+            {
+                IsValid = false,
+                IsExpired = false,
+                ExpiresAt = null,
+                ErrorMessage = ex.Message
+            };
+        }
+    }
+
+    public string GenerateJti()
+    {
+        return Guid.NewGuid().ToString();
     }
 }
