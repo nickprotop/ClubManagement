@@ -213,3 +213,73 @@ public enum RecurrenceUpdateStrategy
     ForceUpdate,          // Update all future occurrences regardless of registrations
     CancelConflicts       // Cancel conflicting occurrences with registrations
 }
+
+public class BulkEventRegistrationRequest
+{
+    public List<Guid> EventIds { get; set; } = new();
+    public List<Guid> MemberIds { get; set; } = new();
+    public RecurringRegistrationOption RegistrationOption { get; set; }
+    public int? NextOccurrences { get; set; }
+    public string? Notes { get; set; }
+}
+
+public enum RecurringRegistrationOption
+{
+    ThisOccurrenceOnly,
+    AllFutureOccurrences,
+    SelectSpecific,
+    NextN
+}
+
+public class RecurringRegistrationResponse
+{
+    public int SuccessfulRegistrations { get; set; }
+    public int FailedRegistrations { get; set; }
+    public List<EventRegistrationResult> Results { get; set; } = new();
+    public List<string> Warnings { get; set; } = new();
+}
+
+public class EventRegistrationResult
+{
+    public Guid EventId { get; set; }
+    public Guid MemberId { get; set; }
+    public bool Success { get; set; }
+    public string? ErrorMessage { get; set; }
+    public RegistrationStatus Status { get; set; }
+    public string EventTitle { get; set; } = string.Empty;
+    public string MemberName { get; set; } = string.Empty;
+    public DateTime EventDateTime { get; set; }
+}
+
+public class RecurringEventOptionsDto
+{
+    public Guid MasterEventId { get; set; }
+    public string SeriesTitle { get; set; } = string.Empty;
+    public List<EventOccurrenceDto> UpcomingOccurrences { get; set; } = new();
+    public int TotalOccurrences { get; set; }
+    public RecurrencePattern? RecurrencePattern { get; set; }
+}
+
+public class EventOccurrenceDto
+{
+    public Guid Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public DateTime StartDateTime { get; set; }
+    public DateTime EndDateTime { get; set; }
+    public int CurrentEnrollment { get; set; }
+    public int? MaxCapacity { get; set; }
+    public bool IsUserRegistered { get; set; }
+    public bool IsFullyBooked { get; set; }
+    public bool AllowWaitlist { get; set; }
+}
+
+public class RecurringRegistrationSummary
+{
+    public Guid MasterEventId { get; set; }
+    public string EventSeriesName { get; set; } = string.Empty;
+    public DateTime? NextOccurrence { get; set; }
+    public int TotalRegistered { get; set; }
+    public int TotalOccurrences { get; set; }
+    public RecurringRegistrationOption RegistrationType { get; set; }
+    public List<EventOccurrenceDto> RegisteredEvents { get; set; } = new();
+}

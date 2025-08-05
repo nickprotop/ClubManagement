@@ -255,6 +255,50 @@ public class MembersController : ControllerBase
         }
     }
 
+    [HttpPost("search")]
+    public async Task<ActionResult<ApiResponse<List<MemberSearchDto>>>> SearchMembers([FromBody] MemberQuickSearchRequest request)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(request.SearchTerm) || request.SearchTerm.Length < 2)
+                return Ok(ApiResponse<List<MemberSearchDto>>.SuccessResult(new List<MemberSearchDto>()));
+
+            var query = _context.Members
+                .Include(m => m.User)
+                .Where(m => request.IncludeInactive || m.Status == MembershipStatus.Active);
+
+            // Search across multiple fields
+            var searchTerm = request.SearchTerm.ToLower();
+            query = query.Where(m => 
+                m.User.FirstName.ToLower().Contains(searchTerm) ||
+                m.User.LastName.ToLower().Contains(searchTerm) ||
+                m.User.Email.ToLower().Contains(searchTerm) ||
+                m.MembershipNumber.ToLower().Contains(searchTerm));
+
+            var members = await query
+                .OrderBy(m => m.User.FirstName)
+                .ThenBy(m => m.User.LastName)
+                .Take(request.MaxResults)
+                .Select(m => new MemberSearchDto
+                {
+                    Id = m.Id,
+                    FirstName = m.User.FirstName,
+                    LastName = m.User.LastName,
+                    Email = m.User.Email,
+                    MembershipNumber = m.MembershipNumber,
+                    Status = m.Status,
+                    ProfilePhotoUrl = m.User.ProfilePhotoUrl
+                })
+                .ToListAsync();
+
+            return Ok(ApiResponse<List<MemberSearchDto>>.SuccessResult(members));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<List<MemberSearchDto>>.ErrorResult($"Error searching members: {ex.Message}"));
+        }
+    }
+
     private async Task<string> GenerateMembershipNumberAsync()
     {
         // Generate a unique membership number

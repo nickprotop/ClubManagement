@@ -1,0 +1,393 @@
+@page "/events/my-registrations"
+@using ClubManagement.Client.Services
+@using ClubManagement.Client.Components
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@inject IEventService EventService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>My Registrations - Club Management</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbItems" />
+
+<MudStack Spacing="4">
+    <!-- Page Header -->
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h4">My Event Registrations</MudText>
+        <MudButton Variant="Variant.Filled" 
+                   Color="Color.Primary" 
+                   StartIcon="@Icons.Material.Filled.Event"
+                   OnClick="NavigateToEvents">
+            Browse Events
+        </MudButton>
+    </MudStack>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+        <MudText Align="Align.Center" Class="pa-4">Loading your registrations...</MudText>
+    }
+    else if (!_recurringRegistrations.Any())
+    {
+        <MudCard>
+            <MudCardContent>
+                <MudStack AlignItems="AlignItems.Center" Spacing="3">
+                    <MudIcon Icon="@Icons.Material.Filled.EventBusy" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.h6" Align="Align.Center">No Recurring Registrations</MudText>
+                    <MudText Typo="Typo.body1" Align="Align.Center" Color="Color.Secondary">
+                        You haven't registered for any recurring event series yet.
+                    </MudText>
+                    <MudButton Variant="Variant.Filled" 
+                               Color="Color.Primary" 
+                               StartIcon="@Icons.Material.Filled.Search"
+                               OnClick="NavigateToEvents">
+                        Find Events to Join
+                    </MudButton>
+                </MudStack>
+            </MudCardContent>
+        </MudCard>
+    }
+    else
+    {
+        <!-- Recurring Registrations -->
+        <MudText Typo="Typo.h5">Recurring Event Series (@_recurringRegistrations.Count)</MudText>
+        
+        <MudGrid>
+            @foreach (var registration in _recurringRegistrations)
+            {
+                <MudItem xs="12" md="6" lg="4">
+                    <MudCard>
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudStack Spacing="1">
+                                    <MudText Typo="Typo.h6">@registration.EventSeriesName</MudText>
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                        <MudChip T="string" Size="Size.Small" 
+                                                 Color="@GetRegistrationTypeColor(registration.RegistrationType)"
+                                                 Text="@GetRegistrationTypeText(registration.RegistrationType)" />
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                            @registration.TotalRegistered/@registration.TotalOccurrences sessions
+                                        </MudText>
+                                    </MudStack>
+                                </MudStack>
+                            </CardHeaderContent>
+                            <CardHeaderActions>
+                                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+                                    <MudMenuItem Icon="@Icons.Material.Filled.Visibility"
+                                                 OnClick="() => ViewRegistrationDetails(registration)">
+                                        View Details
+                                    </MudMenuItem>
+                                    <MudMenuItem Icon="@Icons.Material.Filled.Edit"
+                                                 OnClick="() => ModifyRegistration(registration)">
+                                        Modify Registration
+                                    </MudMenuItem>
+                                    <MudDivider />
+                                    <MudMenuItem Icon="@Icons.Material.Filled.Cancel"
+                                                 OnClick="() => CancelRecurringRegistration(registration)">
+                                        Cancel All Future
+                                    </MudMenuItem>
+                                </MudMenu>
+                            </CardHeaderActions>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudStack Spacing="2">
+                                @if (registration.NextOccurrence.HasValue)
+                                {
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                        <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" Color="Color.Primary" />
+                                        <MudText Typo="Typo.body2">
+                                            <strong>Next:</strong> @registration.NextOccurrence.Value.ToString("MMM dd, yyyy 'at' h:mm tt")
+                                        </MudText>
+                                    </MudStack>
+                                }
+                                
+                                <!-- Progress Indicator -->
+                                <MudStack>
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                        <MudText Typo="Typo.body2">Progress</MudText>
+                                        <MudText Typo="Typo.body2">@registration.TotalRegistered/@registration.TotalOccurrences</MudText>
+                                    </MudStack>
+                                    <MudProgressLinear Value="@GetProgressPercentage(registration)" 
+                                                       Color="Color.Primary" 
+                                                       Size="Size.Small" />
+                                </MudStack>
+
+                                <!-- Upcoming Sessions Preview -->
+                                @if (registration.RegisteredEvents.Any())
+                                {
+                                    <MudStack>
+                                        <MudText Typo="Typo.body2"><strong>Upcoming Sessions:</strong></MudText>
+                                        @foreach (var eventOccurrence in registration.RegisteredEvents.Take(3))
+                                        {
+                                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="pl-2">
+                                                <MudIcon Icon="@GetEventStatusIcon(eventOccurrence)" 
+                                                         Size="Size.Small" 
+                                                         Color="@GetEventStatusColor(eventOccurrence)" />
+                                                <MudText Typo="Typo.body2" Style="font-size: 0.75rem;">
+                                                    @eventOccurrence.StartDateTime.ToString("MMM dd, h:mm tt")
+                                                    @if (eventOccurrence.IsFullyBooked)
+                                                    {
+                                                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Text="Full" />
+                                                    }
+                                                </MudText>
+                                            </MudStack>
+                                        }
+                                        @if (registration.RegisteredEvents.Count > 3)
+                                        {
+                                            <MudText Typo="Typo.body2" Style="font-size: 0.75rem;" Color="Color.Secondary" Class="pl-2">
+                                                +@(registration.RegisteredEvents.Count - 3) more sessions
+                                            </MudText>
+                                        }
+                                    </MudStack>
+                                }
+                            </MudStack>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Size="Size.Small" 
+                                       StartIcon="@Icons.Material.Filled.Visibility"
+                                       OnClick="() => ViewRegistrationDetails(registration)">
+                                View All Sessions
+                            </MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+</MudStack>
+
+<!-- Registration Details Dialog -->
+<MudDialog @bind-IsVisible="_showDetailsDialog" Options="_dialogOptions">
+    <DialogContent>
+        @if (_selectedRegistration != null)
+        {
+            <MudStack Spacing="3">
+                <MudText Typo="Typo.h6">@_selectedRegistration.EventSeriesName</MudText>
+                
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudChip T="string" Size="Size.Small" 
+                             Color="@GetRegistrationTypeColor(_selectedRegistration.RegistrationType)"
+                             Text="@GetRegistrationTypeText(_selectedRegistration.RegistrationType)" />
+                    <MudText Typo="Typo.body2">
+                        @_selectedRegistration.TotalRegistered/@_selectedRegistration.TotalOccurrences sessions registered
+                    </MudText>
+                </MudStack>
+
+                <MudDivider />
+
+                <MudText Typo="Typo.subtitle1">Your Registered Sessions</MudText>
+                
+                @if (_selectedRegistration.RegisteredEvents.Any())
+                {
+                    <MudList T="string" Dense="true">
+                        @foreach (var eventOccurrence in _selectedRegistration.RegisteredEvents)
+                        {
+                            <MudListItem T="string" 
+                                         Icon="@GetEventStatusIcon(eventOccurrence)"
+                                         IconColor="@GetEventStatusColor(eventOccurrence)">
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                    <MudStack Spacing="1">
+                                        <MudText Typo="Typo.body1">
+                                            @eventOccurrence.StartDateTime.ToString("dddd, MMM dd, yyyy")
+                                        </MudText>
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                            @eventOccurrence.StartDateTime.ToString("h:mm tt") - 
+                                            @eventOccurrence.EndDateTime.ToString("h:mm tt")
+                                        </MudText>
+                                    </MudStack>
+                                    <MudStack AlignItems="AlignItems.End">
+                                        <MudText Typo="Typo.body2">
+                                            @eventOccurrence.CurrentEnrollment/@eventOccurrence.MaxCapacity
+                                        </MudText>
+                                        @if (eventOccurrence.IsFullyBooked)
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Text="Full" />
+                                        }
+                                    </MudStack>
+                                </MudStack>
+                            </MudListItem>
+                        }
+                    </MudList>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">No upcoming sessions found.</MudText>
+                }
+            </MudStack>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDetailsDialog">Close</MudButton>
+        @if (_selectedRegistration != null)
+        {
+            <MudButton Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.Edit"
+                       OnClick="() => ModifyRegistration(_selectedRegistration)">
+                Modify Registration
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<RecurringRegistrationSummary> _recurringRegistrations = new();
+    private bool _loading = true;
+    private List<BreadcrumbItem> _breadcrumbItems = new();
+    
+    // Dialog state
+    private bool _showDetailsDialog = false;
+    private RecurringRegistrationSummary? _selectedRegistration;
+    private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        SetupBreadcrumbs();
+        await LoadUserRegistrationsAsync();
+    }
+
+    private void SetupBreadcrumbs()
+    {
+        _breadcrumbItems = new List<BreadcrumbItem>
+        {
+            new BreadcrumbItem("Home", href: "/", icon: Icons.Material.Filled.Home),
+            new BreadcrumbItem("Events", href: "/events", icon: Icons.Material.Filled.Event),
+            new BreadcrumbItem("My Registrations", href: null, disabled: true, icon: Icons.Material.Filled.PersonPin)
+        };
+    }
+
+    private async Task LoadUserRegistrationsAsync()
+    {
+        _loading = true;
+        
+        try
+        {
+            var response = await EventService.GetUserRecurringRegistrationsAsync();
+            if (response?.Success == true && response.Data != null)
+            {
+                _recurringRegistrations = response.Data;
+            }
+            else
+            {
+                Snackbar.Add("Failed to load your registrations", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading registrations: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void NavigateToEvents()
+    {
+        Navigation.NavigateTo("/events");
+    }
+
+    private void ViewRegistrationDetails(RecurringRegistrationSummary registration)
+    {
+        _selectedRegistration = registration;
+        _showDetailsDialog = true;
+    }
+
+    private void CloseDetailsDialog()
+    {
+        _showDetailsDialog = false;
+        _selectedRegistration = null;
+    }
+
+    private async Task ModifyRegistration(RecurringRegistrationSummary registration)
+    {
+        // Navigate to the master event or first occurrence to modify registration
+        var masterEventId = registration.MasterEventId;
+        
+        var parameters = new DialogParameters
+        {
+            ["Title"] = $"Modify Registration: {registration.EventSeriesName}",
+            ["EventId"] = registration.RegisteredEvents.FirstOrDefault()?.Id ?? Guid.Empty,
+            ["MasterEventId"] = masterEventId,
+            ["IsForSelf"] = true
+        };
+
+        var dialog = await DialogService.ShowAsync<RecurringRegistrationDialog>(
+            "Modify Series Registration", 
+            parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await LoadUserRegistrationsAsync(); // Refresh the data
+            CloseDetailsDialog();
+        }
+    }
+
+    private async Task CancelRecurringRegistration(RecurringRegistrationSummary registration)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Cancel Recurring Registration",
+            $"Are you sure you want to cancel your registration for all future sessions of '{registration.EventSeriesName}'? This action cannot be undone.",
+            yesText: "Cancel Registration",
+            cancelText: "Keep Registration",
+            options: new DialogOptions { MaxWidth = MaxWidth.Small });
+
+        if (confirmed == true)
+        {
+            // Implementation would involve calling a cancellation endpoint
+            Snackbar.Add("Cancellation functionality will be implemented in Phase 4", Severity.Info);
+        }
+    }
+
+    private double GetProgressPercentage(RecurringRegistrationSummary registration)
+    {
+        if (registration.TotalOccurrences == 0) return 0;
+        return (double)registration.TotalRegistered / registration.TotalOccurrences * 100;
+    }
+
+    private Color GetRegistrationTypeColor(RecurringRegistrationOption type)
+    {
+        return type switch
+        {
+            RecurringRegistrationOption.AllFutureOccurrences => Color.Success,
+            RecurringRegistrationOption.SelectSpecific => Color.Info,
+            RecurringRegistrationOption.NextN => Color.Warning,
+            RecurringRegistrationOption.ThisOccurrenceOnly => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+
+    private string GetRegistrationTypeText(RecurringRegistrationOption type)
+    {
+        return type switch
+        {
+            RecurringRegistrationOption.AllFutureOccurrences => "All Future",
+            RecurringRegistrationOption.SelectSpecific => "Selected",
+            RecurringRegistrationOption.NextN => "Next N",
+            RecurringRegistrationOption.ThisOccurrenceOnly => "Single",
+            _ => "Unknown"
+        };
+    }
+
+    private string GetEventStatusIcon(EventOccurrenceDto occurrence)
+    {
+        if (occurrence.StartDateTime < DateTime.Now)
+            return Icons.Material.Filled.CheckCircle;
+        if (occurrence.IsFullyBooked)
+            return Icons.Material.Filled.Warning;
+        return Icons.Material.Filled.Event;
+    }
+
+    private Color GetEventStatusColor(EventOccurrenceDto occurrence)
+    {
+        if (occurrence.StartDateTime < DateTime.Now)
+            return Color.Success;
+        if (occurrence.IsFullyBooked)
+            return Color.Warning;
+        return Color.Primary;
+    }
+}

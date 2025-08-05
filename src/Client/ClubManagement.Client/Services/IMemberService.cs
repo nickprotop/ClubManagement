@@ -11,4 +11,5 @@ public interface IMemberService
     Task<ApiResponse<MemberDto>?> UpdateMemberAsync(Guid id, UpdateMemberRequest request);
     Task<ApiResponse<bool>?> DeleteMemberAsync(Guid id);
     Task<ApiResponse<bool>?> UpdateMemberStatusAsync(Guid id, MembershipStatus status);
+    Task<ApiResponse<List<MemberSearchDto>>?> SearchMembersAsync(MemberQuickSearchRequest request);
 }

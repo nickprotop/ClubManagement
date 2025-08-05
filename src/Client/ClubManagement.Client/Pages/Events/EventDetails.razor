@@ -6,9 +6,11 @@
 @using ClubManagement.Shared.Models.Authorization
 @inject IEventService EventService
 @inject IMemberService MemberService
+@inject IAuthService AuthService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
+@inject INotificationService NotificationService
 
 <PageTitle>Event Details - Club Management</PageTitle>
 
@@ -180,13 +182,27 @@ else
                             @if (_isUserCheckedIn)
                             {
                                 <MudAlert Severity="Severity.Success" Dense="true">
-                                    <MudText>You are checked in for this event</MudText>
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" />
+                                        <MudText>You are checked in for this event</MudText>
+                                    </MudStack>
                                 </MudAlert>
                             }
                             @if (_isUserRegistered && !_isUserCheckedIn)
                             {
                                 <MudAlert Severity="Severity.Info" Dense="true">
-                                    <MudText>You are registered for this event</MudText>
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                        <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" />
+                                        <MudText>You are registered for this event</MudText>
+                                        @if (_userRegistrationStatus != null)
+                                        {
+                                            <MudChip T="string" Size="Size.Small" 
+                                                     Color="@GetRegistrationStatusColor(_userRegistrationStatus.Status)"
+                                                     Icon="@GetRegistrationStatusIcon(_userRegistrationStatus.Status)">
+                                                @GetRegistrationStatusText(_userRegistrationStatus.Status)
+                                            </MudChip>
+                                        }
+                                    </MudStack>
                                 </MudAlert>
                             }
                         </MudStack>
@@ -338,6 +354,7 @@ else
     private bool _loading = true;
     private bool _isUserRegistered;
     private bool _isUserCheckedIn;
+    private EventRegistrationDto? _userRegistrationStatus;
 
     private List<BreadcrumbItem> _breadcrumbItems = new();
 
@@ -375,6 +392,9 @@ else
 
             // Check user registration status
             CheckUserRegistrationStatus();
+            
+            // Load detailed user registration status
+            await LoadUserRegistrationStatus();
         }
         catch (Exception ex)
         {
@@ -408,51 +428,106 @@ else
 
     private async Task RegisterSelf()
     {
-        var request = new EventRegistrationRequest();
-        var response = await EventService.RegisterForEventAsync(EventId, request);
-        
-        if (response?.Success == true)
+        // Check if this is a recurring event
+        if (_event?.MasterEventId != null || _event?.IsRecurringMaster == true)
         {
-            Snackbar.Add(response.Message ?? "Successfully registered for event", Severity.Success);
-            await LoadEventDetailsAsync();
+            await ShowRecurringRegistrationDialog(true);
         }
         else
         {
-            Snackbar.Add(response?.Message ?? "Failed to register for event", Severity.Error);
+            // Single event registration
+            var request = new EventRegistrationRequest();
+            var response = await EventService.RegisterForEventAsync(EventId, request);
+            
+            if (response?.Success == true)
+            {
+                Snackbar.Add(response.Message ?? "Successfully registered for event", Severity.Success);
+                await LoadEventDetailsAsync();
+            }
+            else
+            {
+                Snackbar.Add(response?.Message ?? "Failed to register for event", Severity.Error);
+            }
         }
     }
 
     private async Task RegisterOthers()
     {
-        var parameters = new DialogParameters
+        // Check if this is a recurring event
+        if (_event?.MasterEventId != null || _event?.IsRecurringMaster == true)
         {
-            ["Title"] = "Select Member to Register",
-            ["EventId"] = EventId
-        };
-
-        var dialog = await DialogService.ShowAsync<MemberSelectionDialog>("Register Member", parameters);
-        var result = await dialog.Result;
-
-        if (!result.Canceled && result.Data is Guid memberId)
+            await ShowRecurringRegistrationDialog(false);
+        }
+        else
         {
-            try
+            // Single event registration - use the enhanced member selection dialog
+            var parameters = new DialogParameters
             {
-                var request = new EventRegistrationRequest { MemberId = memberId };
-                var response = await EventService.RegisterForEventAsync(EventId, request);
-                
-                if (response?.Success == true)
-                {
-                    Snackbar.Add(response.Message ?? "Member registered successfully", Severity.Success);
-                    await LoadEventDetailsAsync();
-                }
-                else
-                {
-                    Snackbar.Add(response?.Message ?? "Failed to register member", Severity.Error);
-                }
-            }
-            catch (Exception ex)
+                ["Title"] = "Select Member to Register",
+                ["EventId"] = EventId,
+                ["AllowMultipleSelection"] = true,
+                ["SubmitButtonText"] = "Register Members"
+            };
+
+            var dialog = await DialogService.ShowAsync<MemberSelectionDialog>("Register Members", parameters);
+            var result = await dialog.Result;
+
+            if (!result.Canceled && result.Data != null)
             {
-                Snackbar.Add($"Error registering member: {ex.Message}", Severity.Error);
+                try
+                {
+                    List<Guid> memberIds;
+                    
+                    // Handle both single Guid and List<Guid> results
+                    if (result.Data is Guid singleMemberId)
+                    {
+                        memberIds = new List<Guid> { singleMemberId };
+                    }
+                    else if (result.Data is List<Guid> multipleMemberIds)
+                    {
+                        memberIds = multipleMemberIds;
+                    }
+                    else
+                    {
+                        Snackbar.Add("Invalid member selection", Severity.Error);
+                        return;
+                    }
+
+                    // Register each member individually for single events
+                    int successCount = 0;
+                    int failCount = 0;
+                    
+                    foreach (var memberId in memberIds)
+                    {
+                        var request = new EventRegistrationRequest { MemberId = memberId };
+                        var response = await EventService.RegisterForEventAsync(EventId, request);
+                        
+                        if (response?.Success == true)
+                        {
+                            successCount++;
+                        }
+                        else
+                        {
+                            failCount++;
+                        }
+                    }
+                    
+                    if (successCount > 0)
+                    {
+                        var message = $"{successCount} member(s) registered successfully";
+                        if (failCount > 0) message += $", {failCount} failed";
+                        Snackbar.Add(message, failCount > 0 ? Severity.Warning : Severity.Success);
+                        await LoadEventDetailsAsync();
+                    }
+                    else
+                    {
+                        Snackbar.Add("Failed to register any members", Severity.Error);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.Add($"Error registering members: {ex.Message}", Severity.Error);
+                }
             }
         }
     }
@@ -707,6 +782,114 @@ else
             RegistrationStatus.Completed => Color.Dark,
             RegistrationStatus.Declined => Color.Error,
             _ => Color.Default
+        };
+    }
+
+    private async Task ShowRecurringRegistrationDialog(bool isForSelf)
+    {
+        // Determine the master event ID
+        var masterEventId = _event?.IsRecurringMaster == true ? _event.Id : _event?.MasterEventId;
+        
+        if (masterEventId == null)
+        {
+            Snackbar.Add("Unable to determine recurring event series", Severity.Error);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["Title"] = isForSelf ? "Register for Recurring Event" : "Register Others for Recurring Event",
+            ["EventId"] = EventId,
+            ["MasterEventId"] = masterEventId.Value,
+            ["IsForSelf"] = isForSelf
+        };
+
+        var dialog = await DialogService.ShowAsync<RecurringRegistrationDialog>(
+            isForSelf ? "Register for Series" : "Register Others for Series", 
+            parameters,
+            new DialogOptions 
+            { 
+                MaxWidth = MaxWidth.Medium, 
+                FullWidth = true 
+            });
+        
+        var result = await dialog.Result;
+
+        if (!result.Canceled && result.Data is RecurringRegistrationResponse response)
+        {
+            // Use enhanced notification service
+            if (response.SuccessfulRegistrations > 0)
+            {
+                NotificationService.ShowRegistrationSuccess(
+                    response.SuccessfulRegistrations, 
+                    response.FailedRegistrations, 
+                    response.Warnings);
+                
+                // Show recurring-specific success message
+                if (_event != null)
+                {
+                    NotificationService.ShowRecurringRegistrationSuccess(
+                        _event.Title,
+                        response.SuccessfulRegistrations,
+                        response.SuccessfulRegistrations + response.FailedRegistrations);
+                }
+            }
+            else
+            {
+                NotificationService.ShowRegistrationFailure(
+                    "No registrations were successful",
+                    response.Results.FirstOrDefault()?.ErrorMessage);
+            }
+            
+            // Reload event details to reflect changes
+            await LoadEventDetailsAsync();
+        }
+    }
+
+    private async Task LoadUserRegistrationStatus()
+    {
+        try
+        {
+            var response = await EventService.GetUserRegistrationStatusAsync(EventId);
+            if (response?.Success == true)
+            {
+                _userRegistrationStatus = response.Data;
+            }
+        }
+        catch (Exception)
+        {
+            // Ignore errors for registration status - it's not critical
+            // This keeps the page functional even if user isn't registered
+        }
+    }
+
+    private string GetRegistrationStatusIcon(RegistrationStatus status)
+    {
+        return status switch
+        {
+            RegistrationStatus.Confirmed => Icons.Material.Filled.CheckCircle,
+            RegistrationStatus.Pending => Icons.Material.Filled.Schedule,
+            RegistrationStatus.Waitlisted => Icons.Material.Filled.HourglassEmpty,
+            RegistrationStatus.Cancelled => Icons.Material.Filled.Cancel,
+            RegistrationStatus.NoShow => Icons.Material.Filled.PersonOff,
+            RegistrationStatus.Completed => Icons.Material.Filled.Done,
+            RegistrationStatus.Declined => Icons.Material.Filled.ThumbDown,
+            _ => Icons.Material.Filled.Person
+        };
+    }
+
+    private string GetRegistrationStatusText(RegistrationStatus status)
+    {
+        return status switch
+        {
+            RegistrationStatus.Confirmed => "Confirmed",
+            RegistrationStatus.Pending => "Pending",
+            RegistrationStatus.Waitlisted => "Waitlisted",
+            RegistrationStatus.Cancelled => "Cancelled",
+            RegistrationStatus.NoShow => "No Show",
+            RegistrationStatus.Completed => "Attended",
+            RegistrationStatus.Declined => "Declined",
+            _ => "Unknown"
         };
     }
 }

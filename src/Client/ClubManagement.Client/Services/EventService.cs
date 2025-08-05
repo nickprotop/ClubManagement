@@ -113,6 +113,11 @@ public class EventService : IEventService
         return await _apiService.GetAsync<List<EventRegistrationDto>>($"api/events/{eventId}/registrations");
     }
 
+    public async Task<ApiResponse<EventRegistrationDto>?> GetUserRegistrationStatusAsync(Guid eventId)
+    {
+        return await _apiService.GetAsync<EventRegistrationDto>($"api/events/{eventId}/registrations/my-status");
+    }
+
     public async Task<ApiResponse<EventRegistrationDto>?> UpdateRegistrationAsync(Guid eventId, Guid registrationId, UpdateRegistrationRequest request)
     {
         return await _apiService.PutAsync<EventRegistrationDto>($"api/events/{eventId}/registrations/{registrationId}", request);
@@ -174,5 +179,21 @@ public class EventService : IEventService
     public async Task<ApiResponse<RecurrenceUpdateResult>?> UpdateRecurrenceSeriesAsync(Guid eventId, UpdateRecurrenceRequest request)
     {
         return await _apiService.PutAsync<RecurrenceUpdateResult>($"api/events/{eventId}/recurrence", request);
+    }
+
+    // Bulk registration operations
+    public async Task<ApiResponse<RecurringRegistrationResponse>?> BulkRegisterForEventsAsync(BulkEventRegistrationRequest request)
+    {
+        return await _apiService.PostAsync<RecurringRegistrationResponse>("api/events/bulk-register", request);
+    }
+
+    public async Task<ApiResponse<RecurringEventOptionsDto>?> GetRecurringEventOptionsAsync(Guid masterEventId)
+    {
+        return await _apiService.GetAsync<RecurringEventOptionsDto>($"api/events/{masterEventId}/recurring-options");
+    }
+
+    public async Task<ApiResponse<List<RecurringRegistrationSummary>>?> GetUserRecurringRegistrationsAsync()
+    {
+        return await _apiService.GetAsync<List<RecurringRegistrationSummary>>("api/events/user/recurring-registrations");
     }
 }

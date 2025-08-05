@@ -341,6 +341,57 @@ builder.Services.AddScoped<I[Feature]AuthorizationService, [Feature]Authorizatio
 
 **Always implement this pattern when adding new controllers or features requiring role-based access control.**
 
+## MudBlazor Component Binding Patterns
+
+**IMPORTANT**: Use these correct binding patterns for MudBlazor 8+ components.
+
+### Radio Groups
+```razor
+<!-- CORRECT -->
+<MudRadioGroup @bind-Value="selectedOption">
+    <MudRadio Value="OptionEnum.Option1">Option 1</MudRadio>
+    <MudRadio Value="OptionEnum.Option2">Option 2</MudRadio>
+</MudRadioGroup>
+
+<!-- WRONG - Do not use these patterns -->
+<MudRadioGroup SelectedOption="..." SelectedOptionChanged="...">
+<MudRadio Option="..." T="...">
+```
+
+**Key Points:**
+- Use `@bind-Value` on `MudRadioGroup` (not `SelectedOption`)
+- Use `Value` attribute on `MudRadio` (not `Option`)
+- Do not mix `@bind-Value` with `SelectedOptionChanged` (causes duplicate parameter errors)
+
+### Checkboxes
+```razor
+<!-- CORRECT -->
+<MudCheckBox @bind-Value="booleanField" Label="My Checkbox" />
+
+<!-- WRONG - Do not use -->
+<MudCheckBox @bind-Checked="booleanField" />
+<MudCheckBox T="bool" @bind-Checked="..." />
+```
+
+**Key Points:**
+- Use `@bind-Value` (not `@bind-Checked`)
+- MudBlazor checkboxes use `Value` binding, not `Checked` like HTML checkboxes
+
+### Dictionary Binding Issues
+```razor
+<!-- PROBLEMATIC - Dictionary binding can be unreliable -->
+<MudCheckBox @bind-Value="@dictionary[key]" />
+
+<!-- PREFERRED - Individual fields for fixed sets -->
+<MudCheckBox @bind-Value="_sunday" Label="Sunday" />
+<MudCheckBox @bind-Value="_monday" Label="Monday" />
+```
+
+**Best Practices:**
+- Avoid dictionary binding in loops - use individual boolean fields for fixed sets
+- Direct field binding is more reliable than dictionary access
+- Keep binding patterns simple rather than complex property wrappers
+
 ## Documentation
 - **CHANGELOG.md**: All notable changes to the Club Management Platform are documented in CHANGELOG.md following Keep a Changelog format
 - **Feature Tracking**: When adding new features, update CHANGELOG.md with Added/Changed/Fixed sections

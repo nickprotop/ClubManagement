@@ -690,6 +690,52 @@ public class EventsController : ControllerBase
         }
     }
 
+    [HttpGet("{id}/registrations/my-status")]
+    public async Task<ActionResult<ApiResponse<EventRegistrationDto>>> GetUserRegistrationStatus(Guid id)
+    {
+        try
+        {
+            var userId = this.GetCurrentUserId();
+            var userMember = await _context.Members.FirstOrDefaultAsync(m => m.UserId == userId);
+            
+            // If user doesn't have a member profile (e.g., staff users), return a meaningful response
+            if (userMember == null)
+                return NotFound(ApiResponse<EventRegistrationDto>.ErrorResult("User is not a member and cannot have event registrations"));
+
+            var registration = await _context.EventRegistrations
+                .Include(r => r.Member)
+                    .ThenInclude(m => m.User)
+                .Include(r => r.RegisteredByUser)
+                .Include(r => r.CheckedInByUser)
+                .FirstOrDefaultAsync(r => r.EventId == id && r.MemberId == userMember.Id);
+
+            if (registration == null)
+                return NotFound(ApiResponse<EventRegistrationDto>.ErrorResult("User is not registered for this event"));
+
+            var registrationDto = new EventRegistrationDto
+            {
+                Id = registration.Id,
+                MemberId = registration.MemberId,
+                MemberName = $"{registration.Member.User.FirstName} {registration.Member.User.LastName}",
+                Status = registration.Status,
+                RegisteredAt = registration.RegisteredAt,
+                RegisteredByName = registration.RegisteredByUser?.Email ?? "System",
+                CheckedInAt = registration.CheckedInAt,
+                CheckedInByName = registration.CheckedInByUser?.Email,
+                NoShow = registration.NoShow,
+                IsWaitlisted = registration.Status == RegistrationStatus.Waitlisted,
+                WaitlistPosition = registration.WaitlistPosition,
+                Notes = registration.Notes
+            };
+
+            return Ok(ApiResponse<EventRegistrationDto>.SuccessResult(registrationDto));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<EventRegistrationDto>.ErrorResult($"Error retrieving user registration status: {ex.Message}"));
+        }
+    }
+
     [HttpPut("{id}/registrations/{registrationId}")]
     [Authorize(Roles = "Staff,Instructor,Coach,Admin,SuperAdmin")]
     public async Task<ActionResult<ApiResponse<EventRegistrationDto>>> UpdateRegistration(Guid id, Guid registrationId, [FromBody] UpdateRegistrationRequest request)
@@ -1132,6 +1178,333 @@ public class EventsController : ControllerBase
         await _context.SaveChangesAsync();
 
         // TODO: Send promotion notifications to confirmed members
+    }
+
+    // Bulk Registration Endpoints for Recurring Events
+    [HttpPost("bulk-register")]
+    public async Task<ActionResult<ApiResponse<RecurringRegistrationResponse>>> BulkRegisterForEvents([FromBody] BulkEventRegistrationRequest request)
+    {
+        try
+        {
+            var userId = this.GetCurrentUserId();
+            var response = new RecurringRegistrationResponse();
+
+            // Validate input
+            if (!request.EventIds.Any())
+                return BadRequest(ApiResponse<RecurringRegistrationResponse>.ErrorResult("No events specified for registration"));
+
+            if (!request.MemberIds.Any())
+                return BadRequest(ApiResponse<RecurringRegistrationResponse>.ErrorResult("No members specified for registration"));
+
+            // Process each event-member combination
+            foreach (var eventId in request.EventIds)
+            {
+                foreach (var memberId in request.MemberIds)
+                {
+                    try
+                    {
+                        var result = await RegisterMemberForEventInternal(eventId, memberId, userId, request.Notes);
+                        response.Results.Add(result);
+                        
+                        if (result.Success)
+                        {
+                            response.SuccessfulRegistrations++;
+                        }
+                        else
+                        {
+                            response.FailedRegistrations++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        response.FailedRegistrations++;
+                        response.Results.Add(new EventRegistrationResult
+                        {
+                            EventId = eventId,
+                            MemberId = memberId,
+                            Success = false,
+                            ErrorMessage = ex.Message,
+                            Status = RegistrationStatus.Declined
+                        });
+                    }
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            var message = $"Bulk registration completed: {response.SuccessfulRegistrations} successful, {response.FailedRegistrations} failed";
+            return Ok(ApiResponse<RecurringRegistrationResponse>.SuccessResult(response, message));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<RecurringRegistrationResponse>.ErrorResult($"Error processing bulk registration: {ex.Message}"));
+        }
+    }
+
+    [HttpGet("{masterEventId}/recurring-options")]
+    public async Task<ActionResult<ApiResponse<RecurringEventOptionsDto>>> GetRecurringEventOptions(Guid masterEventId)
+    {
+        try
+        {
+            var userId = this.GetCurrentUserId();
+            
+            // Check if this is a recurring master event
+            var masterEvent = await _context.Events
+                .Include(e => e.Facility)
+                .Include(e => e.Instructor)
+                .FirstOrDefaultAsync(e => e.Id == masterEventId && e.IsRecurringMaster);
+                
+            if (masterEvent == null)
+                return NotFound(ApiResponse<RecurringEventOptionsDto>.ErrorResult("Recurring event series not found"));
+
+            // Get all future occurrences
+            var upcomingOccurrences = await _context.Events
+                .Where(e => e.MasterEventId == masterEventId && e.StartDateTime > DateTime.UtcNow)
+                .OrderBy(e => e.StartDateTime)
+                .Select(e => new EventOccurrenceDto
+                {
+                    Id = e.Id,
+                    Title = e.Title,
+                    StartDateTime = e.StartDateTime,
+                    EndDateTime = e.EndDateTime,
+                    CurrentEnrollment = e.CurrentEnrollment,
+                    MaxCapacity = e.MaxCapacity,
+                    IsFullyBooked = e.CurrentEnrollment >= e.MaxCapacity,
+                    AllowWaitlist = e.AllowWaitlist
+                })
+                .ToListAsync();
+
+            // Check if user is registered for any occurrences
+            var userMember = await _context.Members.FirstOrDefaultAsync(m => m.UserId == userId);
+            if (userMember != null)
+            {
+                var registeredEventIds = await _context.EventRegistrations
+                    .Where(r => r.MemberId == userMember.Id && r.Status != RegistrationStatus.Cancelled)
+                    .Select(r => r.EventId)
+                    .ToListAsync();
+
+                foreach (var occurrence in upcomingOccurrences)
+                {
+                    occurrence.IsUserRegistered = registeredEventIds.Contains(occurrence.Id);
+                }
+            }
+
+            var options = new RecurringEventOptionsDto
+            {
+                MasterEventId = masterEventId,
+                SeriesTitle = masterEvent.Title,
+                UpcomingOccurrences = upcomingOccurrences,
+                TotalOccurrences = upcomingOccurrences.Count,
+                RecurrencePattern = masterEvent.Recurrence
+            };
+
+            return Ok(ApiResponse<RecurringEventOptionsDto>.SuccessResult(options));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<RecurringEventOptionsDto>.ErrorResult($"Error retrieving recurring event options: {ex.Message}"));
+        }
+    }
+
+    [HttpGet("user/recurring-registrations")]
+    public async Task<ActionResult<ApiResponse<List<RecurringRegistrationSummary>>>> GetUserRecurringRegistrations()
+    {
+        try
+        {
+            var userId = this.GetCurrentUserId();
+            var userMember = await _context.Members.FirstOrDefaultAsync(m => m.UserId == userId);
+            
+            if (userMember == null)
+                return Ok(ApiResponse<List<RecurringRegistrationSummary>>.SuccessResult(new List<RecurringRegistrationSummary>()));
+
+            // Get all recurring event series the user is registered for
+            var recurringRegistrations = await _context.EventRegistrations
+                .Include(r => r.Event)
+                .ThenInclude(e => e.Facility)
+                .Where(r => r.MemberId == userMember.Id && 
+                           r.Status != RegistrationStatus.Cancelled &&
+                           r.Event.MasterEventId != null)
+                .GroupBy(r => r.Event.MasterEventId)
+                .Select(g => new
+                {
+                    MasterEventId = g.Key,
+                    Registrations = g.ToList()
+                })
+                .ToListAsync();
+
+            var summaries = new List<RecurringRegistrationSummary>();
+
+            foreach (var group in recurringRegistrations)
+            {
+                if (!group.MasterEventId.HasValue) continue;
+
+                var masterEvent = await _context.Events
+                    .FirstOrDefaultAsync(e => e.Id == group.MasterEventId.Value && e.IsRecurringMaster);
+
+                if (masterEvent == null) continue;
+
+                var registeredEvents = group.Registrations
+                    .Where(r => r.Event.StartDateTime > DateTime.UtcNow)
+                    .OrderBy(r => r.Event.StartDateTime)
+                    .Select(r => new EventOccurrenceDto
+                    {
+                        Id = r.Event.Id,
+                        Title = r.Event.Title,
+                        StartDateTime = r.Event.StartDateTime,
+                        EndDateTime = r.Event.EndDateTime,
+                        CurrentEnrollment = r.Event.CurrentEnrollment,
+                        MaxCapacity = r.Event.MaxCapacity,
+                        IsUserRegistered = true,
+                        IsFullyBooked = r.Event.CurrentEnrollment >= r.Event.MaxCapacity,
+                        AllowWaitlist = r.Event.AllowWaitlist
+                    })
+                    .ToList();
+
+                var summary = new RecurringRegistrationSummary
+                {
+                    MasterEventId = group.MasterEventId.Value,
+                    EventSeriesName = masterEvent.Title,
+                    NextOccurrence = registeredEvents.FirstOrDefault()?.StartDateTime,
+                    TotalRegistered = registeredEvents.Count,
+                    TotalOccurrences = await _context.Events.CountAsync(e => e.MasterEventId == group.MasterEventId),
+                    RegistrationType = DetermineRegistrationType(registeredEvents.Count, await _context.Events.CountAsync(e => e.MasterEventId == group.MasterEventId && e.StartDateTime > DateTime.UtcNow)),
+                    RegisteredEvents = registeredEvents
+                };
+
+                summaries.Add(summary);
+            }
+
+            return Ok(ApiResponse<List<RecurringRegistrationSummary>>.SuccessResult(summaries));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<List<RecurringRegistrationSummary>>.ErrorResult($"Error retrieving recurring registrations: {ex.Message}"));
+        }
+    }
+
+    private async Task<EventRegistrationResult> RegisterMemberForEventInternal(Guid eventId, Guid memberId, Guid registeredByUserId, string? notes)
+    {
+        var eventEntity = await _context.Events
+            .Include(e => e.Facility)
+            .FirstOrDefaultAsync(e => e.Id == eventId);
+            
+        if (eventEntity == null)
+        {
+            return new EventRegistrationResult
+            {
+                EventId = eventId,
+                MemberId = memberId,
+                Success = false,
+                ErrorMessage = "Event not found",
+                Status = RegistrationStatus.Declined
+            };
+        }
+
+        var member = await _context.Members
+            .Include(m => m.User)
+            .FirstOrDefaultAsync(m => m.Id == memberId);
+            
+        if (member == null)
+        {
+            return new EventRegistrationResult
+            {
+                EventId = eventId,
+                MemberId = memberId,
+                Success = false,
+                ErrorMessage = "Member not found",
+                Status = RegistrationStatus.Declined,
+                EventTitle = eventEntity.Title,
+                EventDateTime = eventEntity.StartDateTime
+            };
+        }
+
+        // Check if already registered
+        var existingRegistration = await _context.EventRegistrations
+            .FirstOrDefaultAsync(r => r.EventId == eventId && r.MemberId == memberId);
+            
+        if (existingRegistration != null)
+        {
+            return new EventRegistrationResult
+            {
+                EventId = eventId,
+                MemberId = memberId,
+                Success = false,
+                ErrorMessage = "Already registered for this event",
+                Status = existingRegistration.Status,
+                EventTitle = eventEntity.Title,
+                MemberName = $"{member.User.FirstName} {member.User.LastName}",
+                EventDateTime = eventEntity.StartDateTime
+            };
+        }
+
+        // Check capacity
+        var currentRegistrations = await _context.EventRegistrations
+            .CountAsync(r => r.EventId == eventId && r.Status == RegistrationStatus.Confirmed);
+
+        var status = currentRegistrations < eventEntity.MaxCapacity 
+            ? RegistrationStatus.Confirmed 
+            : (eventEntity.AllowWaitlist ? RegistrationStatus.Waitlisted : RegistrationStatus.Declined);
+
+        if (status == RegistrationStatus.Declined)
+        {
+            return new EventRegistrationResult
+            {
+                EventId = eventId,
+                MemberId = memberId,
+                Success = false,
+                ErrorMessage = "Event is full and waitlist is not allowed",
+                Status = RegistrationStatus.Declined,
+                EventTitle = eventEntity.Title,
+                MemberName = $"{member.User.FirstName} {member.User.LastName}",
+                EventDateTime = eventEntity.StartDateTime
+            };
+        }
+
+        var registration = new EventRegistration
+        {
+            EventId = eventId,
+            MemberId = memberId,
+            RegisteredByUserId = registeredByUserId,
+            Status = status,
+            RegisteredAt = DateTime.UtcNow,
+            Notes = notes,
+            IsWaitlisted = status == RegistrationStatus.Waitlisted
+        };
+
+        if (status == RegistrationStatus.Waitlisted)
+        {
+            var waitlistCount = await _context.EventRegistrations
+                .CountAsync(r => r.EventId == eventId && r.Status == RegistrationStatus.Waitlisted);
+            registration.WaitlistPosition = waitlistCount + 1;
+        }
+
+        _context.EventRegistrations.Add(registration);
+
+        // Update enrollment count
+        if (status == RegistrationStatus.Confirmed)
+        {
+            eventEntity.CurrentEnrollment++;
+        }
+
+        return new EventRegistrationResult
+        {
+            EventId = eventId,
+            MemberId = memberId,
+            Success = true,
+            Status = status,
+            EventTitle = eventEntity.Title,
+            MemberName = $"{member.User.FirstName} {member.User.LastName}",
+            EventDateTime = eventEntity.StartDateTime
+        };
+    }
+
+    private static RecurringRegistrationOption DetermineRegistrationType(int registeredCount, int totalUpcoming)
+    {
+        if (registeredCount == totalUpcoming && totalUpcoming > 0)
+            return RecurringRegistrationOption.AllFutureOccurrences;
+        if (registeredCount == 1)
+            return RecurringRegistrationOption.ThisOccurrenceOnly;
+        return RecurringRegistrationOption.SelectSpecific;
     }
 }
 

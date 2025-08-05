@@ -4,9 +4,11 @@
 @using ClubManagement.Shared.Models
 @using ClubManagement.Shared.Models.Authorization
 @inject IEventService EventService
+@inject IAuthService AuthService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
+@inject INotificationService NotificationService
 
 <PageTitle>Events - Club Management</PageTitle>
 
@@ -130,11 +132,35 @@
                         <MudStack Spacing="1">
                             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
                                 <MudText Typo="Typo.body1"><strong>@context.Title</strong></MudText>
-                                @if (context.IsRecurringMaster || context.MasterEventId.HasValue)
+                                @if (context.IsRecurringMaster)
                                 {
-                                    <MudTooltip Text="@GetRecurrenceTooltip(context)">
-                                        <MudIcon Icon="@Icons.Material.Filled.Repeat" Size="Size.Small" Color="Color.Primary" />
+                                    <MudTooltip Text="@GetRecurrenceTooltip(context)" Placement="Placement.Top">
+                                        <MudChip T="string" Size="Size.Small" 
+                                                 Color="Color.Primary" 
+                                                 Icon="@Icons.Material.Filled.Repeat"
+                                                 Text="Series" />
                                     </MudTooltip>
+                                }
+                                else if (context.MasterEventId.HasValue)
+                                {
+                                    <MudTooltip Text="@GetRecurrenceTooltip(context)" Placement="Placement.Top">
+                                        <MudChip T="string" Size="Size.Small" 
+                                                 Color="Color.Info" 
+                                                 Icon="@Icons.Material.Filled.Link"
+                                                 Text="Part of Series" />
+                                    </MudTooltip>
+                                }
+                                @if (IsEventFullyBooked(context))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Text="Full" />
+                                }
+                                @if (IsEventStartingSoon(context))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Text="Starting Soon" />
+                                }
+                                @if (context.Price == 0)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Text="Free" />
                                 }
                             </MudStack>
                             @if (context.MasterEventId.HasValue && context.OccurrenceNumber.HasValue)
@@ -289,6 +315,7 @@
         {
             // Permissions loading error - continue with no permissions
             Console.WriteLine($"Error loading permissions: {ex.Message}");
+            _generalPermissions = null;
         }
     }
 
@@ -385,22 +412,35 @@
     {
         try
         {
+            var eventItem = _events?.Items?.FirstOrDefault(e => e.Id == eventId);
             var request = new EventRegistrationRequest(); // Self-registration (MemberId is null)
             var response = await EventService.RegisterForEventAsync(eventId, request);
             
             if (response?.Success == true)
             {
-                Snackbar.Add(response.Message ?? "Successfully registered for event", Severity.Success);
+                NotificationService.ShowRegistrationSuccess(1, 0);
+                if (eventItem != null)
+                {
+                    NotificationService.ShowEnhancedNotification(
+                        "Registration Successful", 
+                        $"You are now registered for '{eventItem.Title}'", 
+                        Severity.Success, 
+                        "View Details", 
+                        () => ViewEvent(eventId));
+                }
                 await LoadEvents(); // Refresh the list
             }
             else
             {
-                Snackbar.Add(response?.Message ?? "Failed to register for event", Severity.Error);
+                NotificationService.ShowRegistrationFailure(
+                    response?.Message ?? "Failed to register for event");
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error registering for event: {ex.Message}", Severity.Error);
+            NotificationService.ShowRegistrationFailure(
+                "Registration Error", 
+                ex.Message);
         }
     }
 
@@ -441,13 +481,26 @@
         if (eventDto.IsRecurringMaster)
         {
             var recurrenceType = eventDto.RecurrenceType?.ToString() ?? "Unknown";
-            return $"Recurring {recurrenceType} Event (Master)";
+            return $"Master event for {recurrenceType.ToLower()} recurring series. Click to manage the entire series.";
         }
         else if (eventDto.MasterEventId.HasValue)
         {
             var recurrenceType = eventDto.RecurrenceType?.ToString() ?? "Unknown";
-            return $"Recurring {recurrenceType} Event Occurrence";
+            var occurrenceText = eventDto.OccurrenceNumber.HasValue ? $" (#{eventDto.OccurrenceNumber})" : "";
+            return $"Part of a {recurrenceType.ToLower()} recurring series{occurrenceText}. Registration options include the full series.";
         }
         return "Recurring Event";
     }
+
+    private bool IsEventFullyBooked(EventListDto eventDto)
+    {
+        return eventDto.CurrentEnrollment >= eventDto.MaxCapacity;
+    }
+
+    private bool IsEventStartingSoon(EventListDto eventDto)
+    {
+        var hoursUntilStart = (eventDto.StartDateTime - DateTime.Now).TotalHours;
+        return hoursUntilStart > 0 && hoursUntilStart <= 2; // Starting within 2 hours
+    }
+
 }

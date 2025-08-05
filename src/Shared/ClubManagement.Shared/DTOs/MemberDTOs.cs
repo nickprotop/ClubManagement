@@ -62,3 +62,23 @@ public class MemberSearchRequest
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 25;
 }
+
+public class MemberQuickSearchRequest
+{
+    public string SearchTerm { get; set; } = string.Empty;
+    public int MaxResults { get; set; } = 20;
+    public bool IncludeInactive { get; set; } = false;
+}
+
+public class MemberSearchDto
+{
+    public Guid Id { get; set; }
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string MembershipNumber { get; set; } = string.Empty;
+    public string FullName => $"{FirstName} {LastName}".Trim();
+    public string DisplayText => $"{FullName} ({MembershipNumber})";
+    public MembershipStatus Status { get; set; }
+    public string? ProfilePhotoUrl { get; set; }
+}

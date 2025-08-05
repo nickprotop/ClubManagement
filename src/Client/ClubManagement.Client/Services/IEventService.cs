@@ -21,8 +21,14 @@ public interface IEventService
     // Registration operations
     Task<ApiResponse<EventRegistrationDto>?> RegisterForEventAsync(Guid eventId, EventRegistrationRequest request);
     Task<ApiResponse<List<EventRegistrationDto>>?> GetEventRegistrationsAsync(Guid eventId);
+    Task<ApiResponse<EventRegistrationDto>?> GetUserRegistrationStatusAsync(Guid eventId);
     Task<ApiResponse<EventRegistrationDto>?> UpdateRegistrationAsync(Guid eventId, Guid registrationId, UpdateRegistrationRequest request);
     Task<ApiResponse<bool>?> CancelRegistrationAsync(Guid eventId, Guid registrationId);
+    
+    // Bulk registration operations
+    Task<ApiResponse<RecurringRegistrationResponse>?> BulkRegisterForEventsAsync(BulkEventRegistrationRequest request);
+    Task<ApiResponse<RecurringEventOptionsDto>?> GetRecurringEventOptionsAsync(Guid masterEventId);
+    Task<ApiResponse<List<RecurringRegistrationSummary>>?> GetUserRecurringRegistrationsAsync();
     
     // Check-in operations
     Task<ApiResponse<bool>?> CheckInMemberAsync(Guid eventId, Guid memberId);

@@ -153,12 +153,13 @@
                                     <MudItem xs="12">
                                         <MudText Typo="Typo.subtitle2" Class="mb-2">Days of Week</MudText>
                                         <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
-                                            @foreach (DayOfWeek day in Enum.GetValues<DayOfWeek>())
-                                            {
-                                                <MudCheckBox T="bool" @bind-Checked="@_selectedDays[day]" 
-                                                             Label="@day.ToString()"
-                                                             Color="Color.Primary" />
-                                            }
+                                            <MudCheckBox @bind-Value="_sunday" Label="Sunday" Color="Color.Primary" />
+                                            <MudCheckBox @bind-Value="_monday" Label="Monday" Color="Color.Primary" />
+                                            <MudCheckBox @bind-Value="_tuesday" Label="Tuesday" Color="Color.Primary" />
+                                            <MudCheckBox @bind-Value="_wednesday" Label="Wednesday" Color="Color.Primary" />
+                                            <MudCheckBox @bind-Value="_thursday" Label="Thursday" Color="Color.Primary" />
+                                            <MudCheckBox @bind-Value="_friday" Label="Friday" Color="Color.Primary" />
+                                            <MudCheckBox @bind-Value="_saturday" Label="Saturday" Color="Color.Primary" />
                                         </MudStack>
                                     </MudItem>
                                 }
@@ -283,7 +284,14 @@
     // Recurrence fields for series editing
     private RecurrenceType _recurrenceType;
     private int _recurrenceInterval = 1;
-    private Dictionary<DayOfWeek, bool> _selectedDays = new();
+    // Individual boolean fields for better MudBlazor binding
+    private bool _sunday = false;
+    private bool _monday = false;
+    private bool _tuesday = false;
+    private bool _wednesday = false;
+    private bool _thursday = false;
+    private bool _friday = false;
+    private bool _saturday = false;
     private RecurrenceEndType _recurrenceEndType = RecurrenceEndType.Never;
     private DateTime? _recurrenceEndDate;
     private int? _maxOccurrences;
@@ -357,7 +365,7 @@
         
         // Initialize recurrence fields for series editing
         InitializeDaysOfWeek();
-        if (_editEntireSeries && _event.Recurrence != null)
+        if (_event.Recurrence != null)
         {
             PopulateRecurrenceFields(_event.Recurrence);
         }
@@ -365,10 +373,7 @@
 
     private void InitializeDaysOfWeek()
     {
-        foreach (DayOfWeek day in Enum.GetValues<DayOfWeek>())
-        {
-            _selectedDays[day] = false;
-        }
+        _sunday = _monday = _tuesday = _wednesday = _thursday = _friday = _saturday = false;
     }
     
     private void PopulateRecurrenceFields(RecurrencePattern recurrence)
@@ -381,9 +386,12 @@
         {
             foreach (var day in recurrence.DaysOfWeek)
             {
-                _selectedDays[day] = true;
+                SetDaySelected(day, true);
             }
         }
+        
+        // Force UI update after setting days
+        StateHasChanged();
         
         // Set recurrence end options
         if (recurrence.EndDate.HasValue)
@@ -413,7 +421,7 @@
         // Set days of week for weekly recurrence
         if (_recurrenceType == RecurrenceType.Weekly)
         {
-            pattern.DaysOfWeek = _selectedDays.Where(kvp => kvp.Value).Select(kvp => kvp.Key).ToList();
+            pattern.DaysOfWeek = GetSelectedDays();
         }
         
         // Set recurrence end options
@@ -611,5 +619,32 @@
         {
             Snackbar.Add($"Error loading master event: {ex.Message}", Severity.Error);
         }
+    }
+
+    private void SetDaySelected(DayOfWeek day, bool selected)
+    {
+        switch (day)
+        {
+            case DayOfWeek.Sunday: _sunday = selected; break;
+            case DayOfWeek.Monday: _monday = selected; break;
+            case DayOfWeek.Tuesday: _tuesday = selected; break;
+            case DayOfWeek.Wednesday: _wednesday = selected; break;
+            case DayOfWeek.Thursday: _thursday = selected; break;
+            case DayOfWeek.Friday: _friday = selected; break;
+            case DayOfWeek.Saturday: _saturday = selected; break;
+        }
+    }
+    
+    private List<DayOfWeek> GetSelectedDays()
+    {
+        var selected = new List<DayOfWeek>();
+        if (_sunday) selected.Add(DayOfWeek.Sunday);
+        if (_monday) selected.Add(DayOfWeek.Monday);
+        if (_tuesday) selected.Add(DayOfWeek.Tuesday);
+        if (_wednesday) selected.Add(DayOfWeek.Wednesday);
+        if (_thursday) selected.Add(DayOfWeek.Thursday);
+        if (_friday) selected.Add(DayOfWeek.Friday);
+        if (_saturday) selected.Add(DayOfWeek.Saturday);
+        return selected;
     }
 }

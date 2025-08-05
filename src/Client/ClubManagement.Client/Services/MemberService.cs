@@ -59,6 +59,11 @@ public class MemberService : IMemberService
         return await _apiService.DeleteAsync<bool>($"api/members/{id}");
     }
 
+    public async Task<ApiResponse<List<MemberSearchDto>>?> SearchMembersAsync(MemberQuickSearchRequest request)
+    {
+        return await _apiService.PostAsync<List<MemberSearchDto>>("api/members/search", request);
+    }
+
     public async Task<ApiResponse<bool>?> UpdateMemberStatusAsync(Guid id, MembershipStatus status)
     {
         return await _apiService.PostAsync<bool>($"api/members/{id}/status", status);

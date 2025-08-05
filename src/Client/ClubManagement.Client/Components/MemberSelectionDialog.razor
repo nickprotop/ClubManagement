@@ -10,29 +10,83 @@
         <MudStack Spacing="3">
             <MudText Typo="Typo.h6">@Title</MudText>
             
-            @if (_loading)
+            <MudAutocomplete T="MemberSearchDto"
+                             Value="_selectedMember"
+                             ValueChanged="@OnMemberValueChanged"
+                             SearchFunc="@SearchMembers"
+                             ToStringFunc="@(m => m?.DisplayText ?? "")"
+                             Label="Search for member"
+                             Variant="Variant.Outlined"
+                             AdornmentIcon="Icons.Material.Filled.PersonSearch"
+                             AdornmentColor="Color.Primary"
+                             MinCharacters="2"
+                             ResetValueOnEmptyText="true"
+                             CoerceText="false"
+                             CoerceValue="false"
+                             ShowProgressIndicator="true"
+                             ProgressIndicatorColor="Color.Primary">
+                <ItemTemplate Context="member">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        @if (!string.IsNullOrEmpty(member.ProfilePhotoUrl))
+                        {
+                            <MudAvatar Size="Size.Small" Image="@member.ProfilePhotoUrl" />
+                        }
+                        else
+                        {
+                            <MudAvatar Size="Size.Small" Color="Color.Primary">
+                                @(member.FirstName.FirstOrDefault())@(member.LastName.FirstOrDefault())
+                            </MudAvatar>
+                        }
+                        <div>
+                            <div style="font-weight: 500;">@member.FullName</div>
+                            <div style="font-size: 0.75rem; color: var(--mud-palette-text-secondary);">
+                                @member.MembershipNumber • @member.Email
+                            </div>
+                        </div>
+                        @if (member.Status != MembershipStatus.Active)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Text="@member.Status.ToString()" />
+                        }
+                    </div>
+                </ItemTemplate>
+                <NoItemsTemplate>
+                    <div style="padding: 8px;">
+                        @if (_isSearching)
+                        {
+                            <MudText Typo="Typo.body2">Searching...</MudText>
+                        }
+                        else if (!string.IsNullOrEmpty(_lastSearchTerm) && _lastSearchTerm.Length >= 2)
+                        {
+                            <MudText Typo="Typo.body2">No members found for "@_lastSearchTerm"</MudText>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2">Type at least 2 characters to search members</MudText>
+                        }
+                    </div>
+                </NoItemsTemplate>
+            </MudAutocomplete>
+            
+            @if (AllowMultipleSelection)
             {
-                <MudProgressLinear Indeterminate="true" />
-                <MudText>Loading members...</MudText>
-            }
-            else
-            {
-                <MudSelect T="Guid?" @bind-Value="_selectedMemberId" 
-                           Label="Select Member" 
-                           Variant="Variant.Outlined"
-                           AnchorOrigin="Origin.BottomCenter"
-                           OpenIcon="@Icons.Material.Filled.PersonSearch">
-                    @foreach (var member in _members)
-                    {
-                        <MudSelectItem T="Guid?" Value="member.Id">
-                            @member.FirstName @member.LastName (@member.MembershipNumber)
-                        </MudSelectItem>
-                    }
-                </MudSelect>
-                
-                @if (_members.Count == 0)
+                @if (_selectedMembers.Any())
                 {
-                    <MudAlert Severity="Severity.Info">No active members found</MudAlert>
+                    <MudStack>
+                        <MudText Typo="Typo.subtitle2">Selected Members (@_selectedMembers.Count)</MudText>
+                        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1">
+                            @foreach (var member in _selectedMembers)
+                            {
+                                <MudChip T="string" Text="@member.DisplayText" 
+                                         OnClose="() => RemoveSelectedMember(member)"
+                                         CloseIcon="Icons.Material.Filled.Close" />
+                            }
+                        </MudStack>
+                        <MudButton StartIcon="Icons.Material.Filled.Clear" 
+                                   Size="Size.Small" 
+                                   OnClick="ClearAllSelections">
+                            Clear All
+                        </MudButton>
+                    </MudStack>
                 }
             }
         </MudStack>
@@ -42,8 +96,8 @@
         <MudButton Color="Color.Primary" 
                    Variant="Variant.Filled" 
                    OnClick="Submit"
-                   Disabled="!_selectedMemberId.HasValue">
-            Register Member
+                   Disabled="@(!HasValidSelection)">
+            @SubmitButtonText
         </MudButton>
     </DialogActions>
 </MudDialog>
@@ -53,48 +107,122 @@
     
     [Parameter] public string Title { get; set; } = "Select Member";
     [Parameter] public Guid EventId { get; set; }
+    [Parameter] public bool AllowMultipleSelection { get; set; } = false;
+    [Parameter] public bool IncludeInactiveMembers { get; set; } = false;
+    [Parameter] public string SubmitButtonText { get; set; } = "Register Member";
     
-    private List<MemberListDto> _members = new();
-    private Guid? _selectedMemberId;
-    private bool _loading = true;
+    private MemberSearchDto? _selectedMember;
+    private List<MemberSearchDto> _selectedMembers = new();
+    private bool _isSearching = false;
+    private string _lastSearchTerm = string.Empty;
 
-    protected override async Task OnInitializedAsync()
+    private bool HasValidSelection => AllowMultipleSelection 
+        ? _selectedMembers.Any() 
+        : _selectedMember != null;
+
+    protected override void OnParametersSet()
     {
-        await LoadMembersAsync();
+        if (string.IsNullOrEmpty(SubmitButtonText))
+        {
+            SubmitButtonText = AllowMultipleSelection ? "Register Members" : "Register Member";
+        }
     }
 
-    private async Task LoadMembersAsync()
+    private async Task<IEnumerable<MemberSearchDto>> SearchMembers(string searchTerm, CancellationToken cancellationToken)
     {
-        _loading = true;
+        _lastSearchTerm = searchTerm;
         
+        if (string.IsNullOrWhiteSpace(searchTerm) || searchTerm.Length < 2)
+        {
+            return new List<MemberSearchDto>();
+        }
+
+        _isSearching = true;
         try
         {
-            var request = new MemberSearchRequest
+            var request = new MemberQuickSearchRequest
             {
-                PageSize = 100, // Get more members for selection
-                Status = MembershipStatus.Active
+                SearchTerm = searchTerm,
+                MaxResults = 20,
+                IncludeInactive = IncludeInactiveMembers
             };
-            
-            var response = await MemberService.GetMembersAsync(request);
-            if (response?.Success == true)
+
+            var response = await MemberService.SearchMembersAsync(request);
+            if (response?.Success == true && response.Data != null)
             {
-                _members = response.Data?.Items ?? new();
+                // Filter out already selected members in multi-selection mode
+                if (AllowMultipleSelection)
+                {
+                    var selectedIds = _selectedMembers.Select(m => m.Id).ToHashSet();
+                    return response.Data.Where(m => !selectedIds.Contains(m.Id));
+                }
+                
+                return response.Data;
             }
             else
             {
-                Snackbar.Add("Failed to load members", Severity.Error);
+                if (!string.IsNullOrEmpty(response?.Message))
+                {
+                    Snackbar.Add($"Search failed: {response.Message}", Severity.Error);
+                }
+                return new List<MemberSearchDto>();
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error loading members: {ex.Message}", Severity.Error);
+            Snackbar.Add($"Search error: {ex.Message}", Severity.Error);
+            return new List<MemberSearchDto>();
         }
         finally
         {
-            _loading = false;
+            _isSearching = false;
         }
     }
 
-    void Submit() => MudDialog.Close(DialogResult.Ok(_selectedMemberId));
-    void Cancel() => MudDialog.Cancel();
+    private void OnMemberValueChanged(MemberSearchDto? member)
+    {
+        if (member == null) return;
+        
+        if (AllowMultipleSelection)
+        {
+            if (!_selectedMembers.Any(m => m.Id == member.Id))
+            {
+                _selectedMembers.Add(member);
+                _selectedMember = null; // Clear autocomplete
+                StateHasChanged();
+            }
+        }
+        else
+        {
+            _selectedMember = member;
+        }
+    }
+
+    private void RemoveSelectedMember(MemberSearchDto member)
+    {
+        _selectedMembers.RemoveAll(m => m.Id == member.Id);
+        StateHasChanged();
+    }
+
+    private void ClearAllSelections()
+    {
+        _selectedMembers.Clear();
+        _selectedMember = null;
+        StateHasChanged();
+    }
+
+    private void Submit()
+    {
+        if (AllowMultipleSelection)
+        {
+            var selectedIds = _selectedMembers.Select(m => m.Id).ToList();
+            MudDialog.Close(DialogResult.Ok(selectedIds));
+        }
+        else
+        {
+            MudDialog.Close(DialogResult.Ok(_selectedMember?.Id));
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
 }
