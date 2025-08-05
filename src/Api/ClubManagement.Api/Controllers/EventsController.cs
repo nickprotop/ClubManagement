@@ -177,6 +177,15 @@ public class EventsController : ControllerBase
     {
         try
         {
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<EventDto>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var eventEntity = await _context.Events
                 .Include(e => e.Facility)
                 .Include(e => e.Instructor)
@@ -240,6 +249,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<EventDto>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.Create);
             
             if (!authResult.Succeeded)
@@ -323,6 +341,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<EventDto>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.Edit, id);
             
             if (!authResult.Succeeded)
@@ -422,6 +449,15 @@ public class EventsController : ControllerBase
     {
         try
         {
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<EventDto>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             // Get the master event for this occurrence
             var occurrence = await _context.Events.FindAsync(id);
             if (occurrence == null)
@@ -444,6 +480,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<RecurrenceUpdateResult>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.Edit, id);
             
             if (!authResult.Succeeded)
@@ -475,6 +520,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<RecurrenceUpdateResult>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.Edit, id);
             
             if (!authResult.Succeeded)
@@ -531,6 +585,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.Delete, id);
             
             if (!authResult.Succeeded)
@@ -555,6 +618,15 @@ public class EventsController : ControllerBase
     {
         try
         {
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var eventEntity = await _context.Events.FindAsync(id);
             if (eventEntity == null)
                 return NotFound(ApiResponse<bool>.ErrorResult("Event not found"));
@@ -579,6 +651,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<EventRegistrationDto>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var action = request.MemberId != null ? EventAction.RegisterOthers : EventAction.RegisterSelf;
             var authResult = await _authService.CheckAuthorizationAsync(userId, action, id);
             
@@ -684,6 +765,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<List<EventRegistrationDto>>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.ViewRegistrations, id);
             
             if (!authResult.Succeeded)
@@ -727,6 +817,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<EventRegistrationDto>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var userMember = await _context.Members.FirstOrDefaultAsync(m => m.UserId == userId);
             
             // If user doesn't have a member profile (e.g., staff users), return a meaningful response
@@ -774,6 +873,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<EventRegistrationDto>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.ModifyRegistrations, id);
             
             if (!authResult.Succeeded)
@@ -821,6 +929,14 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
             
             // Get registration to check ownership
             var registration = await _context.EventRegistrations
@@ -876,6 +992,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.CheckInOthers, id);
             
             if (!authResult.Succeeded)
@@ -911,6 +1036,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.CheckInSelf, id);
             
             if (!authResult.Succeeded)
@@ -951,6 +1085,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.CheckInOthers, id);
             
             if (!authResult.Succeeded)
@@ -986,6 +1129,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<BulkCheckInResult>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.CheckInOthers, id);
             
             if (!authResult.Succeeded)
@@ -1045,6 +1197,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<CheckInStatusDto>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.ViewRegistrations, id);
             
             if (!authResult.Succeeded)
@@ -1088,6 +1249,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.CancelEvent, id);
             
             if (!authResult.Succeeded)
@@ -1136,6 +1306,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.RescheduleEvent, id);
             
             if (!authResult.Succeeded)
@@ -1170,6 +1349,7 @@ public class EventsController : ControllerBase
 
     private async Task PromoteFromWaitlistAsync(Guid eventId)
     {
+        // Note: This method is called after tenant schema is already set in the calling endpoint
         var eventEntity = await _context.Events.FindAsync(eventId);
         if (eventEntity == null) return;
 
@@ -1218,6 +1398,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<RecurringRegistrationResponse>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var response = new RecurringRegistrationResponse();
 
             // Validate input
@@ -1278,6 +1467,14 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<RecurringEventOptionsDto>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
             
             // Check if this is a recurring master event
             var masterEvent = await _context.Events
@@ -1343,6 +1540,15 @@ public class EventsController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<List<RecurringRegistrationSummary>>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var userMember = await _context.Members.FirstOrDefaultAsync(m => m.UserId == userId);
             
             if (userMember == null)
@@ -1415,6 +1621,7 @@ public class EventsController : ControllerBase
 
     private async Task<EventRegistrationResult> RegisterMemberForEventInternal(Guid eventId, Guid memberId, Guid registeredByUserId, string? notes)
     {
+        // Note: This method is called after tenant schema is already set in the calling endpoint
         var eventEntity = await _context.Events
             .Include(e => e.Facility)
             .FirstOrDefaultAsync(e => e.Id == eventId);

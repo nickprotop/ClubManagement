@@ -106,6 +106,15 @@ public class MembersController : ControllerBase
     {
         try
         {
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<MemberDto>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var member = await _context.Members
                 .Include(m => m.User)
                 .FirstOrDefaultAsync(m => m.Id == id);
@@ -156,6 +165,15 @@ public class MembersController : ControllerBase
     {
         try
         {
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<MemberDto>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             // Verify user exists
             var user = await _context.Users.FindAsync(request.UserId);
             if (user == null)
@@ -201,6 +219,15 @@ public class MembersController : ControllerBase
     {
         try
         {
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<MemberDto>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var member = await _context.Members.FindAsync(id);
             if (member == null)
                 return NotFound(ApiResponse<MemberDto>.ErrorResult("Member not found"));
@@ -228,6 +255,15 @@ public class MembersController : ControllerBase
     {
         try
         {
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var member = await _context.Members.FindAsync(id);
             if (member == null)
                 return NotFound(ApiResponse<bool>.ErrorResult("Member not found"));
@@ -248,6 +284,15 @@ public class MembersController : ControllerBase
     {
         try
         {
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             var member = await _context.Members.FindAsync(id);
             if (member == null)
                 return NotFound(ApiResponse<bool>.ErrorResult("Member not found"));
@@ -270,6 +315,15 @@ public class MembersController : ControllerBase
     {
         try
         {
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and switch to tenant schema
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<List<MemberSearchDto>>.ErrorResult("Invalid tenant"));
+                
+            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            
             if (string.IsNullOrWhiteSpace(request.SearchTerm) || request.SearchTerm.Length < 2)
                 return Ok(ApiResponse<List<MemberSearchDto>>.SuccessResult(new List<MemberSearchDto>()));
 
