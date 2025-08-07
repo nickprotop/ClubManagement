@@ -8,40 +8,49 @@ public interface ITenantService
 {
     Task<Tenant?> GetTenantByDomainAsync(string domain);
     Task<Tenant?> GetTenantByIdAsync(Guid tenantId);
-    Task<string> GetTenantSchemaAsync(Guid tenantId);
-    Task EnsureTenantSchemaExistsAsync(string schemaName);
+    Task<string> GetTenantDatabaseNameAsync(Guid tenantId);
+    Task<string> GetTenantDatabaseNameAsync(string domain);
+    Task<List<Tenant>> GetAllTenantsAsync();
 }
 
 public class TenantService : ITenantService
 {
-    private readonly ClubManagementDbContext _context;
+    private readonly CatalogDbContext _catalogContext;
 
-    public TenantService(ClubManagementDbContext context)
+    public TenantService(CatalogDbContext catalogContext)
     {
-        _context = context;
+        _catalogContext = catalogContext;
     }
 
     public async Task<Tenant?> GetTenantByDomainAsync(string domain)
     {
-        return await _context.Tenants
+        return await _catalogContext.Tenants
             .FirstOrDefaultAsync(t => t.Domain == domain && t.Status == TenantStatus.Active);
     }
 
     public async Task<Tenant?> GetTenantByIdAsync(Guid tenantId)
     {
-        return await _context.Tenants
+        return await _catalogContext.Tenants
             .FirstOrDefaultAsync(t => t.Id == tenantId && t.Status == TenantStatus.Active);
     }
 
-    public async Task<string> GetTenantSchemaAsync(Guid tenantId)
+    public async Task<string> GetTenantDatabaseNameAsync(Guid tenantId)
     {
-        var tenant = await _context.Tenants.FindAsync(tenantId);
+        var tenant = await _catalogContext.Tenants.FindAsync(tenantId);
         return tenant?.SchemaName ?? throw new InvalidOperationException($"Tenant {tenantId} not found");
     }
 
-    public async Task EnsureTenantSchemaExistsAsync(string schemaName)
+    public async Task<string> GetTenantDatabaseNameAsync(string domain)
     {
-        var sql = $"CREATE SCHEMA IF NOT EXISTS \"{schemaName}\"";
-        await _context.Database.ExecuteSqlRawAsync(sql);
+        var tenant = await _catalogContext.Tenants
+            .FirstOrDefaultAsync(t => t.Domain == domain && t.Status == TenantStatus.Active);
+        return tenant?.SchemaName ?? throw new InvalidOperationException($"Tenant with domain {domain} not found");
+    }
+
+    public async Task<List<Tenant>> GetAllTenantsAsync()
+    {
+        return await _catalogContext.Tenants
+            .Where(t => t.Status == TenantStatus.Active)
+            .ToListAsync();
     }
 }

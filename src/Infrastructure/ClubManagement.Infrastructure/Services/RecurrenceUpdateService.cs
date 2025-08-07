@@ -9,36 +9,37 @@ namespace ClubManagement.Infrastructure.Services;
 public interface IRecurrenceUpdateService
 {
     Task<RecurrenceUpdateResult> UpdateRecurrencePatternAsync(
+        ClubManagementDbContext tenantContext,
         Guid masterEventId, 
         RecurrencePattern newPattern, 
         RecurrenceUpdateStrategy strategy = RecurrenceUpdateStrategy.PreserveRegistrations);
     
     Task<RecurrenceUpdateResult> PreviewRecurrenceUpdateAsync(
+        ClubManagementDbContext tenantContext,
         Guid masterEventId, 
         RecurrencePattern newPattern);
     
     Task<RecurrenceUpdateResult> UpdateSingleOccurrenceAsync(
+        ClubManagementDbContext tenantContext,
         Guid occurrenceId, 
         Event updatedEvent);
 }
 
 public class RecurrenceUpdateService : IRecurrenceUpdateService
 {
-    private readonly ClubManagementDbContext _context;
     private readonly IRecurrenceManager _recurrenceManager;
     private readonly ILogger<RecurrenceUpdateService> _logger;
 
     public RecurrenceUpdateService(
-        ClubManagementDbContext context,
         IRecurrenceManager recurrenceManager,
         ILogger<RecurrenceUpdateService> logger)
     {
-        _context = context;
         _recurrenceManager = recurrenceManager;
         _logger = logger;
     }
 
     public async Task<RecurrenceUpdateResult> PreviewRecurrenceUpdateAsync(
+        ClubManagementDbContext tenantContext,
         Guid masterEventId, 
         RecurrencePattern newPattern)
     {
@@ -46,7 +47,7 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
 
         try
         {
-            var masterEvent = await _context.Events
+            var masterEvent = await tenantContext.Events
                 .FirstOrDefaultAsync(e => e.Id == masterEventId && e.IsRecurringMaster);
 
             if (masterEvent == null)
@@ -57,7 +58,7 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
             }
 
             // Get current future occurrences
-            var currentOccurrences = await _context.Events
+            var currentOccurrences = await tenantContext.Events
                 .Include(e => e.Registrations)
                 .Where(e => e.MasterEventId == masterEventId && e.StartDateTime > DateTime.UtcNow)
                 .ToListAsync();
@@ -127,17 +128,18 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
     }
 
     public async Task<RecurrenceUpdateResult> UpdateRecurrencePatternAsync(
+        ClubManagementDbContext tenantContext,
         Guid masterEventId, 
         RecurrencePattern newPattern, 
         RecurrenceUpdateStrategy strategy = RecurrenceUpdateStrategy.PreserveRegistrations)
     {
         var result = new RecurrenceUpdateResult { Success = true };
 
-        using var transaction = await _context.Database.BeginTransactionAsync();
+        using var transaction = await tenantContext.Database.BeginTransactionAsync();
         
         try
         {
-            var masterEvent = await _context.Events
+            var masterEvent = await tenantContext.Events
                 .FirstOrDefaultAsync(e => e.Id == masterEventId && e.IsRecurringMaster);
 
             if (masterEvent == null)
@@ -148,7 +150,7 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
             }
 
             // Get current future occurrences
-            var currentOccurrences = await _context.Events
+            var currentOccurrences = await tenantContext.Events
                 .Include(e => e.Registrations)
                 .Where(e => e.MasterEventId == masterEventId && e.StartDateTime > DateTime.UtcNow)
                 .ToListAsync();
@@ -166,17 +168,17 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
             switch (strategy)
             {
                 case RecurrenceUpdateStrategy.PreserveRegistrations:
-                    await HandlePreserveRegistrationsStrategy(masterEvent, newPattern, 
+                    await HandlePreserveRegistrationsStrategy(tenantContext, masterEvent, newPattern, 
                         occurrencesWithRegistrations, occurrencesWithoutRegistrations, result);
                     break;
 
                 case RecurrenceUpdateStrategy.ForceUpdate:
-                    await HandleForceUpdateStrategy(masterEvent, newPattern, 
+                    await HandleForceUpdateStrategy(tenantContext, masterEvent, newPattern, 
                         currentOccurrences, result);
                     break;
 
                 case RecurrenceUpdateStrategy.CancelConflicts:
-                    await HandleCancelConflictsStrategy(masterEvent, newPattern, 
+                    await HandleCancelConflictsStrategy(tenantContext, masterEvent, newPattern, 
                         occurrencesWithRegistrations, occurrencesWithoutRegistrations, result);
                     break;
             }
@@ -185,7 +187,7 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
             masterEvent.Recurrence = newPattern;
             masterEvent.UpdatedAt = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
             await transaction.CommitAsync();
 
             result.Message = $"Recurrence pattern updated successfully. " +
@@ -209,6 +211,7 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
     }
 
     public async Task<RecurrenceUpdateResult> UpdateSingleOccurrenceAsync(
+        ClubManagementDbContext tenantContext,
         Guid occurrenceId, 
         Event updatedEvent)
     {
@@ -216,7 +219,7 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
 
         try
         {
-            var occurrence = await _context.Events.FindAsync(occurrenceId);
+            var occurrence = await tenantContext.Events.FindAsync(occurrenceId);
             if (occurrence == null)
             {
                 result.Success = false;
@@ -242,7 +245,7 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
             // Mark as modified from series (optional flag)
             // occurrence.IsModifiedFromSeries = true; // Could add this field later
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
 
             result.Message = "Single occurrence updated successfully";
             
@@ -259,6 +262,7 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
     }
 
     private async Task HandlePreserveRegistrationsStrategy(
+        ClubManagementDbContext tenantContext,
         Event masterEvent,
         RecurrencePattern newPattern,
         List<Event> occurrencesWithRegistrations,
@@ -266,7 +270,7 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
         RecurrenceUpdateResult result)
     {
         // Delete occurrences without registrations
-        _context.Events.RemoveRange(occurrencesWithoutRegistrations);
+        tenantContext.Events.RemoveRange(occurrencesWithoutRegistrations);
         result.OccurrencesDeleted = occurrencesWithoutRegistrations.Count;
 
         // Preserve occurrences with registrations
@@ -286,7 +290,7 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
             .Where(e => !preservedDates.Contains(e.StartDateTime.Date))
             .ToList();
 
-        await _context.Events.AddRangeAsync(filteredNewOccurrences);
+        await tenantContext.Events.AddRangeAsync(filteredNewOccurrences);
         result.OccurrencesCreated = filteredNewOccurrences.Count;
 
         if (result.OccurrencesPreserved > 0)
@@ -296,6 +300,7 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
     }
 
     private async Task HandleForceUpdateStrategy(
+        ClubManagementDbContext tenantContext,
         Event masterEvent,
         RecurrencePattern newPattern,
         List<Event> allOccurrences,
@@ -303,14 +308,14 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
     {
         // Delete all future occurrences
         result.RegistrationsAffected = allOccurrences.Sum(e => e.Registrations.Count);
-        _context.Events.RemoveRange(allOccurrences);
+        tenantContext.Events.RemoveRange(allOccurrences);
         result.OccurrencesDeleted = allOccurrences.Count;
 
         // Generate new occurrences
         var newOccurrences = await _recurrenceManager.GenerateOccurrencesAsync(
             masterEvent, DateTime.UtcNow.Date, DateTime.UtcNow.AddMonths(6));
         
-        await _context.Events.AddRangeAsync(newOccurrences);
+        await tenantContext.Events.AddRangeAsync(newOccurrences);
         result.OccurrencesCreated = newOccurrences.Count;
 
         if (result.RegistrationsAffected > 0)
@@ -320,6 +325,7 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
     }
 
     private async Task HandleCancelConflictsStrategy(
+        ClubManagementDbContext tenantContext,
         Event masterEvent,
         RecurrencePattern newPattern,
         List<Event> occurrencesWithRegistrations,
@@ -334,7 +340,7 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
         }
 
         // Delete occurrences without registrations
-        _context.Events.RemoveRange(occurrencesWithoutRegistrations);
+        tenantContext.Events.RemoveRange(occurrencesWithoutRegistrations);
         result.OccurrencesDeleted = occurrencesWithoutRegistrations.Count;
         result.RegistrationsAffected = occurrencesWithRegistrations.Sum(e => e.Registrations.Count);
 
@@ -342,7 +348,7 @@ public class RecurrenceUpdateService : IRecurrenceUpdateService
         var newOccurrences = await _recurrenceManager.GenerateOccurrencesAsync(
             masterEvent, DateTime.UtcNow.Date, DateTime.UtcNow.AddMonths(6));
         
-        await _context.Events.AddRangeAsync(newOccurrences);
+        await tenantContext.Events.AddRangeAsync(newOccurrences);
         result.OccurrencesCreated = newOccurrences.Count;
 
         result.Warnings.Add($"{occurrencesWithRegistrations.Count} events with registrations were cancelled");

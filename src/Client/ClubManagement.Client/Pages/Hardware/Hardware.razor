@@ -1,0 +1,313 @@
+@page "/hardware"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IHardwareService HardwareService
+@inject IHardwareTypeService HardwareTypeService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>Hardware Management</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <MudText Typo="Typo.h4">Hardware Management</MudText>
+    @if (_permissions?.CanCreate == true)
+    {
+        <MudButton Variant="Variant.Filled" 
+                   Color="Color.Primary" 
+                   StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="@(() => Navigation.NavigateTo("/hardware/create"))">
+            Add Hardware
+        </MudButton>
+    }
+</div>
+
+<MudCard>
+    <MudCardContent>
+        <!-- Search and Filters -->
+        <div class="d-flex gap-4 mb-4">
+            <MudTextField @bind-Value="_searchTerm"
+                         Label="Search Hardware"
+                         Variant="Variant.Outlined"
+                         Adornment="Adornment.Start"
+                         AdornmentIcon="@Icons.Material.Filled.Search"
+                         OnKeyUp="OnSearchKeyUp"
+                         Class="flex-grow-1" />
+            
+            <MudSelect @bind-Value="_selectedTypeId"
+                      Label="Hardware Type"
+                      Variant="Variant.Outlined"
+                      Clearable="true"
+                      OnSelectionChanged="OnFilterChanged">
+                @if (_hardwareTypes != null)
+                {
+                    @foreach (var type in _hardwareTypes)
+                    {
+                        <MudSelectItem T="Guid?" Value="type.Id">@type.Name</MudSelectItem>
+                    }
+                }
+            </MudSelect>
+
+            <MudSelect @bind-Value="_selectedStatus"
+                      Label="Status"
+                      Variant="Variant.Outlined"
+                      Clearable="true"
+                      OnSelectionChanged="OnFilterChanged">
+                <MudSelectItem T="HardwareStatus?" Value="HardwareStatus.Available">Available</MudSelectItem>
+                <MudSelectItem T="HardwareStatus?" Value="HardwareStatus.Assigned">Assigned</MudSelectItem>
+                <MudSelectItem T="HardwareStatus?" Value="HardwareStatus.InUse">In Use</MudSelectItem>
+                <MudSelectItem T="HardwareStatus?" Value="HardwareStatus.Maintenance">Maintenance</MudSelectItem>
+                <MudSelectItem T="HardwareStatus?" Value="HardwareStatus.OutOfService">Out of Service</MudSelectItem>
+                <MudSelectItem T="HardwareStatus?" Value="HardwareStatus.Retired">Retired</MudSelectItem>
+            </MudSelect>
+        </div>
+
+        <!-- Hardware Table -->
+        <MudDataGrid T="HardwareDto"
+                     Items="_filteredHardware"
+                     Loading="_loading"
+                     Elevation="0"
+                     Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Name" Title="Name">
+                    <CellTemplate>
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="@context.Item.Icon" Class="mr-2" />
+                            <MudLink Href="@($"/hardware/{context.Item.Id}")" Typo="Typo.body2">
+                                @context.Item.Name
+                            </MudLink>
+                        </div>
+                    </CellTemplate>
+                </PropertyColumn>
+                
+                <PropertyColumn Property="x => x.SerialNumber" Title="Serial Number" />
+                
+                <PropertyColumn Property="x => x.HardwareTypeName" Title="Type" />
+                
+                <PropertyColumn Property="x => x.Status" Title="Status">
+                    <CellTemplate>
+                        <MudChip Color="@GetStatusColor(context.Item.Status)" 
+                                Size="Size.Small" 
+                                Variant="Variant.Filled">
+                            @context.Item.Status
+                        </MudChip>
+                    </CellTemplate>
+                </PropertyColumn>
+                
+                <PropertyColumn Property="x => x.Location" Title="Location" />
+                
+                <PropertyColumn Property="x => x.PurchaseDate" Title="Purchase Date" Format="MM/dd/yyyy" />
+                
+                <PropertyColumn Property="x => x.PurchasePrice" Title="Price" Format="C" />
+
+                <TemplateColumn Title="Actions" Sortable="false">
+                    <CellTemplate>
+                        <div class="d-flex gap-2">
+                            <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                         Size="Size.Small"
+                                         Color="Color.Primary"
+                                         Href="@($"/hardware/{context.Item.Id}")"
+                                         Title="View Details" />
+                            
+                            @if (_permissions?.CanEdit == true)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                             Size="Size.Small"
+                                             Color="Color.Secondary"
+                                             Href="@($"/hardware/{context.Item.Id}/edit")"
+                                             Title="Edit Hardware" />
+                            }
+                            
+                            @if (_permissions?.CanDelete == true && context.Item.Status == HardwareStatus.Available)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                             Size="Size.Small"
+                                             Color="Color.Error"
+                                             OnClick="() => DeleteHardware(context.Item)"
+                                             Title="Delete Hardware" />
+                            }
+                        </div>
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@code {
+    private List<HardwareDto>? _hardware;
+    private List<HardwareDto>? _filteredHardware;
+    private List<HardwareTypeDto>? _hardwareTypes;
+    private HardwarePermissions? _permissions;
+    private bool _loading = true;
+    
+    private string _searchTerm = string.Empty;
+    private Guid? _selectedTypeId;
+    private HardwareStatus? _selectedStatus;
+    
+    private Timer? _searchTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissions();
+        await LoadHardwareTypes();
+        await LoadHardware();
+    }
+
+    private async Task LoadPermissions()
+    {
+        try
+        {
+            var response = await HardwareService.GetHardwarePermissionsAsync();
+            if (response.Success)
+            {
+                _permissions = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load permissions: {ex.Message}");
+        }
+    }
+
+    private async Task LoadHardwareTypes()
+    {
+        try
+        {
+            var response = await HardwareTypeService.GetHardwareTypesAsync();
+            if (response.Success)
+            {
+                _hardwareTypes = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load hardware types: {ex.Message}");
+        }
+    }
+
+    private async Task LoadHardware()
+    {
+        try
+        {
+            _loading = true;
+            var response = await HardwareService.GetHardwareAsync();
+            if (response.Success)
+            {
+                _hardware = response.Data;
+                ApplyFilters();
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to load hardware");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load hardware: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        if (_hardware == null)
+        {
+            _filteredHardware = new List<HardwareDto>();
+            return;
+        }
+
+        var filtered = _hardware.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(_searchTerm))
+        {
+            filtered = filtered.Where(h => 
+                h.Name.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                h.SerialNumber?.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) == true ||
+                h.HardwareTypeName.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (_selectedTypeId.HasValue)
+        {
+            filtered = filtered.Where(h => h.HardwareTypeId == _selectedTypeId.Value);
+        }
+
+        if (_selectedStatus.HasValue)
+        {
+            filtered = filtered.Where(h => h.Status == _selectedStatus.Value);
+        }
+
+        _filteredHardware = filtered.ToList();
+    }
+
+    private void OnSearchKeyUp(KeyboardEventArgs e)
+    {
+        _searchTimer?.Dispose();
+        _searchTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(() =>
+            {
+                ApplyFilters();
+                StateHasChanged();
+            });
+        }, null, 300, Timeout.Infinite);
+    }
+
+    private Task OnFilterChanged()
+    {
+        ApplyFilters();
+        return Task.CompletedTask;
+    }
+
+    private async Task DeleteHardware(HardwareDto hardware)
+    {
+        var confirmed = await NotificationService.ShowConfirmationAsync(
+            "Delete Hardware",
+            $"Are you sure you want to delete '{hardware.Name}'? This action cannot be undone.");
+            
+        if (!confirmed) return;
+
+        try
+        {
+            var response = await HardwareService.DeleteHardwareAsync(hardware.Id);
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync("Hardware deleted successfully");
+                await LoadHardware();
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to delete hardware");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to delete hardware: {ex.Message}");
+        }
+    }
+
+    private Color GetStatusColor(HardwareStatus status)
+    {
+        return status switch
+        {
+            HardwareStatus.Available => Color.Success,
+            HardwareStatus.Assigned => Color.Info,
+            HardwareStatus.InUse => Color.Warning,
+            HardwareStatus.Maintenance => Color.Warning,
+            HardwareStatus.OutOfService => Color.Error,
+            HardwareStatus.Retired => Color.Default,
+            _ => Color.Default
+        };
+    }
+
+    public void Dispose()
+    {
+        _searchTimer?.Dispose();
+    }
+}

@@ -5,10 +5,12 @@ namespace ClubManagement.Client.Services;
 public class NotificationService : INotificationService
 {
     private readonly ISnackbar _snackbar;
+    private readonly IDialogService _dialogService;
 
-    public NotificationService(ISnackbar snackbar)
+    public NotificationService(ISnackbar snackbar, IDialogService dialogService)
     {
         _snackbar = snackbar;
+        _dialogService = dialogService;
     }
 
     public void ShowRegistrationSuccess(int successCount, int failCount, List<string>? warnings = null)
@@ -137,5 +139,56 @@ public class NotificationService : INotificationService
                 };
             }
         });
+    }
+
+    public Task ShowSuccessAsync(string message)
+    {
+        _snackbar.Add($"✅ {message}", Severity.Success, config =>
+        {
+            config.ShowCloseIcon = true;
+            config.VisibleStateDuration = 5000;
+        });
+        return Task.CompletedTask;
+    }
+
+    public Task ShowErrorAsync(string message)
+    {
+        _snackbar.Add($"❌ {message}", Severity.Error, config =>
+        {
+            config.ShowCloseIcon = true;
+            config.VisibleStateDuration = 10000;
+        });
+        return Task.CompletedTask;
+    }
+
+    public Task ShowInfoAsync(string message)
+    {
+        _snackbar.Add($"ℹ️ {message}", Severity.Info, config =>
+        {
+            config.ShowCloseIcon = true;
+            config.VisibleStateDuration = 6000;
+        });
+        return Task.CompletedTask;
+    }
+
+    public Task ShowWarningAsync(string message)
+    {
+        _snackbar.Add($"⚠️ {message}", Severity.Warning, config =>
+        {
+            config.ShowCloseIcon = true;
+            config.VisibleStateDuration = 8000;
+        });
+        return Task.CompletedTask;
+    }
+
+    public async Task<bool> ShowConfirmationAsync(string title, string message)
+    {
+        var result = await _dialogService.ShowMessageBox(
+            title,
+            message,
+            yesText: "Yes",
+            cancelText: "Cancel");
+            
+        return result == true;
     }
 }

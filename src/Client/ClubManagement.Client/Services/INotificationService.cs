@@ -33,4 +33,29 @@ public interface INotificationService
     /// Shows a custom notification with enhanced formatting
     /// </summary>
     void ShowEnhancedNotification(string title, string message, Severity severity, string? actionText = null, Action? action = null);
+    
+    /// <summary>
+    /// Shows a success notification
+    /// </summary>
+    Task ShowSuccessAsync(string message);
+    
+    /// <summary>
+    /// Shows an error notification
+    /// </summary>
+    Task ShowErrorAsync(string message);
+    
+    /// <summary>
+    /// Shows an info notification
+    /// </summary>
+    Task ShowInfoAsync(string message);
+    
+    /// <summary>
+    /// Shows a warning notification
+    /// </summary>
+    Task ShowWarningAsync(string message);
+    
+    /// <summary>
+    /// Shows a confirmation dialog
+    /// </summary>
+    Task<bool> ShowConfirmationAsync(string title, string message);
 }

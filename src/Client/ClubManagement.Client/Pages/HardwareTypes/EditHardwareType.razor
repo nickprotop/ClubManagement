@@ -1,0 +1,398 @@
+@page "/hardware-types/{id:guid}/edit"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IHardwareTypeService HardwareTypeService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>Edit Hardware Type</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_model != null)
+{
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div>
+            <MudBreadcrumbs Items="_breadcrumbs" Class="pa-0"></MudBreadcrumbs>
+            <MudText Typo="Typo.h4" Class="mt-2">Edit Hardware Type</MudText>
+        </div>
+    </div>
+
+    <MudCard>
+        <MudCardContent>
+            <EditForm Model="_model" OnValidSubmit="UpdateHardwareTypeAsync">
+                <DataAnnotationsValidator />
+                <div class="d-flex flex-column gap-4">
+                    
+                    <!-- Basic Information -->
+                    <MudText Typo="Typo.h6" Class="mb-2">Basic Information</MudText>
+                    
+                    <div class="d-flex gap-4">
+                        <MudTextField @bind-Value="_model.Name"
+                                     Label="Hardware Type Name"
+                                     Variant="Variant.Outlined"
+                                     Required="true"
+                                     For="@(() => _model.Name)"
+                                     Class="flex-grow-1" />
+                                     
+                        <MudSelect @bind-Value="_model.Icon"
+                                  Label="Icon"
+                                  Variant="Variant.Outlined"
+                                  Class="flex-grow-1">
+                            @foreach (var icon in _availableIcons)
+                            {
+                                <MudSelectItem T="string" Value="@icon.Value">
+                                    <div class="d-flex align-center gap-2">
+                                        <MudIcon Icon="@icon.Value" />
+                                        <span>@icon.Key</span>
+                                    </div>
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </div>
+
+                    <MudTextField @bind-Value="_model.Description"
+                                 Label="Description"
+                                 Variant="Variant.Outlined"
+                                 Lines="3"
+                                 For="@(() => _model.Description)" />
+
+                    <!-- Status -->
+                    <div>
+                        <MudCheckBox @bind-Value="_model.IsActive"
+                                   Label="Active"
+                                   Color="Color.Primary" />
+                    </div>
+
+                    <!-- Assignment Settings -->
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.h6" Class="mb-2">Assignment Settings</MudText>
+                    
+                    <div class="d-flex gap-4">
+                        <MudCheckBox @bind-Value="_model.RequiresAssignment"
+                                   Label="Requires Assignment"
+                                   Color="Color.Primary" />
+                                   
+                        <MudCheckBox @bind-Value="_model.AllowMultipleAssignments"
+                                   Label="Allow Multiple Assignments"
+                                   Color="Color.Primary" />
+                    </div>
+                    
+                    <div class="d-flex gap-4">
+                        <MudNumericField @bind-Value="_model.MaxAssignmentDurationHours"
+                                        Label="Max Assignment Duration (Hours)"
+                                        Variant="Variant.Outlined"
+                                        Min="1"
+                                        Max="8760"
+                                        Class="flex-grow-1" />
+                                        
+                        <MudNumericField @bind-Value="_model.SortOrder"
+                                        Label="Sort Order"
+                                        Variant="Variant.Outlined"
+                                        Min="0"
+                                        Class="flex-grow-1" />
+                    </div>
+
+                    <!-- Property Schema -->
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.h6" Class="mb-2">Custom Properties</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                        Define custom properties that hardware items of this type can have (e.g., Model, Capacity, Color).
+                    </MudText>
+
+                    @if (_model.PropertySchema.Properties.Any())
+                    {
+                        @foreach (var (property, index) in _model.PropertySchema.Properties.Select((p, i) => (p, i)))
+                        {
+                            <MudCard Variant="Variant.Outlined" Class="pa-3">
+                                <div class="d-flex align-center justify-space-between mb-3">
+                                    <MudText Typo="Typo.subtitle1">Property @(index + 1)</MudText>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                 Size="Size.Small"
+                                                 Color="Color.Error"
+                                                 OnClick="@(() => RemoveProperty(index))" />
+                                </div>
+                                
+                                <div class="d-flex gap-3 mb-3">
+                                    <MudTextField @bind-Value="property.Key"
+                                                Label="Property Key"
+                                                Variant="Variant.Outlined"
+                                                Required="true"
+                                                Class="flex-grow-1" />
+                                                
+                                    <MudTextField @bind-Value="property.Label"
+                                                Label="Display Label"
+                                                Variant="Variant.Outlined"
+                                                Required="true"
+                                                Class="flex-grow-1" />
+                                </div>
+                                
+                                <div class="d-flex gap-3 mb-3">
+                                    <MudSelect @bind-Value="property.Type"
+                                              Label="Property Type"
+                                              Variant="Variant.Outlined"
+                                              Class="flex-grow-1">
+                                        <MudSelectItem T="PropertyType" Value="PropertyType.Text">Text</MudSelectItem>
+                                        <MudSelectItem T="PropertyType" Value="PropertyType.Number">Number</MudSelectItem>
+                                        <MudSelectItem T="PropertyType" Value="PropertyType.Boolean">Boolean</MudSelectItem>
+                                        <MudSelectItem T="PropertyType" Value="PropertyType.Select">Select (Options)</MudSelectItem>
+                                    </MudSelect>
+                                    
+                                    <MudTextField @bind-Value="property.DefaultValue"
+                                                Label="Default Value"
+                                                Variant="Variant.Outlined"
+                                                Class="flex-grow-1" />
+                                </div>
+                                
+                                <div class="d-flex gap-3">
+                                    <MudCheckBox @bind-Value="property.Required"
+                                               Label="Required"
+                                               Color="Color.Primary" />
+                                </div>
+                                
+                                @if (property.Type == PropertyType.Select)
+                                {
+                                    <div class="mt-3">
+                                        <MudText Typo="Typo.subtitle2" Class="mb-2">Options (one per line):</MudText>
+                                        <MudTextField @bind-Value="_optionsText[index]"
+                                                    Label="Options"
+                                                    Variant="Variant.Outlined"
+                                                    Lines="3"
+                                                    OnTextChanged="@((string value) => UpdatePropertyOptions(index, value))"
+                                                    HelperText="Enter each option on a new line" />
+                                    </div>
+                                }
+                            </MudCard>
+                        }
+                    }
+                    
+                    <MudButton Variant="Variant.Outlined"
+                              StartIcon="@Icons.Material.Filled.Add"
+                              OnClick="AddProperty">
+                        Add Property
+                    </MudButton>
+
+                    <!-- Actions -->
+                    <MudDivider Class="my-4" />
+                    <div class="d-flex justify-end gap-2">
+                        <MudButton Variant="Variant.Outlined"
+                                  OnClick="Cancel">
+                            Cancel
+                        </MudButton>
+                        
+                        <MudButton ButtonType="ButtonType.Submit"
+                                  Variant="Variant.Filled"
+                                  Color="Color.Primary"
+                                  Disabled="_submitting"
+                                  StartIcon="@Icons.Material.Filled.Save">
+                            @if (_submitting)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                <span class="ml-2">Updating...</span>
+                            }
+                            else
+                            {
+                                <span>Update Hardware Type</span>
+                            }
+                        </MudButton>
+                    </div>
+                </div>
+            </EditForm>
+        </MudCardContent>
+    </MudCard>
+}
+else
+{
+    <MudAlert Severity="Severity.Error">Hardware type not found</MudAlert>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private UpdateHardwareTypeRequest? _model;
+    private bool _loading = true;
+    private bool _submitting = false;
+    private Dictionary<int, string> _optionsText = new();
+
+    private List<BreadcrumbItem> _breadcrumbs = new();
+
+    private readonly Dictionary<string, string> _availableIcons = new()
+    {
+        { "Build", Icons.Material.Filled.Build },
+        { "Computer", Icons.Material.Filled.Computer },
+        { "Phone", Icons.Material.Filled.Phone },
+        { "Camera", Icons.Material.Filled.Camera },
+        { "Headset", Icons.Material.Filled.Headset },
+        { "Mouse", Icons.Material.Filled.Mouse },
+        { "Keyboard", Icons.Material.Filled.Keyboard },
+        { "Monitor", Icons.Material.Filled.Monitor },
+        { "Cable", Icons.Material.Filled.Cable },
+        { "Router", Icons.Material.Filled.Router },
+        { "Memory", Icons.Material.Filled.Memory },
+        { "Storage", Icons.Material.Filled.Storage },
+        { "Print", Icons.Material.Filled.Print },
+        { "Scanner", Icons.Material.Filled.Scanner },
+        { "Tablet", Icons.Material.Filled.Tablet },
+        { "Watch", Icons.Material.Filled.Watch },
+        { "Tv", Icons.Material.Filled.Tv },
+        { "Speaker", Icons.Material.Filled.Speaker },
+        { "Gamepad", Icons.Material.Filled.SportsEsports },
+        { "Tools", Icons.Material.Filled.Hardware }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _breadcrumbs = new List<BreadcrumbItem>
+        {
+            new("Home", "/"),
+            new("Hardware Types", "/hardware-types"),
+            new("Edit", null, disabled: true)
+        };
+
+        await LoadHardwareType();
+    }
+
+    private async Task LoadHardwareType()
+    {
+        try
+        {
+            var response = await HardwareTypeService.GetHardwareTypeByIdAsync(Id);
+            if (response.Success)
+            {
+                var hardwareType = response.Data!;
+                _model = new UpdateHardwareTypeRequest
+                {
+                    Name = hardwareType.Name,
+                    Description = hardwareType.Description,
+                    Icon = hardwareType.Icon,
+                    PropertySchema = hardwareType.PropertySchema ?? new PropertySchema(),
+                    IsActive = hardwareType.IsActive,
+                    RequiresAssignment = hardwareType.RequiresAssignment,
+                    AllowMultipleAssignments = hardwareType.AllowMultipleAssignments,
+                    MaxAssignmentDurationHours = hardwareType.MaxAssignmentDurationHours,
+                    SortOrder = hardwareType.SortOrder
+                };
+
+                // Initialize options text for select properties
+                for (int i = 0; i < _model.PropertySchema.Properties.Count; i++)
+                {
+                    var property = _model.PropertySchema.Properties[i];
+                    if (property.Type == PropertyType.Select && property.Options != null)
+                    {
+                        _optionsText[i] = string.Join("\n", property.Options);
+                    }
+                    else
+                    {
+                        _optionsText[i] = "";
+                    }
+                }
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to load hardware type");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load hardware type: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void AddProperty()
+    {
+        if (_model == null) return;
+        
+        var newProperty = new PropertyDefinition
+        {
+            Key = $"property_{_model.PropertySchema.Properties.Count + 1}",
+            Label = "New Property",
+            Type = PropertyType.Text,
+            Required = false
+        };
+        
+        _model.PropertySchema.Properties.Add(newProperty);
+        _optionsText[_model.PropertySchema.Properties.Count - 1] = "";
+    }
+
+    private void RemoveProperty(int index)
+    {
+        if (_model == null || index < 0 || index >= _model.PropertySchema.Properties.Count)
+            return;
+
+        _model.PropertySchema.Properties.RemoveAt(index);
+        
+        // Rebuild options text dictionary with new indices
+        var newOptionsText = new Dictionary<int, string>();
+        for (int i = 0; i < _model.PropertySchema.Properties.Count; i++)
+        {
+            if (_optionsText.ContainsKey(i < index ? i : i + 1))
+            {
+                newOptionsText[i] = _optionsText[i < index ? i : i + 1];
+            }
+            else
+            {
+                newOptionsText[i] = "";
+            }
+        }
+        _optionsText = newOptionsText;
+    }
+
+    private void UpdatePropertyOptions(int index, string optionsText)
+    {
+        _optionsText[index] = optionsText;
+        
+        if (_model != null && index < _model.PropertySchema.Properties.Count)
+        {
+            var options = optionsText?.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                                   .Select(o => o.Trim())
+                                   .Where(o => !string.IsNullOrEmpty(o))
+                                   .ToArray() ?? Array.Empty<string>();
+            
+            _model.PropertySchema.Properties[index].Options = options.ToList();
+        }
+    }
+
+    private async Task UpdateHardwareTypeAsync()
+    {
+        if (_model == null) return;
+        
+        try
+        {
+            _submitting = true;
+            
+            var response = await HardwareTypeService.UpdateHardwareTypeAsync(Id, _model);
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync("Hardware type updated successfully");
+                Navigation.NavigateTo($"/hardware-types/{Id}");
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to update hardware type");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to update hardware type: {ex.Message}");
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo($"/hardware-types/{Id}");
+    }
+}

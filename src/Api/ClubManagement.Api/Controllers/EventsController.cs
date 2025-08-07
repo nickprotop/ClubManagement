@@ -16,15 +16,15 @@ namespace ClubManagement.Api.Controllers;
 [Authorize]
 public class EventsController : ControllerBase
 {
-    private readonly ClubManagementDbContext _context;
+    private readonly ITenantDbContextFactory _tenantDbContextFactory;
     private readonly ITenantService _tenantService;
     private readonly IEventAuthorizationService _authService;
     private readonly IRecurrenceManager _recurrenceManager;
     private readonly IRecurrenceUpdateService _recurrenceUpdateService;
 
-    public EventsController(ClubManagementDbContext context, ITenantService tenantService, IEventAuthorizationService authService, IRecurrenceManager recurrenceManager, IRecurrenceUpdateService recurrenceUpdateService)
+    public EventsController(ITenantDbContextFactory tenantDbContextFactory, ITenantService tenantService, IEventAuthorizationService authService, IRecurrenceManager recurrenceManager, IRecurrenceUpdateService recurrenceUpdateService)
     {
-        _context = context;
+        _tenantDbContextFactory = tenantDbContextFactory;
         _tenantService = tenantService;
         _authService = authService;
         _recurrenceManager = recurrenceManager;
@@ -39,14 +39,14 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<EventPermissions>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var permissions = await _authService.GetEventPermissionsAsync(userId, id);
+            var permissions = await _authService.GetEventPermissionsAsync(userId, tenantContext, id);
             return Ok(ApiResponse<EventPermissions>.SuccessResult(permissions));
         }
         catch (Exception ex)
@@ -63,14 +63,14 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<EventPermissions>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var permissions = await _authService.GetEventPermissionsAsync(userId);
+            var permissions = await _authService.GetEventPermissionsAsync(userId, tenantContext);
             return Ok(ApiResponse<EventPermissions>.SuccessResult(permissions));
         }
         catch (UnauthorizedAccessException ex)
@@ -90,14 +90,14 @@ public class EventsController : ControllerBase
         {
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<PagedResult<EventListDto>>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var query = _context.Events
+            var query = tenantContext.Events
                 .Include(e => e.Facility)
                 .Include(e => e.Instructor)
                 .Where(e => !e.IsRecurringMaster) // Exclude master events from list, only show actual occurrences
@@ -179,14 +179,14 @@ public class EventsController : ControllerBase
         {
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<EventDto>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var eventEntity = await _context.Events
+            var eventEntity = await tenantContext.Events
                 .Include(e => e.Facility)
                 .Include(e => e.Instructor)
                 .Include(e => e.Registrations)
@@ -251,21 +251,21 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<EventDto>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.Create);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.Create, tenantContext);
             
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
             // Validate facility if specified
             if (request.FacilityId.HasValue)
             {
-                var facility = await _context.Facilities.FindAsync(request.FacilityId.Value);
+                var facility = await tenantContext.Facilities.FindAsync(request.FacilityId.Value);
                 if (facility == null)
                     return BadRequest(ApiResponse<EventDto>.ErrorResult("Facility not found"));
             }
@@ -273,7 +273,7 @@ public class EventsController : ControllerBase
             // Validate instructor if specified
             if (request.InstructorId.HasValue)
             {
-                var instructor = await _context.Users.FindAsync(request.InstructorId.Value);
+                var instructor = await tenantContext.Users.FindAsync(request.InstructorId.Value);
                 if (instructor == null)
                     return BadRequest(ApiResponse<EventDto>.ErrorResult("Instructor not found"));
             }
@@ -314,14 +314,14 @@ public class EventsController : ControllerBase
                 CreatedBy = this.GetCurrentUserEmail() ?? "System"
             };
 
-            _context.Events.Add(eventEntity);
-            await _context.SaveChangesAsync();
+            tenantContext.Events.Add(eventEntity);
+            await tenantContext.SaveChangesAsync();
 
             // Handle recurrence creation
             if (recurrencePattern?.Type != RecurrenceType.None)
             {
-                var occurrences = await _recurrenceManager.GenerateInitialOccurrencesAsync(eventEntity);
-                await _context.SaveChangesAsync();
+                var occurrences = await _recurrenceManager.GenerateInitialOccurrencesAsync(eventEntity, tenantContext);
+                await tenantContext.SaveChangesAsync();
             }
 
             // Return the created event
@@ -343,26 +343,26 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<EventDto>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.Edit, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.Edit, tenantContext, id);
             
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
                 
-            var eventEntity = await _context.Events.FindAsync(id);
+            var eventEntity = await tenantContext.Events.FindAsync(id);
             if (eventEntity == null)
                 return NotFound(ApiResponse<EventDto>.ErrorResult("Event not found"));
 
             // Validate facility if specified
             if (request.FacilityId.HasValue)
             {
-                var facility = await _context.Facilities.FindAsync(request.FacilityId.Value);
+                var facility = await tenantContext.Facilities.FindAsync(request.FacilityId.Value);
                 if (facility == null)
                     return BadRequest(ApiResponse<EventDto>.ErrorResult("Facility not found"));
             }
@@ -370,7 +370,7 @@ public class EventsController : ControllerBase
             // Validate instructor if specified
             if (request.InstructorId.HasValue)
             {
-                var instructor = await _context.Users.FindAsync(request.InstructorId.Value);
+                var instructor = await tenantContext.Users.FindAsync(request.InstructorId.Value);
                 if (instructor == null)
                     return BadRequest(ApiResponse<EventDto>.ErrorResult("Instructor not found"));
             }
@@ -402,7 +402,7 @@ public class EventsController : ControllerBase
                     RequiredEquipment = request.RequiredEquipment ?? new List<string>()
                 };
 
-                var updateResult = await _recurrenceUpdateService.UpdateSingleOccurrenceAsync(id, updatedEvent);
+                var updateResult = await _recurrenceUpdateService.UpdateSingleOccurrenceAsync(tenantContext, id, updatedEvent);
                 
                 if (!updateResult.Success)
                     return BadRequest(ApiResponse<EventDto>.ErrorResult(updateResult.Message));
@@ -430,7 +430,7 @@ public class EventsController : ControllerBase
                 eventEntity.RequiredEquipment = request.RequiredEquipment ?? new List<string>();
                 eventEntity.UpdatedAt = DateTime.UtcNow;
 
-                await _context.SaveChangesAsync();
+                await tenantContext.SaveChangesAsync();
 
                 var updatedEvent = await GetEvent(id);
                 return updatedEvent;
@@ -451,15 +451,15 @@ public class EventsController : ControllerBase
         {
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<EventDto>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             // Get the master event for this occurrence
-            var occurrence = await _context.Events.FindAsync(id);
+            var occurrence = await tenantContext.Events.FindAsync(id);
             if (occurrence == null)
                 return NotFound(ApiResponse<EventDto>.ErrorResult("Event not found"));
 
@@ -482,20 +482,20 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<RecurrenceUpdateResult>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.Edit, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.Edit, tenantContext, id);
             
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
 
             // Get master event ID
-            var eventEntity = await _context.Events.FindAsync(id);
+            var eventEntity = await tenantContext.Events.FindAsync(id);
             if (eventEntity == null)
                 return NotFound(ApiResponse<RecurrenceUpdateResult>.ErrorResult("Event not found"));
 
@@ -503,7 +503,7 @@ public class EventsController : ControllerBase
             if (!masterEventId.HasValue)
                 return BadRequest(ApiResponse<RecurrenceUpdateResult>.ErrorResult("Event is not part of a recurring series"));
 
-            var result = await _recurrenceUpdateService.PreviewRecurrenceUpdateAsync(masterEventId.Value, newPattern);
+            var result = await _recurrenceUpdateService.PreviewRecurrenceUpdateAsync(tenantContext, masterEventId.Value, newPattern);
             return Ok(ApiResponse<RecurrenceUpdateResult>.SuccessResult(result));
         }
         catch (Exception ex)
@@ -522,20 +522,20 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<RecurrenceUpdateResult>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.Edit, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.Edit, tenantContext, id);
             
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
 
             // Get master event ID
-            var eventEntity = await _context.Events.FindAsync(id);
+            var eventEntity = await tenantContext.Events.FindAsync(id);
             if (eventEntity == null)
                 return NotFound(ApiResponse<RecurrenceUpdateResult>.ErrorResult("Event not found"));
 
@@ -544,7 +544,7 @@ public class EventsController : ControllerBase
                 return BadRequest(ApiResponse<RecurrenceUpdateResult>.ErrorResult("Event is not part of a recurring series"));
 
             // Update the master event details first
-            var masterEvent = await _context.Events.FindAsync(masterEventId.Value);
+            var masterEvent = await tenantContext.Events.FindAsync(masterEventId.Value);
             if (masterEvent != null)
             {
                 masterEvent.Title = request.Title;
@@ -561,11 +561,12 @@ public class EventsController : ControllerBase
                 masterEvent.RequiredEquipment = request.RequiredEquipment ?? new List<string>();
                 masterEvent.UpdatedAt = DateTime.UtcNow;
                 
-                await _context.SaveChangesAsync();
+                await tenantContext.SaveChangesAsync();
             }
 
             // Update the recurrence pattern
             var result = await _recurrenceUpdateService.UpdateRecurrencePatternAsync(
+                tenantContext,
                 masterEventId.Value, 
                 request.RecurrencePattern, 
                 request.UpdateStrategy);
@@ -587,23 +588,23 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.Delete, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.Delete, tenantContext, id);
             
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
-            var eventEntity = await _context.Events.FindAsync(id);
+            var eventEntity = await tenantContext.Events.FindAsync(id);
             if (eventEntity == null)
                 return NotFound(ApiResponse<bool>.ErrorResult("Event not found"));
 
-            _context.Events.Remove(eventEntity);
-            await _context.SaveChangesAsync();
+            tenantContext.Events.Remove(eventEntity);
+            await tenantContext.SaveChangesAsync();
 
             return Ok(ApiResponse<bool>.SuccessResult(true, "Event deleted successfully"));
         }
@@ -620,21 +621,21 @@ public class EventsController : ControllerBase
         {
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var eventEntity = await _context.Events.FindAsync(id);
+            var eventEntity = await tenantContext.Events.FindAsync(id);
             if (eventEntity == null)
                 return NotFound(ApiResponse<bool>.ErrorResult("Event not found"));
 
             eventEntity.Status = status;
             eventEntity.UpdatedAt = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
 
             return Ok(ApiResponse<bool>.SuccessResult(true, "Event status updated successfully"));
         }
@@ -653,20 +654,20 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<EventRegistrationDto>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             var action = request.MemberId != null ? EventAction.RegisterOthers : EventAction.RegisterSelf;
-            var authResult = await _authService.CheckAuthorizationAsync(userId, action, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, action, tenantContext, id);
             
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
 
-            var eventEntity = await _context.Events.FindAsync(id);
+            var eventEntity = await tenantContext.Events.FindAsync(id);
             if (eventEntity == null)
                 return NotFound(ApiResponse<EventRegistrationDto>.ErrorResult("Event not found"));
 
@@ -678,25 +679,25 @@ public class EventsController : ControllerBase
             }
             else
             {
-                var userMember = await _context.Members.FirstOrDefaultAsync(m => m.UserId == userId);
+                var userMember = await tenantContext.Members.FirstOrDefaultAsync(m => m.UserId == userId);
                 if (userMember == null)
                     return BadRequest(ApiResponse<EventRegistrationDto>.ErrorResult("User is not a registered member"));
                 memberId = userMember.Id;
             }
 
-            var member = await _context.Members.Include(m => m.User).FirstOrDefaultAsync(m => m.Id == memberId);
+            var member = await tenantContext.Members.Include(m => m.User).FirstOrDefaultAsync(m => m.Id == memberId);
             if (member == null)
                 return BadRequest(ApiResponse<EventRegistrationDto>.ErrorResult("Member not found"));
 
             // Check if already registered
-            var existingRegistration = await _context.EventRegistrations
+            var existingRegistration = await tenantContext.EventRegistrations
                 .FirstOrDefaultAsync(r => r.EventId == id && r.MemberId == memberId);
             
             if (existingRegistration != null)
                 return BadRequest(ApiResponse<EventRegistrationDto>.ErrorResult("Member is already registered for this event"));
 
             // Check capacity
-            var currentRegistrations = await _context.EventRegistrations
+            var currentRegistrations = await tenantContext.EventRegistrations
                 .CountAsync(r => r.EventId == id && r.Status == RegistrationStatus.Confirmed);
 
             var status = currentRegistrations < eventEntity.MaxCapacity 
@@ -719,12 +720,12 @@ public class EventsController : ControllerBase
 
             if (status == RegistrationStatus.Waitlisted)
             {
-                var waitlistCount = await _context.EventRegistrations
+                var waitlistCount = await tenantContext.EventRegistrations
                     .CountAsync(r => r.EventId == id && r.Status == RegistrationStatus.Waitlisted);
                 registration.WaitlistPosition = waitlistCount + 1;
             }
 
-            _context.EventRegistrations.Add(registration);
+            tenantContext.EventRegistrations.Add(registration);
 
             // Update enrollment count
             if (status == RegistrationStatus.Confirmed)
@@ -732,7 +733,7 @@ public class EventsController : ControllerBase
                 eventEntity.CurrentEnrollment++;
             }
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
 
             var registrationDto = new EventRegistrationDto
             {
@@ -767,19 +768,19 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<List<EventRegistrationDto>>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.ViewRegistrations, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.ViewRegistrations, tenantContext, id);
             
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
 
-            var registrations = await _context.EventRegistrations
+            var registrations = await tenantContext.EventRegistrations
                 .Include(r => r.Member)
                     .ThenInclude(m => m.User)
                 .Include(r => r.RegisteredByUser)
@@ -819,20 +820,20 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<EventRegistrationDto>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var userMember = await _context.Members.FirstOrDefaultAsync(m => m.UserId == userId);
+            var userMember = await tenantContext.Members.FirstOrDefaultAsync(m => m.UserId == userId);
             
             // If user doesn't have a member profile (e.g., staff users), return a meaningful response
             if (userMember == null)
                 return NotFound(ApiResponse<EventRegistrationDto>.ErrorResult("User is not a member and cannot have event registrations"));
 
-            var registration = await _context.EventRegistrations
+            var registration = await tenantContext.EventRegistrations
                 .Include(r => r.Member)
                     .ThenInclude(m => m.User)
                 .Include(r => r.RegisteredByUser)
@@ -875,19 +876,19 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<EventRegistrationDto>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.ModifyRegistrations, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.ModifyRegistrations, tenantContext, id);
             
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
 
-            var registration = await _context.EventRegistrations
+            var registration = await tenantContext.EventRegistrations
                 .Include(r => r.Member)
                     .ThenInclude(m => m.User)
                 .FirstOrDefaultAsync(r => r.Id == registrationId && r.EventId == id);
@@ -899,7 +900,7 @@ public class EventsController : ControllerBase
             registration.Notes = request.Notes;
             registration.UpdatedAt = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
 
             var registrationDto = new EventRegistrationDto
             {
@@ -931,15 +932,15 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             // Get registration to check ownership
-            var registration = await _context.EventRegistrations
+            var registration = await tenantContext.EventRegistrations
                 .Include(r => r.Member)
                 .FirstOrDefaultAsync(r => r.Id == registrationId && r.EventId == id);
 
@@ -950,11 +951,11 @@ public class EventsController : ControllerBase
             var isSelfCancellation = registration.Member.UserId == userId;
             var action = isSelfCancellation ? EventAction.RegisterSelf : EventAction.ModifyRegistrations;
             
-            var authResult = await _authService.CheckAuthorizationAsync(userId, action, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, action, tenantContext, id);
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
 
-            var eventEntity = await _context.Events.FindAsync(id);
+            var eventEntity = await tenantContext.Events.FindAsync(id);
             if (eventEntity == null)
                 return NotFound(ApiResponse<bool>.ErrorResult("Event not found"));
 
@@ -971,10 +972,10 @@ public class EventsController : ControllerBase
                 eventEntity.CurrentEnrollment = Math.Max(0, eventEntity.CurrentEnrollment - 1);
             }
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
 
             // TODO: Handle waitlist promotion logic
-            await PromoteFromWaitlistAsync(id);
+            await PromoteFromWaitlistAsync(id, tenantContext);
 
             return Ok(ApiResponse<bool>.SuccessResult(true, "Registration cancelled successfully"));
         }
@@ -994,19 +995,19 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.CheckInOthers, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.CheckInOthers, tenantContext, id);
             
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
 
-            var registration = await _context.EventRegistrations
+            var registration = await tenantContext.EventRegistrations
                 .FirstOrDefaultAsync(r => r.EventId == id && r.MemberId == memberId && r.Status == RegistrationStatus.Confirmed);
 
             if (registration == null)
@@ -1020,7 +1021,7 @@ public class EventsController : ControllerBase
             registration.NoShow = false;
             registration.UpdatedAt = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
 
             return Ok(ApiResponse<bool>.SuccessResult(true, "Member checked in successfully"));
         }
@@ -1038,23 +1039,23 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.CheckInSelf, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.CheckInSelf, tenantContext, id);
             
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
 
-            var member = await _context.Members.FirstOrDefaultAsync(m => m.UserId == userId);
+            var member = await tenantContext.Members.FirstOrDefaultAsync(m => m.UserId == userId);
             if (member == null)
                 return BadRequest(ApiResponse<bool>.ErrorResult("User is not a registered member"));
 
-            var registration = await _context.EventRegistrations
+            var registration = await tenantContext.EventRegistrations
                 .FirstOrDefaultAsync(r => r.EventId == id && r.MemberId == member.Id && r.Status == RegistrationStatus.Confirmed);
 
             if (registration == null)
@@ -1068,7 +1069,7 @@ public class EventsController : ControllerBase
             registration.NoShow = false;
             registration.UpdatedAt = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
 
             return Ok(ApiResponse<bool>.SuccessResult(true, "Checked in successfully"));
         }
@@ -1087,19 +1088,19 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.CheckInOthers, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.CheckInOthers, tenantContext, id);
             
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
 
-            var registration = await _context.EventRegistrations
+            var registration = await tenantContext.EventRegistrations
                 .FirstOrDefaultAsync(r => r.EventId == id && r.MemberId == memberId);
 
             if (registration == null)
@@ -1112,7 +1113,7 @@ public class EventsController : ControllerBase
             registration.CheckedInByUserId = null;
             registration.UpdatedAt = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
 
             return Ok(ApiResponse<bool>.SuccessResult(true, "Check-in undone successfully"));
         }
@@ -1131,19 +1132,19 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<BulkCheckInResult>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.CheckInOthers, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.CheckInOthers, tenantContext, id);
             
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
 
-            var registrations = await _context.EventRegistrations
+            var registrations = await tenantContext.EventRegistrations
                 .Where(r => r.EventId == id && request.MemberIds.Contains(r.MemberId) && r.Status == RegistrationStatus.Confirmed)
                 .ToListAsync();
 
@@ -1180,7 +1181,7 @@ public class EventsController : ControllerBase
                 result.SuccessfulCheckIns++;
             }
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
 
             return Ok(ApiResponse<BulkCheckInResult>.SuccessResult(result, $"Bulk check-in completed: {result.SuccessfulCheckIns} successful"));
         }
@@ -1199,23 +1200,23 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<CheckInStatusDto>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.ViewRegistrations, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.ViewRegistrations, tenantContext, id);
             
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
 
-            var eventEntity = await _context.Events.FindAsync(id);
+            var eventEntity = await tenantContext.Events.FindAsync(id);
             if (eventEntity == null)
                 return NotFound(ApiResponse<CheckInStatusDto>.ErrorResult("Event not found"));
 
-            var registrations = await _context.EventRegistrations
+            var registrations = await tenantContext.EventRegistrations
                 .Where(r => r.EventId == id && r.Status == RegistrationStatus.Confirmed)
                 .ToListAsync();
 
@@ -1251,19 +1252,19 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.CancelEvent, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.CancelEvent, tenantContext, id);
             
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
 
-            var eventEntity = await _context.Events.FindAsync(id);
+            var eventEntity = await tenantContext.Events.FindAsync(id);
             if (eventEntity == null)
                 return NotFound(ApiResponse<bool>.ErrorResult("Event not found"));
 
@@ -1277,7 +1278,7 @@ public class EventsController : ControllerBase
             eventEntity.UpdatedAt = DateTime.UtcNow;
 
             // Cancel all confirmed registrations
-            var registrations = await _context.EventRegistrations
+            var registrations = await tenantContext.EventRegistrations
                 .Where(r => r.EventId == id && r.Status != RegistrationStatus.Cancelled)
                 .ToListAsync();
 
@@ -1287,7 +1288,7 @@ public class EventsController : ControllerBase
                 registration.UpdatedAt = DateTime.UtcNow;
             }
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
 
             // TODO: Send cancellation notifications to registered users
 
@@ -1308,19 +1309,19 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.RescheduleEvent, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, EventAction.RescheduleEvent, tenantContext, id);
             
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
 
-            var eventEntity = await _context.Events.FindAsync(id);
+            var eventEntity = await tenantContext.Events.FindAsync(id);
             if (eventEntity == null)
                 return NotFound(ApiResponse<bool>.ErrorResult("Event not found"));
 
@@ -1335,7 +1336,7 @@ public class EventsController : ControllerBase
             eventEntity.Status = EventStatus.Rescheduled;
             eventEntity.UpdatedAt = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
 
             // TODO: Send reschedule notifications to registered users
 
@@ -1347,20 +1348,20 @@ public class EventsController : ControllerBase
         }
     }
 
-    private async Task PromoteFromWaitlistAsync(Guid eventId)
+    private async Task PromoteFromWaitlistAsync(Guid eventId, ClubManagementDbContext tenantContext)
     {
-        // Note: This method is called after tenant schema is already set in the calling endpoint
-        var eventEntity = await _context.Events.FindAsync(eventId);
+        // Note: This method receives the tenant-specific database context from the calling endpoint
+        var eventEntity = await tenantContext.Events.FindAsync(eventId);
         if (eventEntity == null) return;
 
-        var confirmedCount = await _context.EventRegistrations
+        var confirmedCount = await tenantContext.EventRegistrations
             .CountAsync(r => r.EventId == eventId && r.Status == RegistrationStatus.Confirmed);
 
         if (confirmedCount >= eventEntity.MaxCapacity) return;
 
         var spotsAvailable = eventEntity.MaxCapacity - confirmedCount;
         
-        var waitlistRegistrations = await _context.EventRegistrations
+        var waitlistRegistrations = await tenantContext.EventRegistrations
             .Where(r => r.EventId == eventId && r.Status == RegistrationStatus.Waitlisted)
             .OrderBy(r => r.RegisteredAt)
             .Take(spotsAvailable)
@@ -1376,7 +1377,7 @@ public class EventsController : ControllerBase
         }
 
         // Update waitlist positions for remaining waitlisted members
-        var remainingWaitlist = await _context.EventRegistrations
+        var remainingWaitlist = await tenantContext.EventRegistrations
             .Where(r => r.EventId == eventId && r.Status == RegistrationStatus.Waitlisted)
             .OrderBy(r => r.RegisteredAt)
             .ToListAsync();
@@ -1386,7 +1387,7 @@ public class EventsController : ControllerBase
             remainingWaitlist[i].WaitlistPosition = i + 1;
         }
 
-        await _context.SaveChangesAsync();
+        await tenantContext.SaveChangesAsync();
 
         // TODO: Send promotion notifications to confirmed members
     }
@@ -1400,12 +1401,12 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<RecurringRegistrationResponse>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             var response = new RecurringRegistrationResponse();
 
@@ -1423,7 +1424,7 @@ public class EventsController : ControllerBase
                 {
                     try
                     {
-                        var result = await RegisterMemberForEventInternal(eventId, memberId, userId, request.Notes);
+                        var result = await RegisterMemberForEventInternal(eventId, memberId, userId, request.Notes, tenantContext);
                         response.Results.Add(result);
                         
                         if (result.Success)
@@ -1450,7 +1451,7 @@ public class EventsController : ControllerBase
                 }
             }
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
 
             var message = $"Bulk registration completed: {response.SuccessfulRegistrations} successful, {response.FailedRegistrations} failed";
             return Ok(ApiResponse<RecurringRegistrationResponse>.SuccessResult(response, message));
@@ -1469,15 +1470,15 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<RecurringEventOptionsDto>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             // Check if this is a recurring master event
-            var masterEvent = await _context.Events
+            var masterEvent = await tenantContext.Events
                 .Include(e => e.Facility)
                 .Include(e => e.Instructor)
                 .FirstOrDefaultAsync(e => e.Id == masterEventId && e.IsRecurringMaster);
@@ -1486,7 +1487,7 @@ public class EventsController : ControllerBase
                 return NotFound(ApiResponse<RecurringEventOptionsDto>.ErrorResult("Recurring event series not found"));
 
             // Get all future occurrences
-            var upcomingOccurrences = await _context.Events
+            var upcomingOccurrences = await tenantContext.Events
                 .Where(e => e.MasterEventId == masterEventId && e.StartDateTime > DateTime.UtcNow)
                 .OrderBy(e => e.StartDateTime)
                 .Select(e => new EventOccurrenceDto
@@ -1503,10 +1504,10 @@ public class EventsController : ControllerBase
                 .ToListAsync();
 
             // Check if user is registered for any occurrences
-            var userMember = await _context.Members.FirstOrDefaultAsync(m => m.UserId == userId);
+            var userMember = await tenantContext.Members.FirstOrDefaultAsync(m => m.UserId == userId);
             if (userMember != null)
             {
-                var registeredEventIds = await _context.EventRegistrations
+                var registeredEventIds = await tenantContext.EventRegistrations
                     .Where(r => r.MemberId == userMember.Id && r.Status != RegistrationStatus.Cancelled)
                     .Select(r => r.EventId)
                     .ToListAsync();
@@ -1542,20 +1543,20 @@ public class EventsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<List<RecurringRegistrationSummary>>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var userMember = await _context.Members.FirstOrDefaultAsync(m => m.UserId == userId);
+            var userMember = await tenantContext.Members.FirstOrDefaultAsync(m => m.UserId == userId);
             
             if (userMember == null)
                 return Ok(ApiResponse<List<RecurringRegistrationSummary>>.SuccessResult(new List<RecurringRegistrationSummary>()));
 
             // Get all recurring event series the user is registered for
-            var recurringRegistrations = await _context.EventRegistrations
+            var recurringRegistrations = await tenantContext.EventRegistrations
                 .Include(r => r.Event)
                 .ThenInclude(e => e.Facility)
                 .Where(r => r.MemberId == userMember.Id && 
@@ -1575,7 +1576,7 @@ public class EventsController : ControllerBase
             {
                 if (!group.MasterEventId.HasValue) continue;
 
-                var masterEvent = await _context.Events
+                var masterEvent = await tenantContext.Events
                     .FirstOrDefaultAsync(e => e.Id == group.MasterEventId.Value && e.IsRecurringMaster);
 
                 if (masterEvent == null) continue;
@@ -1603,8 +1604,8 @@ public class EventsController : ControllerBase
                     EventSeriesName = masterEvent.Title,
                     NextOccurrence = registeredEvents.FirstOrDefault()?.StartDateTime,
                     TotalRegistered = registeredEvents.Count,
-                    TotalOccurrences = await _context.Events.CountAsync(e => e.MasterEventId == group.MasterEventId),
-                    RegistrationType = DetermineRegistrationType(registeredEvents.Count, await _context.Events.CountAsync(e => e.MasterEventId == group.MasterEventId && e.StartDateTime > DateTime.UtcNow)),
+                    TotalOccurrences = await tenantContext.Events.CountAsync(e => e.MasterEventId == group.MasterEventId),
+                    RegistrationType = DetermineRegistrationType(registeredEvents.Count, await tenantContext.Events.CountAsync(e => e.MasterEventId == group.MasterEventId && e.StartDateTime > DateTime.UtcNow)),
                     RegisteredEvents = registeredEvents
                 };
 
@@ -1619,10 +1620,10 @@ public class EventsController : ControllerBase
         }
     }
 
-    private async Task<EventRegistrationResult> RegisterMemberForEventInternal(Guid eventId, Guid memberId, Guid registeredByUserId, string? notes)
+    private async Task<EventRegistrationResult> RegisterMemberForEventInternal(Guid eventId, Guid memberId, Guid registeredByUserId, string? notes, ClubManagementDbContext tenantContext)
     {
-        // Note: This method is called after tenant schema is already set in the calling endpoint
-        var eventEntity = await _context.Events
+        // Note: This method receives the tenant-specific database context from the calling endpoint
+        var eventEntity = await tenantContext.Events
             .Include(e => e.Facility)
             .FirstOrDefaultAsync(e => e.Id == eventId);
             
@@ -1638,7 +1639,7 @@ public class EventsController : ControllerBase
             };
         }
 
-        var member = await _context.Members
+        var member = await tenantContext.Members
             .Include(m => m.User)
             .FirstOrDefaultAsync(m => m.Id == memberId);
             
@@ -1657,7 +1658,7 @@ public class EventsController : ControllerBase
         }
 
         // Check if already registered
-        var existingRegistration = await _context.EventRegistrations
+        var existingRegistration = await tenantContext.EventRegistrations
             .FirstOrDefaultAsync(r => r.EventId == eventId && r.MemberId == memberId);
             
         if (existingRegistration != null)
@@ -1676,7 +1677,7 @@ public class EventsController : ControllerBase
         }
 
         // Check capacity
-        var currentRegistrations = await _context.EventRegistrations
+        var currentRegistrations = await tenantContext.EventRegistrations
             .CountAsync(r => r.EventId == eventId && r.Status == RegistrationStatus.Confirmed);
 
         var status = currentRegistrations < eventEntity.MaxCapacity 
@@ -1711,12 +1712,12 @@ public class EventsController : ControllerBase
 
         if (status == RegistrationStatus.Waitlisted)
         {
-            var waitlistCount = await _context.EventRegistrations
+            var waitlistCount = await tenantContext.EventRegistrations
                 .CountAsync(r => r.EventId == eventId && r.Status == RegistrationStatus.Waitlisted);
             registration.WaitlistPosition = waitlistCount + 1;
         }
 
-        _context.EventRegistrations.Add(registration);
+        tenantContext.EventRegistrations.Add(registration);
 
         // Update enrollment count
         if (status == RegistrationStatus.Confirmed)

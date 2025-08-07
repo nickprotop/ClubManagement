@@ -1,0 +1,289 @@
+@page "/hardware-types"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IHardwareTypeService HardwareTypeService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>Hardware Types</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <MudText Typo="Typo.h4">Hardware Types</MudText>
+    @if (_permissions?.CanCreateTypes == true)
+    {
+        <MudButton Variant="Variant.Filled" 
+                   Color="Color.Primary" 
+                   StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="@(() => Navigation.NavigateTo("/hardware-types/create"))">
+            Add Hardware Type
+        </MudButton>
+    }
+</div>
+
+<MudCard>
+    <MudCardContent>
+        <!-- Search -->
+        <div class="mb-4">
+            <MudTextField @bind-Value="_searchTerm"
+                         Label="Search Hardware Types"
+                         Variant="Variant.Outlined"
+                         Adornment="Adornment.Start"
+                         AdornmentIcon="@Icons.Material.Filled.Search"
+                         OnKeyUp="OnSearchKeyUp"
+                         Class="max-width-sm" />
+        </div>
+
+        <!-- Hardware Types Grid -->
+        <MudGrid>
+            @if (_loading)
+            {
+                @for (int i = 0; i < 6; i++)
+                {
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudCard>
+                            <MudCardContent>
+                                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="60px" />
+                                <MudSkeleton SkeletonType="SkeletonType.Text" Class="mt-2" />
+                                <MudSkeleton SkeletonType="SkeletonType.Text" Width="70%" />
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                }
+            }
+            else if (_filteredHardwareTypes?.Any() == true)
+            {
+                @foreach (var type in _filteredHardwareTypes)
+                {
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudCard Class="cursor-pointer hover-elevation" 
+                                @onclick="@(() => Navigation.NavigateTo($"/hardware-types/{type.Id}"))">
+                            <MudCardContent>
+                                <div class="d-flex align-center mb-3">
+                                    <MudIcon Icon="@type.Icon" Size="Size.Large" Class="mr-3" />
+                                    <div>
+                                        <MudText Typo="Typo.h6">@type.Name</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @type.HardwareCount items
+                                        </MudText>
+                                    </div>
+                                </div>
+                                
+                                @if (!string.IsNullOrEmpty(type.Description))
+                                {
+                                    <MudText Typo="Typo.body2" Class="mb-2">
+                                        @(type.Description.Length > 100 ? type.Description.Substring(0, 100) + "..." : type.Description)
+                                    </MudText>
+                                }
+                                
+                                @if (type.PropertySchema?.Properties?.Any() == true)
+                                {
+                                    <div class="d-flex flex-wrap gap-1 mt-2">
+                                        @foreach (var prop in type.PropertySchema.Properties.Take(3))
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                                                @prop.Label
+                                            </MudChip>
+                                        }
+                                        @if (type.PropertySchema.Properties.Count > 3)
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                                                +@(type.PropertySchema.Properties.Count - 3) more
+                                            </MudChip>
+                                        }
+                                    </div>
+                                }
+                            </MudCardContent>
+                            <MudCardActions Class="justify-end">
+                                @if (_permissions?.CanEditTypes == true)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                                 Size="Size.Small"
+                                                 Color="Color.Primary"
+                                                 OnClick="@((e) => EditType(e, type.Id))"
+                                                 Title="Edit Type" />
+                                }
+                                
+                                @if (_permissions?.CanDeleteTypes == true && type.HardwareCount == 0)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                 Size="Size.Small"
+                                                 Color="Color.Error"
+                                                 OnClick="@((e) => DeleteTypeWithEvent(e, type))"
+                                                 Title="Delete Type" />
+                                }
+                            </MudCardActions>
+                        </MudCard>
+                    </MudItem>
+                }
+            }
+            else if (!_loading)
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Info">
+                        No hardware types found. @if (_permissions?.CanCreateTypes == true)
+                        {
+                            <MudLink OnClick="@(() => Navigation.NavigateTo("/hardware-types/create"))">
+                                Create one now
+                            </MudLink>
+                        }
+                    </MudAlert>
+                </MudItem>
+            }
+        </MudGrid>
+    </MudCardContent>
+</MudCard>
+
+@code {
+    private List<HardwareTypeDto>? _hardwareTypes;
+    private List<HardwareTypeDto>? _filteredHardwareTypes;
+    private HardwarePermissions? _permissions;
+    private bool _loading = true;
+    
+    private string _searchTerm = string.Empty;
+    private Timer? _searchTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissions();
+        await LoadHardwareTypes();
+    }
+
+    private async Task LoadPermissions()
+    {
+        try
+        {
+            var response = await HardwareTypeService.GetHardwareTypePermissionsAsync();
+            if (response.Success)
+            {
+                _permissions = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load permissions: {ex.Message}");
+        }
+    }
+
+    private async Task LoadHardwareTypes()
+    {
+        try
+        {
+            _loading = true;
+            var response = await HardwareTypeService.GetHardwareTypesAsync();
+            if (response.Success)
+            {
+                _hardwareTypes = response.Data;
+                ApplyFilters();
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to load hardware types");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load hardware types: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        if (_hardwareTypes == null)
+        {
+            _filteredHardwareTypes = new List<HardwareTypeDto>();
+            return;
+        }
+
+        var filtered = _hardwareTypes.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(_searchTerm))
+        {
+            filtered = filtered.Where(ht => 
+                ht.Name.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                ht.Description?.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) == true);
+        }
+
+        _filteredHardwareTypes = filtered.ToList();
+    }
+
+    private void OnSearchKeyUp(KeyboardEventArgs e)
+    {
+        _searchTimer?.Dispose();
+        _searchTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(() =>
+            {
+                ApplyFilters();
+                StateHasChanged();
+            });
+        }, null, 300, Timeout.Infinite);
+    }
+
+    private async Task DeleteHardwareType(HardwareTypeDto hardwareType)
+    {
+        var confirmed = await NotificationService.ShowConfirmationAsync(
+            "Delete Hardware Type",
+            $"Are you sure you want to delete '{hardwareType.Name}'? This action cannot be undone.");
+            
+        if (!confirmed) return;
+
+        try
+        {
+            var response = await HardwareTypeService.DeleteHardwareTypeAsync(hardwareType.Id);
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync("Hardware type deleted successfully");
+                await LoadHardwareTypes();
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to delete hardware type");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to delete hardware type: {ex.Message}");
+        }
+    }
+
+    private void EditType(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, Guid typeId)
+    {
+        // MouseEventArgs doesn't have StopPropagation in Blazor
+        Navigation.NavigateTo($"/hardware-types/{typeId}/edit");
+    }
+
+    private async Task DeleteTypeWithEvent(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, HardwareTypeDto type)
+    {
+        // MouseEventArgs doesn't have StopPropagation in Blazor
+        await DeleteHardwareType(type);
+    }
+
+    public void Dispose()
+    {
+        _searchTimer?.Dispose();
+    }
+}
+
+<style>
+.cursor-pointer {
+    cursor: pointer;
+}
+
+.hover-elevation:hover {
+    transition: all 0.3s ease;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
+}
+
+.max-width-sm {
+    max-width: 400px;
+}
+</style>

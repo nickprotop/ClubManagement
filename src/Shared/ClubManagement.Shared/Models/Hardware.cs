@@ -23,8 +23,10 @@ public enum HardwareStatus
 {
     Available,
     Assigned,
+    InUse,
     Maintenance,
     OutOfOrder,
+    OutOfService,
     Lost,
     Retired
 }

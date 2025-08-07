@@ -14,13 +14,15 @@ namespace ClubManagement.Api.Controllers;
 [Authorize]
 public class DashboardController : ControllerBase
 {
-    private readonly ClubManagementDbContext _context;
+    private readonly ITenantDbContextFactory _tenantDbContextFactory;
     private readonly ITenantService _tenantService;
+    private readonly CatalogDbContext _catalogContext;
 
-    public DashboardController(ClubManagementDbContext context, ITenantService tenantService)
+    public DashboardController(ITenantDbContextFactory tenantDbContextFactory, ITenantService tenantService, CatalogDbContext catalogContext)
     {
-        _context = context;
+        _tenantDbContextFactory = tenantDbContextFactory;
         _tenantService = tenantService;
+        _catalogContext = catalogContext;
     }
 
     [HttpGet]
@@ -31,19 +33,19 @@ public class DashboardController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<DashboardDataDto>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             // Get current user with role
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+            var user = await tenantContext.Users.FirstOrDefaultAsync(u => u.Id == userId);
             if (user == null)
                 return NotFound(ApiResponse<DashboardDataDto>.ErrorResult("User not found"));
 
-            var dashboardData = await BuildDashboardDataAsync(user);
+            var dashboardData = await BuildDashboardDataAsync(user, tenantContext);
             
             return Ok(ApiResponse<DashboardDataDto>.SuccessResult(dashboardData));
         }
@@ -53,7 +55,7 @@ public class DashboardController : ControllerBase
         }
     }
 
-    private async Task<DashboardDataDto> BuildDashboardDataAsync(User user)
+    private async Task<DashboardDataDto> BuildDashboardDataAsync(User user, ClubManagementDbContext tenantContext)
     {
         var dashboardData = new DashboardDataDto
         {
@@ -66,19 +68,19 @@ public class DashboardController : ControllerBase
                 await BuildSuperAdminDashboard(dashboardData);
                 break;
             case UserRole.Admin:
-                await BuildAdminDashboard(dashboardData);
+                await BuildAdminDashboard(dashboardData, tenantContext);
                 break;
             case UserRole.Coach:
-                await BuildCoachDashboard(dashboardData, user.Id);
+                await BuildCoachDashboard(dashboardData, user.Id, tenantContext);
                 break;
             case UserRole.Staff:
-                await BuildStaffDashboard(dashboardData);
+                await BuildStaffDashboard(dashboardData, tenantContext);
                 break;
             case UserRole.Instructor:
-                await BuildInstructorDashboard(dashboardData, user.Id);
+                await BuildInstructorDashboard(dashboardData, user.Id, tenantContext);
                 break;
             case UserRole.Member:
-                await BuildMemberDashboard(dashboardData, user.Id);
+                await BuildMemberDashboard(dashboardData, user.Id, tenantContext);
                 break;
         }
 
@@ -87,11 +89,9 @@ public class DashboardController : ControllerBase
 
     private async Task BuildSuperAdminDashboard(DashboardDataDto dashboard)
     {
-        // Switch to public schema for tenant data
-        await _context.Database.ExecuteSqlRawAsync("SET search_path TO public");
-        
-        var tenantCount = await _context.Tenants.CountAsync();
-        var activeTenants = await _context.Tenants.CountAsync(t => t.Status == TenantStatus.Active);
+        // Use catalog database for tenant data
+        var tenantCount = await _catalogContext.Tenants.CountAsync();
+        var activeTenants = await _catalogContext.Tenants.CountAsync(t => t.Status == TenantStatus.Active);
         
         dashboard.MetricCards.AddRange(new[]
         {
@@ -146,11 +146,11 @@ public class DashboardController : ControllerBase
         });
     }
 
-    private async Task BuildAdminDashboard(DashboardDataDto dashboard)
+    private async Task BuildAdminDashboard(DashboardDataDto dashboard, ClubManagementDbContext tenantContext)
     {
-        var memberCount = await _context.Members.CountAsync();
-        var activeEvents = await _context.Events.CountAsync(e => e.Status == EventStatus.Scheduled && e.StartDateTime > DateTime.UtcNow);
-        var thisMonthRegistrations = await _context.Members.CountAsync(m => m.JoinedAt >= DateTime.UtcNow.AddDays(-30));
+        var memberCount = await tenantContext.Members.CountAsync();
+        var activeEvents = await tenantContext.Events.CountAsync(e => e.Status == EventStatus.Scheduled && e.StartDateTime > DateTime.UtcNow);
+        var thisMonthRegistrations = await tenantContext.Members.CountAsync(m => m.JoinedAt >= DateTime.UtcNow.AddDays(-30));
         
         dashboard.MetricCards.AddRange(new[]
         {
@@ -204,23 +204,23 @@ public class DashboardController : ControllerBase
             new QuickActionDto { Title = "Manage Staff", Icon = "Icons.Material.Filled.SupervisorAccount", Href = "/staff", Color = "Info" }
         });
 
-        await AddRecentActivityAsync(dashboard);
+        await AddRecentActivityAsync(dashboard, tenantContext);
     }
 
-    private async Task BuildCoachDashboard(DashboardDataDto dashboard, Guid userId)
+    private async Task BuildCoachDashboard(DashboardDataDto dashboard, Guid userId, ClubManagementDbContext tenantContext)
     {
-        var myEvents = await _context.Events
+        var myEvents = await tenantContext.Events
             .Where(e => e.InstructorId == userId && e.StartDateTime > DateTime.UtcNow)
             .CountAsync();
         
-        var thisWeekEvents = await _context.Events
+        var thisWeekEvents = await tenantContext.Events
             .Where(e => e.InstructorId == userId && 
                        e.StartDateTime >= DateTime.UtcNow.Date &&
                        e.StartDateTime < DateTime.UtcNow.Date.AddDays(7))
             .CountAsync();
 
-        var totalParticipants = await _context.EventRegistrations
-            .Join(_context.Events, r => r.EventId, e => e.Id, (r, e) => new { r, e })
+        var totalParticipants = await tenantContext.EventRegistrations
+            .Join(tenantContext.Events, r => r.EventId, e => e.Id, (r, e) => new { r, e })
             .Where(x => x.e.InstructorId == userId && x.r.Status == RegistrationStatus.Confirmed)
             .CountAsync();
 
@@ -276,14 +276,14 @@ public class DashboardController : ControllerBase
             new QuickActionDto { Title = "Message Participants", Icon = "Icons.Material.Filled.Message", Href = "/messages", Color = "Info" }
         });
 
-        await AddMyEventsAsync(dashboard, userId);
+        await AddMyEventsAsync(dashboard, userId, tenantContext);
     }
 
-    private async Task BuildStaffDashboard(DashboardDataDto dashboard)
+    private async Task BuildStaffDashboard(DashboardDataDto dashboard, ClubManagementDbContext tenantContext)
     {
-        var todayCheckIns = await _context.Members.CountAsync(m => m.LastVisitAt.HasValue && 
+        var todayCheckIns = await tenantContext.Members.CountAsync(m => m.LastVisitAt.HasValue && 
                                                                    m.LastVisitAt.Value.Date == DateTime.UtcNow.Date);
-        var pendingRenewals = await _context.Members.CountAsync(m => m.MembershipExpiresAt.HasValue && 
+        var pendingRenewals = await tenantContext.Members.CountAsync(m => m.MembershipExpiresAt.HasValue && 
                                                                      m.MembershipExpiresAt.Value <= DateTime.UtcNow.AddDays(30));
         
         dashboard.MetricCards.AddRange(new[]
@@ -339,9 +339,9 @@ public class DashboardController : ControllerBase
         });
     }
 
-    private async Task BuildInstructorDashboard(DashboardDataDto dashboard, Guid userId)
+    private async Task BuildInstructorDashboard(DashboardDataDto dashboard, Guid userId, ClubManagementDbContext tenantContext)
     {
-        var myClasses = await _context.Events
+        var myClasses = await tenantContext.Events
             .Where(e => e.InstructorId == userId && e.StartDateTime > DateTime.UtcNow)
             .CountAsync();
 
@@ -398,17 +398,17 @@ public class DashboardController : ControllerBase
         });
     }
 
-    private async Task BuildMemberDashboard(DashboardDataDto dashboard, Guid userId)
+    private async Task BuildMemberDashboard(DashboardDataDto dashboard, Guid userId, ClubManagementDbContext tenantContext)
     {
-        var member = await _context.Members.FirstOrDefaultAsync(m => m.UserId == userId);
+        var member = await tenantContext.Members.FirstOrDefaultAsync(m => m.UserId == userId);
         if (member == null) return;
 
-        var myRegistrations = await _context.EventRegistrations
-            .Join(_context.Events, r => r.EventId, e => e.Id, (r, e) => new { r, e })
+        var myRegistrations = await tenantContext.EventRegistrations
+            .Join(tenantContext.Events, r => r.EventId, e => e.Id, (r, e) => new { r, e })
             .Where(x => x.r.MemberId == member.Id && x.e.StartDateTime > DateTime.UtcNow)
             .CountAsync();
 
-        var thisMonthVisits = await _context.Members
+        var thisMonthVisits = await tenantContext.Members
             .Where(m => m.Id == member.Id && m.LastVisitAt.HasValue && 
                        m.LastVisitAt.Value >= DateTime.UtcNow.AddDays(-30))
             .CountAsync();
@@ -468,12 +468,12 @@ public class DashboardController : ControllerBase
             new QuickActionDto { Title = "Update Profile", Icon = "Icons.Material.Filled.Person", Href = "/profile", Color = "Info" }
         });
 
-        await AddMemberUpcomingEventsAsync(dashboard, member.Id);
+        await AddMemberUpcomingEventsAsync(dashboard, member.Id, tenantContext);
     }
 
-    private async Task AddRecentActivityAsync(DashboardDataDto dashboard)
+    private async Task AddRecentActivityAsync(DashboardDataDto dashboard, ClubManagementDbContext tenantContext)
     {
-        var recentMembers = await _context.Members
+        var recentMembers = await tenantContext.Members
             .Include(m => m.User)
             .OrderByDescending(m => m.CreatedAt)
             .Take(3)
@@ -491,7 +491,7 @@ public class DashboardController : ControllerBase
             });
         }
 
-        var recentEvents = await _context.Events
+        var recentEvents = await tenantContext.Events
             .Where(e => e.CreatedAt >= DateTime.UtcNow.AddDays(-7))
             .OrderByDescending(e => e.CreatedAt)
             .Take(2)
@@ -510,9 +510,9 @@ public class DashboardController : ControllerBase
         }
     }
 
-    private async Task AddMyEventsAsync(DashboardDataDto dashboard, Guid instructorId)
+    private async Task AddMyEventsAsync(DashboardDataDto dashboard, Guid instructorId, ClubManagementDbContext tenantContext)
     {
-        var upcomingEvents = await _context.Events
+        var upcomingEvents = await tenantContext.Events
             .Where(e => e.InstructorId == instructorId && e.StartDateTime > DateTime.UtcNow)
             .OrderBy(e => e.StartDateTime)
             .Take(3)
@@ -533,9 +533,9 @@ public class DashboardController : ControllerBase
         }
     }
 
-    private async Task AddMemberUpcomingEventsAsync(DashboardDataDto dashboard, Guid memberId)
+    private async Task AddMemberUpcomingEventsAsync(DashboardDataDto dashboard, Guid memberId, ClubManagementDbContext tenantContext)
     {
-        var upcomingEvents = await _context.EventRegistrations
+        var upcomingEvents = await tenantContext.EventRegistrations
             .Include(r => r.Event)
             .Where(r => r.MemberId == memberId && r.Event.StartDateTime > DateTime.UtcNow && r.Status == RegistrationStatus.Confirmed)
             .OrderBy(r => r.Event.StartDateTime)

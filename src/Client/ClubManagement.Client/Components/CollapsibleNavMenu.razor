@@ -175,6 +175,106 @@
         </div>
     }
     
+    @if (_permissions?.Navigation.ShowHardware == true)
+    {
+        <div class="nav-group" @onmouseenter="@(() => ShowSubmenu("hardware"))" @onmouseleave="@(() => HideSubmenu("hardware"))">
+            <div class="nav-item group-trigger @(IsCurrentGroup("hardware") ? "active" : "")">
+                <div class="nav-link">
+                    <MudIcon Icon="@Icons.Material.Filled.Build" Class="nav-icon" />
+                    <span class="nav-text">Hardware</span>
+                    <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Class="nav-arrow" />
+                </div>
+            </div>
+            
+            <!-- Submenu - expanded view -->
+            <div class="nav-submenu expanded-only">
+                <div class="nav-item submenu-item @(IsCurrentPage("/hardware") ? "active" : "")" @onclick="@(() => NavigateTo("/hardware"))">
+                    <div class="nav-link">
+                        <MudIcon Icon="@Icons.Material.Filled.Inventory" Class="nav-icon" />
+                        <span class="nav-text">All Hardware</span>
+                    </div>
+                </div>
+                
+                @if (_permissions.Hardware?.CanView == true)
+                {
+                    <div class="nav-item submenu-item @(IsCurrentPage("/hardware/assignments") ? "active" : "")" @onclick="@(() => NavigateTo("/hardware/assignments"))">
+                        <div class="nav-link">
+                            <MudIcon Icon="@Icons.Material.Filled.Assignment" Class="nav-icon" />
+                            <span class="nav-text">Assignments</span>
+                        </div>
+                    </div>
+                }
+                
+                @if (_permissions.Hardware?.CanCreate == true)
+                {
+                    <div class="nav-item submenu-item @(IsCurrentPage("/hardware/create") ? "active" : "")" @onclick="@(() => NavigateTo("/hardware/create"))">
+                        <div class="nav-link">
+                            <MudIcon Icon="@Icons.Material.Filled.Add" Class="nav-icon" />
+                            <span class="nav-text">Add Hardware</span>
+                        </div>
+                    </div>
+                }
+                
+                @if (_permissions.Hardware?.CanAssign == true)
+                {
+                    <div class="nav-item submenu-item @(IsCurrentPage("/hardware/assignments/create") ? "active" : "")" @onclick="@(() => NavigateTo("/hardware/assignments/create"))">
+                        <div class="nav-link">
+                            <MudIcon Icon="@Icons.Material.Filled.PersonAdd" Class="nav-icon" />
+                            <span class="nav-text">Assign Hardware</span>
+                        </div>
+                    </div>
+                }
+                
+                @if (_permissions.Hardware?.CanManageTypes == true)
+                {
+                    <div class="nav-item submenu-item @(IsCurrentPage("/hardware-types") ? "active" : "")" @onclick="@(() => NavigateTo("/hardware-types"))">
+                        <div class="nav-link">
+                            <MudIcon Icon="@Icons.Material.Filled.Category" Class="nav-icon" />
+                            <span class="nav-text">Hardware Types</span>
+                        </div>
+                    </div>
+                }
+            </div>
+            
+            <!-- Popout submenu - collapsed view -->
+            <div class="submenu-popout @(_activePopout == "hardware" ? "show" : "")" style="top: @GetPopoutPosition("hardware"); left: 72px;">
+                <div class="popout-header">Hardware</div>
+                <div class="nav-item @(IsCurrentPage("/hardware") ? "active" : "")" @onclick="@(() => NavigateTo("/hardware"))">
+                    <MudIcon Icon="@Icons.Material.Filled.Inventory" Size="Size.Small" />
+                    <span>All Hardware</span>
+                </div>
+                @if (_permissions.Hardware?.CanView == true)
+                {
+                    <div class="nav-item @(IsCurrentPage("/hardware/assignments") ? "active" : "")" @onclick="@(() => NavigateTo("/hardware/assignments"))">
+                        <MudIcon Icon="@Icons.Material.Filled.Assignment" Size="Size.Small" />
+                        <span>Assignments</span>
+                    </div>
+                }
+                @if (_permissions.Hardware?.CanCreate == true)
+                {
+                    <div class="nav-item @(IsCurrentPage("/hardware/create") ? "active" : "")" @onclick="@(() => NavigateTo("/hardware/create"))">
+                        <MudIcon Icon="@Icons.Material.Filled.Add" Size="Size.Small" />
+                        <span>Add Hardware</span>
+                    </div>
+                }
+                @if (_permissions.Hardware?.CanAssign == true)
+                {
+                    <div class="nav-item @(IsCurrentPage("/hardware/assignments/create") ? "active" : "")" @onclick="@(() => NavigateTo("/hardware/assignments/create"))">
+                        <MudIcon Icon="@Icons.Material.Filled.PersonAdd" Size="Size.Small" />
+                        <span>Assign Hardware</span>
+                    </div>
+                }
+                @if (_permissions.Hardware?.CanManageTypes == true)
+                {
+                    <div class="nav-item @(IsCurrentPage("/hardware-types") ? "active" : "")" @onclick="@(() => NavigateTo("/hardware-types"))">
+                        <MudIcon Icon="@Icons.Material.Filled.Category" Size="Size.Small" />
+                        <span>Hardware Types</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    
     <!-- Single items -->
     @if (_permissions?.Navigation.ShowReports == true)
     {
@@ -443,6 +543,7 @@
             "members" => $"{baseOffset + (itemHeight * 1)}px", // Dashboard + Members
             "events" => $"{baseOffset + (itemHeight * 2)}px",   // Dashboard + Members + Events
             "facilities" => $"{baseOffset + (itemHeight * 3)}px", // Dashboard + Members + Events + Facilities
+            "hardware" => $"{baseOffset + (itemHeight * 4)}px", // Dashboard + Members + Events + Facilities + Hardware
             _ => $"{baseOffset}px"
         };
         return position;
@@ -461,6 +562,7 @@
             "members" => currentPath.Contains("/members"),
             "events" => currentPath.Contains("/events"),
             "facilities" => currentPath.Contains("/facilities"),
+            "hardware" => currentPath.Contains("/hardware"),
             "payments" => currentPath.Contains("/payments") || currentPath.Contains("/subscriptions"),
             "communications" => currentPath.Contains("/communications"),
             _ => false

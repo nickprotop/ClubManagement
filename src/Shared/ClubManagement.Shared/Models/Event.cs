@@ -21,6 +21,10 @@ public class Event : BaseEntity
     public string? SpecialInstructions { get; set; }
     public List<string> RequiredEquipment { get; set; } = new();
     
+    // Equipment Integration (new system)
+    public List<EventEquipmentRequirement> EquipmentRequirements { get; set; } = new();
+    public List<EventEquipmentAssignment> EquipmentAssignments { get; set; } = new();
+    
     // Recurrence-related properties
     public Guid? MasterEventId { get; set; }              // Links to original recurring event
     public bool IsRecurringMaster { get; set; } = false;  // True for original, false for occurrences

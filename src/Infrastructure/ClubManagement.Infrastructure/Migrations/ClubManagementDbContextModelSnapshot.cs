@@ -435,6 +435,127 @@ namespace ClubManagement.Infrastructure.Migrations
                     b.ToTable("Events");
                 });
 
+            modelBuilder.Entity("ClubManagement.Shared.Models.EventEquipmentAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AssignedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CheckedOutAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("HardwareId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("MemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("RequirementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReturnedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("HardwareId");
+
+                    b.HasIndex("MemberId");
+
+                    b.HasIndex("RequirementId");
+
+                    b.ToTable("EventEquipmentAssignments");
+                });
+
+            modelBuilder.Entity("ClubManagement.Shared.Models.EventEquipmentRequirement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AutoAssign")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("HardwareTypeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsMandatory")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("MinimumCondition")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("SpecificHardwareId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("HardwareTypeId");
+
+                    b.HasIndex("SpecificHardwareId");
+
+                    b.ToTable("EventEquipmentRequirements");
+                });
+
             modelBuilder.Entity("ClubManagement.Shared.Models.EventRegistration", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1408,6 +1529,62 @@ namespace ClubManagement.Infrastructure.Migrations
                     b.Navigation("MasterEvent");
                 });
 
+            modelBuilder.Entity("ClubManagement.Shared.Models.EventEquipmentAssignment", b =>
+                {
+                    b.HasOne("ClubManagement.Shared.Models.Event", "Event")
+                        .WithMany("EquipmentAssignments")
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ClubManagement.Shared.Models.Hardware", "Hardware")
+                        .WithMany()
+                        .HasForeignKey("HardwareId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ClubManagement.Shared.Models.Member", "Member")
+                        .WithMany()
+                        .HasForeignKey("MemberId");
+
+                    b.HasOne("ClubManagement.Shared.Models.EventEquipmentRequirement", "Requirement")
+                        .WithMany("Assignments")
+                        .HasForeignKey("RequirementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Event");
+
+                    b.Navigation("Hardware");
+
+                    b.Navigation("Member");
+
+                    b.Navigation("Requirement");
+                });
+
+            modelBuilder.Entity("ClubManagement.Shared.Models.EventEquipmentRequirement", b =>
+                {
+                    b.HasOne("ClubManagement.Shared.Models.Event", "Event")
+                        .WithMany("EquipmentRequirements")
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ClubManagement.Shared.Models.HardwareType", "HardwareType")
+                        .WithMany()
+                        .HasForeignKey("HardwareTypeId");
+
+                    b.HasOne("ClubManagement.Shared.Models.Hardware", "SpecificHardware")
+                        .WithMany()
+                        .HasForeignKey("SpecificHardwareId");
+
+                    b.Navigation("Event");
+
+                    b.Navigation("HardwareType");
+
+                    b.Navigation("SpecificHardware");
+                });
+
             modelBuilder.Entity("ClubManagement.Shared.Models.EventRegistration", b =>
                 {
                     b.HasOne("ClubManagement.Shared.Models.User", "CheckedInByUser")
@@ -1595,9 +1772,18 @@ namespace ClubManagement.Infrastructure.Migrations
 
             modelBuilder.Entity("ClubManagement.Shared.Models.Event", b =>
                 {
+                    b.Navigation("EquipmentAssignments");
+
+                    b.Navigation("EquipmentRequirements");
+
                     b.Navigation("Occurrences");
 
                     b.Navigation("Registrations");
+                });
+
+            modelBuilder.Entity("ClubManagement.Shared.Models.EventEquipmentRequirement", b =>
+                {
+                    b.Navigation("Assignments");
                 });
 
             modelBuilder.Entity("ClubManagement.Shared.Models.Hardware", b =>

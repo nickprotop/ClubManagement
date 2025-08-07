@@ -1,0 +1,464 @@
+@page "/hardware/assignments/{Id:guid}"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IHardwareAssignmentService AssignmentService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>Assignment Details</PageTitle>
+
+@if (_loading)
+{
+    <MudStack AlignItems="AlignItems.Center" Class="pa-8">
+        <MudProgressCircular Size="Size.Large" Indeterminate="true" />
+        <MudText>Loading assignment details...</MudText>
+    </MudStack>
+}
+else if (_assignment != null)
+{
+    <div class="d-flex justify-space-between align-center mb-4">
+        <MudBreadcrumbs Items="_breadcrumbItems" />
+        <MudStack Row="true" Spacing="2">
+            @if ((_assignment.Status == AssignmentStatus.Active || _assignment.Status == AssignmentStatus.Overdue) && _permissions?.CanAssign == true)
+            {
+                <MudButton Variant="Variant.Filled" 
+                           Color="Color.Success" 
+                           StartIcon="@Icons.Material.Filled.Assignment"
+                           OnClick="ShowReturnDialog">
+                    Process Return
+                </MudButton>
+            }
+            <MudButton Variant="Variant.Outlined" 
+                       StartIcon="@Icons.Material.Filled.ArrowBack"
+                       OnClick="@(() => Navigation.NavigateTo("/hardware/assignments"))">
+                Back to Assignments
+            </MudButton>
+        </MudStack>
+    </div>
+
+    <MudGrid>
+        <!-- Assignment Overview -->
+        <MudItem xs="12" md="8">
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                            <MudIcon Icon="@Icons.Material.Filled.Assignment" Size="Size.Large" />
+                            <div>
+                                <MudText Typo="Typo.h6">Assignment Details</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    Created @_assignment.AssignedAt.ToString("MMM dd, yyyy 'at' h:mm tt")
+                                </MudText>
+                            </div>
+                        </MudStack>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        <MudChip T="string" 
+                                 Color="@GetStatusColor(_assignment.Status)"
+                                 Variant="Variant.Filled">
+                            @_assignment.Status
+                        </MudChip>
+                    </CardHeaderActions>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudStack Spacing="4">
+                        <!-- Hardware Information -->
+                        <div>
+                            <MudText Typo="Typo.h6" Class="mb-2">Hardware</MudText>
+                            <MudCard Variant="Variant.Outlined">
+                                <MudCardContent>
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                                        <MudIcon Icon="@Icons.Material.Filled.Build" Size="Size.Large" Color="Color.Primary" />
+                                        <div class="flex-grow-1">
+                                            <MudText Typo="Typo.h6">@_assignment.HardwareName</MudText>
+                                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                                @_assignment.HardwareTypeName • @_assignment.HardwareSerialNumber
+                                            </MudText>
+                                        </div>
+                                        <MudButton Variant="Variant.Text" 
+                                                   Size="Size.Small"
+                                                   OnClick="@(() => Navigation.NavigateTo($"/hardware/{_assignment.HardwareId}"))">
+                                            View Hardware
+                                        </MudButton>
+                                    </MudStack>
+                                </MudCardContent>
+                            </MudCard>
+                        </div>
+
+                        <!-- Member Information -->
+                        <div>
+                            <MudText Typo="Typo.h6" Class="mb-2">Assigned To</MudText>
+                            <MudCard Variant="Variant.Outlined">
+                                <MudCardContent>
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                                        <MudAvatar>
+                                            <MudIcon Icon="@Icons.Material.Filled.Person" />
+                                        </MudAvatar>
+                                        <div class="flex-grow-1">
+                                            <MudText Typo="Typo.h6">@_assignment.MemberName</MudText>
+                                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                                @_assignment.MemberEmail
+                                            </MudText>
+                                        </div>
+                                        <MudButton Variant="Variant.Text" 
+                                                   Size="Size.Small"
+                                                   OnClick="@(() => Navigation.NavigateTo($"/members/{_assignment.MemberId}"))">
+                                            View Member
+                                        </MudButton>
+                                    </MudStack>
+                                </MudCardContent>
+                            </MudCard>
+                        </div>
+
+                        <!-- Assignment Timeline -->
+                        <div>
+                            <MudText Typo="Typo.h6" Class="mb-2">Timeline</MudText>
+                            <MudTimeline TimelineOrientation="TimelineOrientation.Vertical">
+                                <!-- Assignment -->
+                                <MudTimelineItem Color="Color.Primary" Icon="@Icons.Material.Filled.Assignment">
+                                    <ItemContent>
+                                        <MudText Typo="Typo.body1">Hardware Assigned</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @_assignment.AssignedAt.ToString("MMM dd, yyyy 'at' h:mm tt") by @_assignment.AssignedByName
+                                        </MudText>
+                                        @if (!string.IsNullOrEmpty(_assignment.Notes))
+                                        {
+                                            <MudText Typo="Typo.body2" Class="mt-2">
+                                                <strong>Notes:</strong> @_assignment.Notes
+                                            </MudText>
+                                        }
+                                    </ItemContent>
+                                </MudTimelineItem>
+
+                                @if (_assignment.Status == AssignmentStatus.Overdue)
+                                {
+                                    <MudTimelineItem Color="Color.Warning" Icon="@Icons.Material.Filled.Warning">
+                                        <ItemContent>
+                                            <MudText Typo="Typo.body1">Assignment Overdue</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                @_assignment.DaysAssigned days assigned
+                                            </MudText>
+                                        </ItemContent>
+                                    </MudTimelineItem>
+                                }
+
+                                @if (_assignment.ReturnedAt.HasValue)
+                                {
+                                    <MudTimelineItem Color="@GetReturnStatusColor(_assignment.Status)" Icon="@GetReturnIcon(_assignment.Status)">
+                                        <ItemContent>
+                                            <MudText Typo="Typo.body1">Hardware @_assignment.Status.ToString()</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                @_assignment.ReturnedAt.Value.ToString("MMM dd, yyyy 'at' h:mm tt") by @_assignment.ReturnedByName
+                                            </MudText>
+                                            @if (!string.IsNullOrEmpty(_assignment.ReturnNotes))
+                                            {
+                                                <MudText Typo="Typo.body2" Class="mt-2">
+                                                    <strong>Return Notes:</strong> @_assignment.ReturnNotes
+                                                </MudText>
+                                            }
+                                        </ItemContent>
+                                    </MudTimelineItem>
+                                }
+                            </MudTimeline>
+                        </div>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- Assignment Statistics -->
+        <MudItem xs="12" md="4">
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Assignment Statistics</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudStack Spacing="3">
+                        <div class="d-flex justify-space-between align-center">
+                            <MudText Typo="Typo.body2">Days Assigned:</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Primary">
+                                <strong>@_assignment.DaysAssigned</strong>
+                            </MudText>
+                        </div>
+
+                        @if (_assignment.LateFee.HasValue && _assignment.LateFee > 0)
+                        {
+                            <div class="d-flex justify-space-between align-center">
+                                <MudText Typo="Typo.body2">Late Fee:</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Warning">
+                                    <strong>@_assignment.LateFee.Value.ToString("C")</strong>
+                                </MudText>
+                            </div>
+                        }
+
+                        @if (_assignment.DamageFee.HasValue && _assignment.DamageFee > 0)
+                        {
+                            <div class="d-flex justify-space-between align-center">
+                                <MudText Typo="Typo.body2">Damage Fee:</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Error">
+                                    <strong>@_assignment.DamageFee.Value.ToString("C")</strong>
+                                </MudText>
+                            </div>
+                        }
+
+                        @if (_assignment.IsOverdue)
+                        {
+                            <MudAlert Severity="Severity.Warning" Dense="true">
+                                This assignment is overdue and may incur late fees.
+                            </MudAlert>
+                        }
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+
+            @if ((_assignment.Status == AssignmentStatus.Active || _assignment.Status == AssignmentStatus.Overdue) && _permissions?.CanAssign == true)
+            {
+                <MudCard Class="mt-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Quick Actions</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudStack Spacing="2">
+                            <MudButton Variant="Variant.Outlined" 
+                                       Color="Color.Success" 
+                                       StartIcon="@Icons.Material.Filled.CheckCircle"
+                                       FullWidth="true"
+                                       OnClick="@(() => QuickReturn(AssignmentStatus.Returned))">
+                                Return (Good Condition)
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" 
+                                       Color="Color.Warning" 
+                                       StartIcon="@Icons.Material.Filled.Build"
+                                       FullWidth="true"
+                                       OnClick="@(() => QuickReturn(AssignmentStatus.Damaged))">
+                                Return (Needs Maintenance)
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" 
+                                       Color="Color.Error" 
+                                       StartIcon="@Icons.Material.Filled.Error"
+                                       FullWidth="true"
+                                       OnClick="@(() => QuickReturn(AssignmentStatus.Lost))">
+                                Report Lost
+                            </MudButton>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </MudItem>
+    </MudGrid>
+}
+else
+{
+    <MudAlert Severity="Severity.Error">
+        Assignment not found or you don't have permission to view it.
+    </MudAlert>
+}
+
+<!-- Return Hardware Dialog -->
+<MudDialog @bind-IsVisible="_showReturnDialog" MaxWidth="MaxWidth.Medium" FullWidth="true">
+    <DialogContent>
+        <MudText Typo="Typo.h6" Class="mb-4">Process Hardware Return</MudText>
+        <MudStack Spacing="3">
+            <MudSelect @bind-Value="_returnStatus" Label="Return Status" Variant="Variant.Outlined" Required="true">
+                <MudSelectItem T="AssignmentStatus" Value="AssignmentStatus.Returned">Returned (Good Condition)</MudSelectItem>
+                <MudSelectItem T="AssignmentStatus" Value="AssignmentStatus.Damaged">Returned (Damaged/Needs Maintenance)</MudSelectItem>
+                <MudSelectItem T="AssignmentStatus" Value="AssignmentStatus.Lost">Lost</MudSelectItem>
+            </MudSelect>
+            
+            <MudTextField @bind-Value="_returnNotes" 
+                         Label="Return Notes" 
+                         Variant="Variant.Outlined"
+                         Lines="3"
+                         Placeholder="Optional notes about the condition or return..." />
+            
+            <MudNumericField @bind-Value="_lateFee" 
+                            Label="Late Fee" 
+                            Variant="Variant.Outlined"
+                            Format="C"
+                            Min="0"
+                            Placeholder="Enter late fee if applicable" />
+            
+            <MudNumericField @bind-Value="_damageFee" 
+                            Label="Damage Fee" 
+                            Variant="Variant.Outlined"
+                            Format="C"
+                            Min="0"
+                            Placeholder="Enter damage fee if applicable" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseReturnDialog">Cancel</MudButton>
+        <MudButton Color="Color.Success" 
+                   Variant="Variant.Filled" 
+                   OnClick="ProcessReturn"
+                   Disabled="_processingReturn">
+            @if (_processingReturn)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Process Return
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    
+    private HardwareAssignmentDto? _assignment;
+    private HardwarePermissions? _permissions;
+    private bool _loading = true;
+    
+    private List<BreadcrumbItem> _breadcrumbItems = new();
+    
+    // Return dialog
+    private bool _showReturnDialog = false;
+    private bool _processingReturn = false;
+    private AssignmentStatus _returnStatus = AssignmentStatus.Returned;
+    private string _returnNotes = string.Empty;
+    private decimal? _lateFee = null;
+    private decimal? _damageFee = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissions();
+        await LoadAssignment();
+        SetupBreadcrumbs();
+    }
+
+    private async Task LoadPermissions()
+    {
+        // Get permissions - for now assume we have view permissions
+        _permissions = new HardwarePermissions { CanView = true, CanAssign = true };
+    }
+
+    private async Task LoadAssignment()
+    {
+        try
+        {
+            _loading = true;
+            var response = await AssignmentService.GetAssignmentAsync(Id);
+            if (response.Success)
+            {
+                _assignment = response.Data;
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to load assignment");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load assignment: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void SetupBreadcrumbs()
+    {
+        _breadcrumbItems = new List<BreadcrumbItem>
+        {
+            new BreadcrumbItem("Hardware", href: "/hardware", icon: Icons.Material.Filled.Build),
+            new BreadcrumbItem("Assignments", href: "/hardware/assignments", icon: Icons.Material.Filled.Assignment),
+            new BreadcrumbItem(_assignment?.HardwareName ?? "Assignment", href: null, disabled: true)
+        };
+    }
+
+    private void ShowReturnDialog()
+    {
+        _showReturnDialog = true;
+    }
+
+    private void CloseReturnDialog()
+    {
+        _showReturnDialog = false;
+        _returnStatus = AssignmentStatus.Returned;
+        _returnNotes = string.Empty;
+        _lateFee = null;
+        _damageFee = null;
+    }
+
+    private async Task QuickReturn(AssignmentStatus status)
+    {
+        _returnStatus = status;
+        _returnNotes = status switch
+        {
+            AssignmentStatus.Returned => "Returned in good condition",
+            AssignmentStatus.Damaged => "Returned with damage - requires maintenance",
+            AssignmentStatus.Lost => "Hardware reported lost",
+            _ => ""
+        };
+        await ProcessReturn();
+    }
+
+    private async Task ProcessReturn()
+    {
+        try
+        {
+            _processingReturn = true;
+            var request = new ReturnHardwareRequest
+            {
+                Status = _returnStatus,
+                ReturnNotes = string.IsNullOrWhiteSpace(_returnNotes) ? null : _returnNotes,
+                LateFee = _lateFee,
+                DamageFee = _damageFee
+            };
+
+            var response = await AssignmentService.ReturnHardwareAsync(Id, request);
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync("Hardware return processed successfully");
+                await LoadAssignment(); // Reload to show updated status
+                CloseReturnDialog();
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to process return");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to process return: {ex.Message}");
+        }
+        finally
+        {
+            _processingReturn = false;
+        }
+    }
+
+    private static Color GetStatusColor(AssignmentStatus status) => status switch
+    {
+        AssignmentStatus.Active => Color.Success,
+        AssignmentStatus.Overdue => Color.Warning,
+        AssignmentStatus.Returned => Color.Info,
+        AssignmentStatus.Lost => Color.Error,
+        AssignmentStatus.Damaged => Color.Warning,
+        _ => Color.Default
+    };
+
+    private static Color GetReturnStatusColor(AssignmentStatus status) => status switch
+    {
+        AssignmentStatus.Returned => Color.Success,
+        AssignmentStatus.Lost => Color.Error,
+        AssignmentStatus.Damaged => Color.Warning,
+        _ => Color.Default
+    };
+
+    private static string GetReturnIcon(AssignmentStatus status) => status switch
+    {
+        AssignmentStatus.Returned => Icons.Material.Filled.CheckCircle,
+        AssignmentStatus.Lost => Icons.Material.Filled.Error,
+        AssignmentStatus.Damaged => Icons.Material.Filled.Build,
+        _ => Icons.Material.Filled.Info
+    };
+}

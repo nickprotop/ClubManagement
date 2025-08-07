@@ -16,18 +16,18 @@ namespace ClubManagement.Api.Controllers;
 [Authorize]
 public class MembersController : ControllerBase
 {
-    private readonly ClubManagementDbContext _context;
+    private readonly ITenantDbContextFactory _tenantDbContextFactory;
     private readonly ITenantService _tenantService;
     private readonly IMemberAuthorizationService _authService;
     private readonly IImpersonationService _impersonationService;
 
     public MembersController(
-        ClubManagementDbContext context, 
+        ITenantDbContextFactory tenantDbContextFactory, 
         ITenantService tenantService,
         IMemberAuthorizationService authService,
         IImpersonationService impersonationService)
     {
-        _context = context;
+        _tenantDbContextFactory = tenantDbContextFactory;
         _tenantService = tenantService;
         _authService = authService;
         _impersonationService = impersonationService;
@@ -41,14 +41,14 @@ public class MembersController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<MemberPermissions>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var permissions = await _authService.GetMemberPermissionsAsync(userId, id);
+            var permissions = await _authService.GetMemberPermissionsAsync(userId, tenantContext, id);
             return Ok(ApiResponse<MemberPermissions>.SuccessResult(permissions));
         }
         catch (Exception ex)
@@ -65,14 +65,14 @@ public class MembersController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<MemberPermissions>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
-            var permissions = await _authService.GetMemberPermissionsAsync(userId);
+            var permissions = await _authService.GetMemberPermissionsAsync(userId, tenantContext);
             return Ok(ApiResponse<MemberPermissions>.SuccessResult(permissions));
         }
         catch (UnauthorizedAccessException ex)
@@ -93,19 +93,19 @@ public class MembersController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<PagedResult<MemberListDto>>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             // Check permissions
-            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.View);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.View, tenantContext);
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
             
-            var query = _context.Members
+            var query = tenantContext.Members
                 .Include(m => m.User)
                 .AsQueryable();
 
@@ -177,19 +177,19 @@ public class MembersController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<MemberDto>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             // Check permissions
-            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.ViewDetails, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.ViewDetails, tenantContext, id);
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
             
-            var member = await _context.Members
+            var member = await tenantContext.Members
                 .Include(m => m.User)
                 .FirstOrDefaultAsync(m => m.Id == id);
 
@@ -256,20 +256,20 @@ public class MembersController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<MemberDto>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             // Check permissions
-            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.Create);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.Create, tenantContext);
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
             
             // Check if email already exists
-            var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+            var existingUser = await tenantContext.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
             if (existingUser != null)
                 return BadRequest(ApiResponse<MemberDto>.ErrorResult("A user with this email already exists"));
 
@@ -292,10 +292,10 @@ public class MembersController : ControllerBase
                 PasswordChangedAt = DateTime.UtcNow
             };
 
-            _context.Users.Add(newUser);
+            tenantContext.Users.Add(newUser);
 
             // Generate membership number
-            var membershipNumber = await GenerateMembershipNumberAsync();
+            var membershipNumber = await GenerateMembershipNumberAsync(tenantContext);
 
             // Create Emergency Contact
             EmergencyContact? emergencyContact = null;
@@ -338,8 +338,8 @@ public class MembersController : ControllerBase
                 CreatedBy = userId.ToString()
             };
 
-            _context.Members.Add(member);
-            await _context.SaveChangesAsync();
+            tenantContext.Members.Add(member);
+            await tenantContext.SaveChangesAsync();
 
             // Return the created member with user details
             var createdMember = await GetMember(member.Id);
@@ -359,19 +359,19 @@ public class MembersController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<MemberDto>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             // Check permissions
-            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.Edit, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.Edit, tenantContext, id);
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
             
-            var member = await _context.Members
+            var member = await tenantContext.Members
                 .Include(m => m.User)
                 .FirstOrDefaultAsync(m => m.Id == id);
             if (member == null)
@@ -425,7 +425,7 @@ public class MembersController : ControllerBase
                 member.MedicalInfo = null;
             }
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
 
             var updatedMember = await GetMember(id);
             return updatedMember;
@@ -444,24 +444,24 @@ public class MembersController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             // Check permissions
-            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.Delete, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.Delete, tenantContext, id);
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
             
-            var member = await _context.Members.FindAsync(id);
+            var member = await tenantContext.Members.FindAsync(id);
             if (member == null)
                 return NotFound(ApiResponse<bool>.ErrorResult("Member not found"));
 
-            _context.Members.Remove(member);
-            await _context.SaveChangesAsync();
+            tenantContext.Members.Remove(member);
+            await tenantContext.SaveChangesAsync();
 
             return Ok(ApiResponse<bool>.SuccessResult(true, "Member deleted successfully"));
         }
@@ -479,26 +479,26 @@ public class MembersController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             // Check permissions
-            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.ChangeStatus, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.ChangeStatus, tenantContext, id);
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
             
-            var member = await _context.Members.FindAsync(id);
+            var member = await tenantContext.Members.FindAsync(id);
             if (member == null)
                 return NotFound(ApiResponse<bool>.ErrorResult("Member not found"));
 
             member.Status = status;
             member.UpdatedAt = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
 
             return Ok(ApiResponse<bool>.SuccessResult(true, "Member status updated successfully"));
         }
@@ -516,22 +516,22 @@ public class MembersController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<List<MemberSearchDto>>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             // Check permissions
-            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.View);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.View, tenantContext);
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
             
             if (string.IsNullOrWhiteSpace(request.SearchTerm) || request.SearchTerm.Length < 2)
                 return Ok(ApiResponse<List<MemberSearchDto>>.SuccessResult(new List<MemberSearchDto>()));
 
-            var query = _context.Members
+            var query = tenantContext.Members
                 .Include(m => m.User)
                 .Where(m => request.IncludeInactive || m.Status == MembershipStatus.Active);
 
@@ -575,15 +575,15 @@ public class MembersController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<ImpersonationResult>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             // Check permissions
-            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.ImpersonateMember, id);
+            var authResult = await _authService.CheckAuthorizationAsync(userId, MemberAction.ImpersonateMember, tenantContext, id);
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
             
@@ -593,7 +593,7 @@ public class MembersController : ControllerBase
             var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
             var userAgent = Request.Headers.UserAgent.ToString();
             
-            var result = await _impersonationService.StartImpersonationAsync(userId, request, ipAddress, userAgent);
+            var result = await _impersonationService.StartImpersonationAsync(tenantContext, userId, request, ipAddress, userAgent);
             
             if (result.Succeeded)
                 return Ok(ApiResponse<ImpersonationResult>.SuccessResult(result));
@@ -612,13 +612,20 @@ public class MembersController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<bool>.ErrorResult("Invalid tenant"));
+                
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             // Get current impersonation status
-            var status = await _impersonationService.GetCurrentImpersonationStatusAsync(userId);
+            var status = await _impersonationService.GetCurrentImpersonationStatusAsync(tenantContext, userId);
             if (status?.SessionId == null)
                 return BadRequest(ApiResponse<bool>.ErrorResult("No active impersonation session found"));
             
-            var result = await _impersonationService.EndImpersonationAsync(status.SessionId.Value, request.Reason);
+            var result = await _impersonationService.EndImpersonationAsync(tenantContext, status.SessionId.Value, request.Reason);
             
             if (result.Succeeded)
                 return Ok(ApiResponse<bool>.SuccessResult(true, "Impersonation ended successfully"));
@@ -637,7 +644,15 @@ public class MembersController : ControllerBase
         try
         {
             var userId = this.GetCurrentUserId();
-            var status = await _impersonationService.GetCurrentImpersonationStatusAsync(userId);
+            var tenantId = this.GetCurrentTenantId();
+            
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<ImpersonationStatusDto>.ErrorResult("Invalid tenant"));
+                
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
+            
+            var status = await _impersonationService.GetCurrentImpersonationStatusAsync(tenantContext, userId);
             return Ok(ApiResponse<ImpersonationStatusDto>.SuccessResult(status ?? new ImpersonationStatusDto { IsImpersonating = false }));
         }
         catch (Exception ex)
@@ -652,9 +667,16 @@ public class MembersController : ControllerBase
     {
         try
         {
+            var tenantId = this.GetCurrentTenantId();
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<List<ImpersonationSessionDto>>.ErrorResult("Invalid tenant"));
+                
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
+            
             var sessions = activeOnly 
-                ? await _impersonationService.GetActiveSessionsAsync()
-                : await _impersonationService.GetSessionHistoryAsync();
+                ? await _impersonationService.GetActiveSessionsAsync(tenantContext)
+                : await _impersonationService.GetSessionHistoryAsync(tenantContext);
                 
             return Ok(ApiResponse<List<ImpersonationSessionDto>>.SuccessResult(sessions));
         }
@@ -664,7 +686,7 @@ public class MembersController : ControllerBase
         }
     }
 
-    private async Task<string> GenerateMembershipNumberAsync()
+    private async Task<string> GenerateMembershipNumberAsync(ClubManagementDbContext tenantContext)
     {
         // Generate a unique membership number
         string membershipNumber;
@@ -673,7 +695,7 @@ public class MembersController : ControllerBase
         {
             var number = new Random().Next(100000, 999999);
             membershipNumber = $"MB{DateTime.UtcNow.Year}{number:D6}";
-            exists = await _context.Members.AnyAsync(m => m.MembershipNumber == membershipNumber);
+            exists = await tenantContext.Members.AnyAsync(m => m.MembershipNumber == membershipNumber);
         } while (exists);
 
         return membershipNumber;

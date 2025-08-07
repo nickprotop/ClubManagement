@@ -8,6 +8,7 @@ public class GlobalPermissionsDto
     public GlobalMemberPermissions Members { get; set; } = new();
     public GlobalEventPermissions Events { get; set; } = new();
     public GlobalFacilityPermissions Facilities { get; set; } = new();
+    public GlobalHardwarePermissions Hardware { get; set; } = new();
     public GlobalPaymentPermissions Payments { get; set; } = new();
     public GlobalCommunicationPermissions Communications { get; set; } = new();
     public GlobalReportPermissions Reports { get; set; } = new();
@@ -101,12 +102,30 @@ public class GlobalSystemPermissions
     public bool IsSuperAdmin { get; set; }
 }
 
+public class GlobalHardwarePermissions
+{
+    public bool CanView { get; set; }
+    public bool CanCreate { get; set; }
+    public bool CanEdit { get; set; }
+    public bool CanDelete { get; set; }
+    public bool CanAssign { get; set; }
+    public bool CanViewAll { get; set; }
+    public bool CanViewOwn { get; set; }
+    public bool CanManageInventory { get; set; }
+    public bool CanProcessFees { get; set; }
+    public bool CanManageTypes { get; set; }
+    public bool CanViewFinancials { get; set; }
+    public bool CanScheduleMaintenance { get; set; }
+    public bool CanManageEventEquipment { get; set; }
+}
+
 public class GlobalNavigationPermissions
 {
     public bool ShowDashboard { get; set; } = true;
     public bool ShowMembers { get; set; }
     public bool ShowEvents { get; set; }
     public bool ShowFacilities { get; set; }
+    public bool ShowHardware { get; set; }
     public bool ShowPayments { get; set; }
     public bool ShowCommunications { get; set; }
     public bool ShowReports { get; set; }
@@ -114,6 +133,7 @@ public class GlobalNavigationPermissions
     public bool ShowMemberManagement { get; set; }
     public bool ShowEventManagement { get; set; }
     public bool ShowFacilityManagement { get; set; }
+    public bool ShowHardwareManagement { get; set; }
     public bool ShowPaymentManagement { get; set; }
     public bool ShowUserManagement { get; set; }
 }

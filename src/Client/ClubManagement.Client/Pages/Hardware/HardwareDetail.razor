@@ -1,0 +1,564 @@
+@page "/hardware/{id:guid}"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IHardwareService HardwareService
+@inject IHardwareAssignmentService AssignmentService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>Hardware Details</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_hardware != null)
+{
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div>
+            <MudBreadcrumbs Items="_breadcrumbs" Class="pa-0"></MudBreadcrumbs>
+            <MudText Typo="Typo.h4" Class="mt-2">
+                <MudIcon Icon="@_hardware.Icon" Class="mr-2" />
+                @_hardware.Name
+            </MudText>
+        </div>
+        
+        <div class="d-flex gap-2">
+            @if (_permissions?.CanEdit == true)
+            {
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Edit"
+                           Href="@($"/hardware/{Id}/edit")">
+                    Edit Hardware
+                </MudButton>
+            }
+            
+            @if (_permissions?.CanDelete == true && _hardware.Status == HardwareStatus.Available)
+            {
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Error"
+                           StartIcon="@Icons.Material.Filled.Delete"
+                           OnClick="DeleteHardware">
+                    Delete
+                </MudButton>
+            }
+        </div>
+    </div>
+
+    <div class="d-flex flex-column gap-4">
+        <!-- Status and Basic Info -->
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Overview</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <div class="d-flex flex-wrap gap-6">
+                    <div>
+                        <MudText Typo="Typo.caption">Status</MudText>
+                        <MudChip T="string" Color="@GetStatusColor(_hardware.Status)" 
+                                Size="Size.Medium" 
+                                Variant="Variant.Filled">
+                            @_hardware.Status
+                        </MudChip>
+                    </div>
+                    
+                    <div>
+                        <MudText Typo="Typo.caption">Hardware Type</MudText>
+                        <MudText Typo="Typo.body1">@_hardware.HardwareTypeName</MudText>
+                    </div>
+                    
+                    @if (!string.IsNullOrEmpty(_hardware.SerialNumber))
+                    {
+                        <div>
+                            <MudText Typo="Typo.caption">Serial Number</MudText>
+                            <MudText Typo="Typo.body1">@_hardware.SerialNumber</MudText>
+                        </div>
+                    }
+                    
+                    @if (!string.IsNullOrEmpty(_hardware.Location))
+                    {
+                        <div>
+                            <MudText Typo="Typo.caption">Location</MudText>
+                            <MudText Typo="Typo.body1">@_hardware.Location</MudText>
+                        </div>
+                    }
+                </div>
+                
+                @if (!string.IsNullOrEmpty(_hardware.Description))
+                {
+                    <MudDivider Class="my-4" />
+                    <div>
+                        <MudText Typo="Typo.caption">Description</MudText>
+                        <MudText Typo="Typo.body1">@_hardware.Description</MudText>
+                    </div>
+                }
+            </MudCardContent>
+        </MudCard>
+
+        <!-- Purchase and Financial Information -->
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Purchase Information</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <div class="d-flex flex-wrap gap-6">
+                    @if (_hardware.PurchaseDate.HasValue)
+                    {
+                        <div>
+                            <MudText Typo="Typo.caption">Purchase Date</MudText>
+                            <MudText Typo="Typo.body1">@_hardware.PurchaseDate.Value.ToString("MMMM dd, yyyy")</MudText>
+                        </div>
+                    }
+                    
+                    @if (_hardware.PurchasePrice.HasValue)
+                    {
+                        <div>
+                            <MudText Typo="Typo.caption">Purchase Price</MudText>
+                            <MudText Typo="Typo.body1">@_hardware.PurchasePrice.Value.ToString("C")</MudText>
+                        </div>
+                    }
+                    
+                    @if (!string.IsNullOrEmpty(_hardware.Supplier))
+                    {
+                        <div>
+                            <MudText Typo="Typo.caption">Supplier</MudText>
+                            <MudText Typo="Typo.body1">@_hardware.Supplier</MudText>
+                        </div>
+                    }
+                    
+                    @if (_hardware.WarrantyExpiry.HasValue)
+                    {
+                        <div>
+                            <MudText Typo="Typo.caption">Warranty Expiry</MudText>
+                            <MudText Typo="Typo.body1" 
+                                    Color="@(_hardware.WarrantyExpiry.Value < DateTime.Now ? Color.Error : Color.Default)">
+                                @_hardware.WarrantyExpiry.Value.ToString("MMMM dd, yyyy")
+                                @if (_hardware.WarrantyExpiry.Value < DateTime.Now)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Error"> (Expired)</MudText>
+                                }
+                            </MudText>
+                        </div>
+                    }
+                </div>
+            </MudCardContent>
+        </MudCard>
+
+        <!-- Maintenance Information -->
+        @if (_hardware.LastMaintenanceDate.HasValue || _hardware.NextMaintenanceDate.HasValue)
+        {
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Maintenance</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <div class="d-flex flex-wrap gap-6">
+                        @if (_hardware.LastMaintenanceDate.HasValue)
+                        {
+                            <div>
+                                <MudText Typo="Typo.caption">Last Maintenance</MudText>
+                                <MudText Typo="Typo.body1">@_hardware.LastMaintenanceDate.Value.ToString("MMMM dd, yyyy")</MudText>
+                            </div>
+                        }
+                        
+                        @if (_hardware.NextMaintenanceDate.HasValue)
+                        {
+                            <div>
+                                <MudText Typo="Typo.caption">Next Maintenance</MudText>
+                                <MudText Typo="Typo.body1"
+                                        Color="@(_hardware.NextMaintenanceDate.Value < DateTime.Now.AddDays(30) ? Color.Warning : Color.Default)">
+                                    @_hardware.NextMaintenanceDate.Value.ToString("MMMM dd, yyyy")
+                                    @if (_hardware.NextMaintenanceDate.Value < DateTime.Now)
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Error"> (Overdue)</MudText>
+                                    }
+                                    else if (_hardware.NextMaintenanceDate.Value < DateTime.Now.AddDays(30))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Warning"> (Due Soon)</MudText>
+                                    }
+                                </MudText>
+                            </div>
+                        }
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        }
+
+        <!-- Dynamic Properties -->
+        @if (_hardware.Properties != null && _hardware.Properties.Any())
+        {
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Specifications</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <div class="d-flex flex-wrap gap-6">
+                        @foreach (var property in _hardware.Properties)
+                        {
+                            <div>
+                                <MudText Typo="Typo.caption">@property.Key</MudText>
+                                <MudText Typo="Typo.body1">@property.Value</MudText>
+                            </div>
+                        }
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        }
+
+        <!-- Assignment Information -->
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Assignment Status</MudText>
+                </CardHeaderContent>
+                <CardHeaderActions>
+                    @if (_hardware.IsAvailableForAssignment && _permissions?.CanAssign == true)
+                    {
+                        <MudButton Variant="Variant.Filled" 
+                                   Color="Color.Primary" 
+                                   StartIcon="@Icons.Material.Filled.PersonAdd"
+                                   OnClick="@(() => Navigation.NavigateTo($"/hardware/assignments/create?hardwareId={Id}"))">
+                            Assign Hardware
+                        </MudButton>
+                    }
+                </CardHeaderActions>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (_hardware.IsCurrentlyAssigned && _hardware.CurrentAssignment != null)
+                {
+                    <!-- Current Assignment -->
+                    <MudAlert Severity="Severity.Info" Class="mb-4">
+                        <div class="d-flex justify-space-between align-center">
+                            <div>
+                                <MudText Typo="Typo.body2">
+                                    Currently assigned to <strong>@_hardware.CurrentAssignment.MemberName</strong>
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    Assigned @_hardware.CurrentAssignment.DaysAssigned days ago
+                                </MudText>
+                            </div>
+                            <MudStack Row="true" Spacing="1">
+                                <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                             Size="Size.Small"
+                                             Color="Color.Primary"
+                                             OnClick="@(() => Navigation.NavigateTo($"/hardware/assignments/{_hardware.CurrentAssignment.Id}"))"
+                                             Title="View Assignment" />
+                                @if (_permissions?.CanAssign == true)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Assignment"
+                                                 Size="Size.Small"
+                                                 Color="Color.Success"
+                                                 OnClick="ProcessReturn"
+                                                 Title="Process Return" />
+                                }
+                            </MudStack>
+                        </div>
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        This hardware is currently not assigned to any member.
+                    </MudText>
+                }
+
+                <!-- Assignment History -->
+                @if (_assignmentHistory != null && _assignmentHistory.Any())
+                {
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.subtitle1" Class="mb-3">Assignment History</MudText>
+                    <MudSimpleTable Dense="true">
+                        <thead>
+                            <tr>
+                                <th>Member</th>
+                                <th>Assigned</th>
+                                <th>Returned</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var assignment in _assignmentHistory.Take(5))
+                            {
+                                <tr>
+                                    <td>@assignment.MemberName</td>
+                                    <td>@assignment.AssignedAt.ToString("MMM dd, yyyy")</td>
+                                    <td>@(assignment.ReturnedAt?.ToString("MMM dd, yyyy") ?? "-")</td>
+                                    <td>
+                                        <MudChip T="string" Size="Size.Small" Color="@GetAssignmentStatusColor(assignment.Status)">
+                                            @assignment.Status
+                                        </MudChip>
+                                    </td>
+                                    <td>
+                                        <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                                     Size="Size.Small"
+                                                     Color="Color.Primary"
+                                                     OnClick="@(() => Navigation.NavigateTo($"/hardware/assignments/{assignment.Id}"))"
+                                                     Title="View Assignment" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                    @if (_assignmentHistory.Count > 5)
+                    {
+                        <MudText Typo="Typo.caption" Class="mt-2">
+                            <MudLink OnClick="@(() => Navigation.NavigateTo($"/hardware/assignments?hardwareId={Id}"))">
+                                View all @_assignmentHistory.Count assignments
+                            </MudLink>
+                        </MudText>
+                    }
+                }
+            </MudCardContent>
+        </MudCard>
+
+        <!-- Usage History -->
+        @if (_usageHistory != null && _usageHistory.Any())
+        {
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Recent Usage History</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudSimpleTable Dense="true">
+                        <thead>
+                            <tr>
+                                <th>Event</th>
+                                <th>Date</th>
+                                <th>Duration</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var usage in _usageHistory.Take(10))
+                            {
+                                <tr>
+                                    <td>@usage.EventTitle</td>
+                                    <td>@usage.EventDate.ToString("MM/dd/yyyy")</td>
+                                    <td>@usage.Duration.ToString(@"hh\:mm")</td>
+                                    <td>@usage.Status</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                    @if (_usageHistory.Count > 10)
+                    {
+                        <MudText Typo="Typo.caption" Class="mt-2">
+                            Showing 10 of @_usageHistory.Count entries
+                        </MudText>
+                    }
+                </MudCardContent>
+            </MudCard>
+        }
+    </div>
+}
+else
+{
+    <MudAlert Severity="Severity.Error">Hardware not found</MudAlert>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private HardwareDto? _hardware;
+    private List<HardwareUsageHistoryDto>? _usageHistory;
+    private List<HardwareAssignmentDto>? _assignmentHistory;
+    private HardwarePermissions? _permissions;
+    private bool _loading = true;
+
+    private List<BreadcrumbItem> _breadcrumbs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _breadcrumbs = new List<BreadcrumbItem>
+        {
+            new("Home", "/"),
+            new("Hardware", "/hardware"),
+            new("Details", null, disabled: true)
+        };
+
+        await LoadPermissions();
+        await LoadHardware();
+        await LoadUsageHistory();
+        await LoadAssignmentHistory();
+    }
+
+    private async Task LoadPermissions()
+    {
+        try
+        {
+            var response = await HardwareService.GetHardwarePermissionsAsync(Id);
+            if (response.Success)
+            {
+                _permissions = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load permissions: {ex.Message}");
+        }
+    }
+
+    private async Task LoadHardware()
+    {
+        try
+        {
+            var response = await HardwareService.GetHardwareByIdAsync(Id);
+            if (response.Success)
+            {
+                _hardware = response.Data;
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to load hardware");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load hardware: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadUsageHistory()
+    {
+        try
+        {
+            var response = await HardwareService.GetHardwareUsageHistoryAsync(Id);
+            if (response.Success)
+            {
+                _usageHistory = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Usage history is optional, so we don't show an error for this
+        }
+    }
+
+    private async Task DeleteHardware()
+    {
+        if (_hardware == null) return;
+
+        var confirmed = await NotificationService.ShowConfirmationAsync(
+            "Delete Hardware",
+            $"Are you sure you want to delete '{_hardware.Name}'? This action cannot be undone.");
+            
+        if (!confirmed) return;
+
+        try
+        {
+            var response = await HardwareService.DeleteHardwareAsync(Id);
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync("Hardware deleted successfully");
+                Navigation.NavigateTo("/hardware");
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to delete hardware");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to delete hardware: {ex.Message}");
+        }
+    }
+
+    private async Task LoadAssignmentHistory()
+    {
+        try
+        {
+            var response = await AssignmentService.GetAssignmentsByHardwareAsync(Id, page: 1, pageSize: 10);
+            if (response.Success)
+            {
+                _assignmentHistory = response.Data?.Items ?? new List<HardwareAssignmentDto>();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Assignment history is optional, so we don't show an error for this
+        }
+    }
+
+    private async Task ProcessReturn()
+    {
+        if (_hardware?.CurrentAssignment == null) return;
+
+        var confirmed = await NotificationService.ShowConfirmationAsync(
+            "Process Return",
+            $"Process the return of '{_hardware.Name}' from {_hardware.CurrentAssignment.MemberName}?");
+
+        if (!confirmed) return;
+
+        try
+        {
+            var request = new ReturnHardwareRequest
+            {
+                Status = AssignmentStatus.Returned,
+                ReturnNotes = "Returned via hardware detail page"
+            };
+
+            var response = await AssignmentService.ReturnHardwareAsync(_hardware.CurrentAssignment.Id, request);
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync("Hardware returned successfully");
+                await LoadHardware(); // Reload to update assignment status
+                await LoadAssignmentHistory();
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to process return");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to process return: {ex.Message}");
+        }
+    }
+
+    private Color GetStatusColor(HardwareStatus status)
+    {
+        return status switch
+        {
+            HardwareStatus.Available => Color.Success,
+            HardwareStatus.Assigned => Color.Info,
+            HardwareStatus.InUse => Color.Warning,
+            HardwareStatus.Maintenance => Color.Warning,
+            HardwareStatus.OutOfService => Color.Error,
+            HardwareStatus.Retired => Color.Default,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetAssignmentStatusColor(AssignmentStatus status)
+    {
+        return status switch
+        {
+            AssignmentStatus.Active => Color.Success,
+            AssignmentStatus.Overdue => Color.Warning,
+            AssignmentStatus.Returned => Color.Info,
+            AssignmentStatus.Lost => Color.Error,
+            AssignmentStatus.Damaged => Color.Warning,
+            _ => Color.Default
+        };
+    }
+}

@@ -235,12 +235,58 @@ else
                         {
                             <div>
                                 <MudText Typo="Typo.subtitle2" Class="mb-2">Required Equipment</MudText>
-                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                <MudStack Spacing="2">
                                     @foreach (var equipment in _event.RequiredEquipment)
                                     {
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Dark">@equipment</MudChip>
+                                        var isHardware = IsHardwareRequirement(equipment);
+                                        <div class="d-flex align-center gap-2">
+                                            @if (isHardware)
+                                            {
+                                                <MudIcon Icon="@Icons.Material.Filled.Build" Size="Size.Small" Color="Color.Primary" />
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
+                                                    @equipment
+                                                </MudChip>
+                                                @if (_permissions?.CanEdit == true)
+                                                {
+                                                    <MudTooltip Text="Manage hardware assignment">
+                                                        <MudIconButton Icon="@Icons.Material.Filled.Assignment" 
+                                                                     Size="Size.Small" 
+                                                                     Color="Color.Secondary"
+                                                                     OnClick="@(() => NavigateToHardwareAssignment(equipment))" />
+                                                    </MudTooltip>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <MudIcon Icon="@Icons.Material.Filled.ListAlt" Size="Size.Small" Color="Color.Default" />
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Default">
+                                                    @equipment
+                                                </MudChip>
+                                            }
+                                        </div>
                                     }
                                 </MudStack>
+                                
+                                @if (_permissions?.CanEdit == true && HasHardwareRequirements())
+                                {
+                                    <MudDivider Class="my-2" />
+                                    <MudStack Row="true" Spacing="1">
+                                        <MudButton Variant="Variant.Text" 
+                                                   StartIcon="@Icons.Material.Filled.Build"
+                                                   Size="Size.Small"
+                                                   Color="Color.Primary"
+                                                   OnClick="@(() => Navigation.NavigateTo($"/hardware/assignments/create?eventId={EventId}"))">
+                                            Assign Equipment
+                                        </MudButton>
+                                        <MudButton Variant="Variant.Text" 
+                                                   StartIcon="@Icons.Material.Filled.Inventory"
+                                                   Size="Size.Small"
+                                                   Color="Color.Secondary"
+                                                   OnClick="@(() => Navigation.NavigateTo($"/events/{EventId}/equipment"))">
+                                            Manage Equipment
+                                        </MudButton>
+                                    </MudStack>
+                                }
                             </div>
                         }
                     </MudStack>
@@ -891,5 +937,26 @@ else
             RegistrationStatus.Declined => "Declined",
             _ => "Unknown"
         };
+    }
+    
+    // Equipment-related helper methods
+    private bool IsHardwareRequirement(string equipment)
+    {
+        // Check if equipment string contains hardware indicators
+        return equipment.Contains("x ") && 
+               (equipment.Contains("(Required)") || equipment.Contains("(Mandatory)") || 
+                equipment.Contains(" - ") || char.IsDigit(equipment[0]));
+    }
+    
+    private bool HasHardwareRequirements()
+    {
+        return _event?.RequiredEquipment?.Any(eq => IsHardwareRequirement(eq)) == true;
+    }
+    
+    private void NavigateToHardwareAssignment(string equipment)
+    {
+        // For now, navigate to general assignment page
+        // In the future, this could parse the equipment and pre-fill the form
+        Navigation.NavigateTo($"/hardware/assignments/create?eventId={EventId}&equipment={Uri.EscapeDataString(equipment)}");
     }
 }

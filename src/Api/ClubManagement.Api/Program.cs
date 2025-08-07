@@ -82,6 +82,12 @@ var connectionString = builder.Configuration.GetValue<string>("Database:Connecti
     ?? builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Database connection string not configured");
 
+// Catalog database (contains only Tenants table)
+var catalogConnectionString = connectionString.Replace("clubmanagement", "clubmanagement_catalog");
+builder.Services.AddDbContext<CatalogDbContext>(options =>
+    options.UseNpgsql(catalogConnectionString));
+
+// Keep ClubManagementDbContext for migrations only
 builder.Services.AddDbContext<ClubManagementDbContext>(options =>
     options.UseNpgsql(connectionString));
 
@@ -120,7 +126,7 @@ builder.Services.AddCors(options =>
 
 // Custom services
 builder.Services.AddScoped<ITenantService, TenantService>();
-builder.Services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
+builder.Services.AddScoped<ClubManagement.Infrastructure.Data.ITenantDbContextFactory, ClubManagement.Infrastructure.Data.TenantDbContextFactory>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IPasswordService, PasswordService>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
@@ -136,6 +142,7 @@ builder.Services.AddHostedService<RecurrenceMaintenanceService>();
 // Authorization services
 builder.Services.AddScoped<ClubManagement.Infrastructure.Authorization.IEventAuthorizationService, ClubManagement.Infrastructure.Authorization.EventAuthorizationService>();
 builder.Services.AddScoped<ClubManagement.Infrastructure.Authorization.IMemberAuthorizationService, ClubManagement.Infrastructure.Authorization.MemberAuthorizationService>();
+builder.Services.AddScoped<ClubManagement.Infrastructure.Authorization.IHardwareAuthorizationService, ClubManagement.Infrastructure.Authorization.HardwareAuthorizationService>();
 builder.Services.AddScoped<ClubManagement.Infrastructure.Services.IImpersonationService, ClubManagement.Infrastructure.Services.ImpersonationService>();
 builder.Services.AddScoped<ClubManagement.Infrastructure.Services.IMemberAuditService, ClubManagement.Infrastructure.Services.MemberAuditService>();
 

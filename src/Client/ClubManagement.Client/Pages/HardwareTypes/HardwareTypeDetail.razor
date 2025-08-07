@@ -1,0 +1,434 @@
+@page "/hardware-types/{id:guid}"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IHardwareTypeService HardwareTypeService
+@inject IHardwareService HardwareService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>Hardware Type Details</PageTitle>
+
+@if (_loading)
+{
+    <MudStack AlignItems="AlignItems.Center" Class="pa-8">
+        <MudProgressCircular Size="Size.Large" Indeterminate="true" />
+        <MudText>Loading hardware type details...</MudText>
+    </MudStack>
+}
+else if (_hardwareType != null)
+{
+    <div class="d-flex justify-space-between align-center mb-4">
+        <MudBreadcrumbs Items="_breadcrumbItems" />
+        <MudStack Row="true" Spacing="2">
+            @if (_permissions?.CanEditTypes == true)
+            {
+                <MudButton Variant="Variant.Filled" 
+                           Color="Color.Primary" 
+                           StartIcon="@Icons.Material.Filled.Edit"
+                           OnClick="@(() => Navigation.NavigateTo($"/hardware-types/{Id}/edit"))">
+                    Edit Type
+                </MudButton>
+            }
+            
+            @if (_permissions?.CanCreate == true)
+            {
+                <MudButton Variant="Variant.Outlined" 
+                           Color="Color.Primary" 
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="@(() => Navigation.NavigateTo($"/hardware/create?typeId={Id}"))">
+                    Add Hardware Item
+                </MudButton>
+            }
+            
+            <MudButton Variant="Variant.Outlined" 
+                       StartIcon="@Icons.Material.Filled.ArrowBack"
+                       OnClick="@(() => Navigation.NavigateTo("/hardware-types"))">
+                Back to Hardware Types
+            </MudButton>
+        </MudStack>
+    </div>
+
+    <MudGrid>
+        <!-- Hardware Type Information -->
+        <MudItem xs="12" md="8">
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                            <MudIcon Icon="@_hardwareType.Icon" Size="Size.Large" />
+                            <div>
+                                <MudText Typo="Typo.h5">@_hardwareType.Name</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    Created @_hardwareType.CreatedAt.ToString("MMM dd, yyyy")
+                                </MudText>
+                            </div>
+                        </MudStack>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        <MudChip T="string" 
+                                 Color="@(_hardwareType.IsActive ? Color.Success : Color.Default)"
+                                 Variant="Variant.Filled">
+                            @(_hardwareType.IsActive ? "Active" : "Inactive")
+                        </MudChip>
+                    </CardHeaderActions>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudStack Spacing="4">
+                        @if (!string.IsNullOrEmpty(_hardwareType.Description))
+                        {
+                            <div>
+                                <MudText Typo="Typo.h6" Class="mb-2">Description</MudText>
+                                <MudText Typo="Typo.body1">@_hardwareType.Description</MudText>
+                            </div>
+                        }
+
+                        <!-- Assignment Settings -->
+                        <div>
+                            <MudText Typo="Typo.h6" Class="mb-2">Assignment Settings</MudText>
+                            <MudGrid>
+                                <MudItem xs="6">
+                                    <div class="d-flex align-center gap-2">
+                                        <MudIcon Icon="@(_hardwareType.RequiresAssignment ? Icons.Material.Filled.Check : Icons.Material.Filled.Close)" 
+                                               Color="@(_hardwareType.RequiresAssignment ? Color.Success : Color.Error)" />
+                                        <MudText>Requires Assignment</MudText>
+                                    </div>
+                                </MudItem>
+                                <MudItem xs="6">
+                                    <div class="d-flex align-center gap-2">
+                                        <MudIcon Icon="@(_hardwareType.AllowMultipleAssignments ? Icons.Material.Filled.Check : Icons.Material.Filled.Close)" 
+                                               Color="@(_hardwareType.AllowMultipleAssignments ? Color.Success : Color.Error)" />
+                                        <MudText>Allow Multiple Assignments</MudText>
+                                    </div>
+                                </MudItem>
+                                @if (_hardwareType.MaxAssignmentDurationHours.HasValue)
+                                {
+                                    <MudItem xs="6">
+                                        <MudText><strong>Max Assignment Duration:</strong> @_hardwareType.MaxAssignmentDurationHours hours</MudText>
+                                    </MudItem>
+                                }
+                                <MudItem xs="6">
+                                    <MudText><strong>Sort Order:</strong> @_hardwareType.SortOrder</MudText>
+                                </MudItem>
+                            </MudGrid>
+                        </div>
+
+                        <!-- Custom Properties -->
+                        @if (_hardwareType.PropertySchema?.Properties?.Any() == true)
+                        {
+                            <div>
+                                <MudText Typo="Typo.h6" Class="mb-3">Custom Properties</MudText>
+                                @foreach (var property in _hardwareType.PropertySchema.Properties)
+                                {
+                                    <MudCard Variant="Variant.Outlined" Class="mb-3">
+                                        <MudCardContent>
+                                            <div class="d-flex justify-space-between align-center mb-2">
+                                                <MudText Typo="Typo.subtitle1">@property.Label</MudText>
+                                                <MudStack Row="true" Spacing="1">
+                                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                                                        @property.Type.ToString()
+                                                    </MudChip>
+                                                    @if (property.Required)
+                                                    {
+                                                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">
+                                                            Required
+                                                        </MudChip>
+                                                    }
+                                                </MudStack>
+                                            </div>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+                                                Key: <code>@property.Key</code>
+                                            </MudText>
+                                            @if (!string.IsNullOrEmpty(property.DefaultValue))
+                                            {
+                                                <MudText Typo="Typo.body2">
+                                                    <strong>Default Value:</strong> @property.DefaultValue
+                                                </MudText>
+                                            }
+                                            @if (property.Options?.Any() == true)
+                                            {
+                                                <div class="mt-2">
+                                                    <MudText Typo="Typo.body2" Class="mb-1"><strong>Options:</strong></MudText>
+                                                    <div class="d-flex flex-wrap gap-1">
+                                                        @foreach (var option in property.Options)
+                                                        {
+                                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text">@option</MudChip>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            }
+                                        </MudCardContent>
+                                    </MudCard>
+                                }
+                            </div>
+                        }
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- Statistics -->
+        <MudItem xs="12" md="4">
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Statistics</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudStack Spacing="3">
+                        <div class="d-flex justify-space-between align-center">
+                            <MudText Typo="Typo.body2">Total Hardware:</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Primary">
+                                @_hardwareType.HardwareCount
+                            </MudText>
+                        </div>
+
+                        <div class="d-flex justify-space-between align-center">
+                            <MudText Typo="Typo.body2">Available:</MudText>
+                            <MudText Typo="Typo.body1" Color="Color.Success">
+                                @_hardwareType.AvailableCount
+                            </MudText>
+                        </div>
+
+                        <div class="d-flex justify-space-between align-center">
+                            <MudText Typo="Typo.body2">Assigned:</MudText>
+                            <MudText Typo="Typo.body1" Color="Color.Info">
+                                @_hardwareType.AssignedCount
+                            </MudText>
+                        </div>
+
+                        <div class="d-flex justify-space-between align-center">
+                            <MudText Typo="Typo.body2">In Maintenance:</MudText>
+                            <MudText Typo="Typo.body1" Color="Color.Warning">
+                                @_hardwareType.MaintenanceCount
+                            </MudText>
+                        </div>
+
+                        @if (_hardwareType.HardwareCount > 0)
+                        {
+                            <MudDivider />
+                            <MudButton Variant="Variant.Text" 
+                                       FullWidth="true"
+                                       OnClick="@(() => Navigation.NavigateTo($"/hardware?typeId={Id}"))">
+                                View All Hardware Items
+                            </MudButton>
+                        }
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+
+            @if (_permissions?.CanDeleteTypes == true && _hardwareType.HardwareCount == 0)
+            {
+                <MudCard Class="mt-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6" Color="Color.Error">Danger Zone</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudText Typo="Typo.body2" Class="mb-3">
+                            Permanently delete this hardware type. This action cannot be undone.
+                        </MudText>
+                        <MudButton Variant="Variant.Filled" 
+                                   Color="Color.Error" 
+                                   FullWidth="true"
+                                   StartIcon="@Icons.Material.Filled.Delete"
+                                   OnClick="DeleteHardwareType">
+                            Delete Hardware Type
+                        </MudButton>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </MudItem>
+
+        <!-- Recent Hardware Items -->
+        @if (_recentHardware?.Any() == true)
+        {
+            <MudItem xs="12">
+                <MudCard>
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Recent Hardware Items</MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            @if (_hardwareType.HardwareCount > _recentHardware.Count)
+                            {
+                                <MudButton Size="Size.Small" 
+                                           OnClick="@(() => Navigation.NavigateTo($"/hardware?typeId={Id}"))">
+                                    View All (@_hardwareType.HardwareCount)
+                                </MudButton>
+                            }
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent Class="pa-0">
+                        <MudList T="string">
+                            @foreach (var hardware in _recentHardware.Take(5))
+                            {
+                                <MudListItem T="string" OnClick="@(() => Navigation.NavigateTo($"/hardware/{hardware.Id}"))">
+                                    <div class="d-flex justify-space-between align-center">
+                                        <div>
+                                            <MudText Typo="Typo.body1">@hardware.Name</MudText>
+                                            @if (!string.IsNullOrEmpty(hardware.SerialNumber))
+                                            {
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                    SN: @hardware.SerialNumber
+                                                </MudText>
+                                            }
+                                        </div>
+                                        <MudChip T="string" Size="Size.Small" 
+                                                 Color="@GetStatusColor(hardware.Status)"
+                                                 Variant="Variant.Filled">
+                                            @hardware.Status
+                                        </MudChip>
+                                    </div>
+                                </MudListItem>
+                            }
+                        </MudList>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+else
+{
+    <MudAlert Severity="Severity.Error">
+        Hardware type not found or you don't have permission to view it.
+    </MudAlert>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private HardwareTypeDto? _hardwareType;
+    private HardwarePermissions? _permissions;
+    private List<HardwareDto>? _recentHardware;
+    private bool _loading = true;
+
+    private List<BreadcrumbItem> _breadcrumbItems = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissions();
+        await LoadHardwareType();
+        await LoadRecentHardware();
+        SetupBreadcrumbs();
+    }
+
+    private async Task LoadPermissions()
+    {
+        try
+        {
+            var response = await HardwareTypeService.GetHardwareTypePermissionsAsync(Id);
+            if (response.Success)
+            {
+                _permissions = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load permissions: {ex.Message}");
+        }
+    }
+
+    private async Task LoadHardwareType()
+    {
+        try
+        {
+            _loading = true;
+            var response = await HardwareTypeService.GetHardwareTypeByIdAsync(Id);
+            if (response.Success)
+            {
+                _hardwareType = response.Data;
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to load hardware type");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load hardware type: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadRecentHardware()
+    {
+        try
+        {
+            // Load hardware items for this type
+            var response = await HardwareService.GetHardwareAsync(); // This might need a filter parameter
+            if (response.Success)
+            {
+                _recentHardware = response.Data?.Where(h => h.HardwareTypeId == Id)
+                                                 .OrderByDescending(h => h.CreatedAt)
+                                                 .ToList() ?? new List<HardwareDto>();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Non-critical error, just log it
+            Console.WriteLine($"Failed to load recent hardware: {ex.Message}");
+        }
+    }
+
+    private void SetupBreadcrumbs()
+    {
+        _breadcrumbItems = new List<BreadcrumbItem>
+        {
+            new BreadcrumbItem("Hardware Types", href: "/hardware-types", icon: Icons.Material.Filled.Category),
+            new BreadcrumbItem(_hardwareType?.Name ?? "Hardware Type", href: null, disabled: true)
+        };
+    }
+
+    private async Task DeleteHardwareType()
+    {
+        if (_hardwareType == null) return;
+
+        var confirmed = await NotificationService.ShowConfirmationAsync(
+            "Delete Hardware Type",
+            $"Are you sure you want to delete '{_hardwareType.Name}'? This action cannot be undone.");
+
+        if (!confirmed) return;
+
+        try
+        {
+            var response = await HardwareTypeService.DeleteHardwareTypeAsync(_hardwareType.Id);
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync("Hardware type deleted successfully");
+                Navigation.NavigateTo("/hardware-types");
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to delete hardware type");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to delete hardware type: {ex.Message}");
+        }
+    }
+
+    private static Color GetStatusColor(HardwareStatus status)
+    {
+        return status switch
+        {
+            HardwareStatus.Available => Color.Success,
+            HardwareStatus.Assigned => Color.Info,
+            HardwareStatus.InUse => Color.Warning,
+            HardwareStatus.Maintenance => Color.Warning,
+            HardwareStatus.OutOfService => Color.Error,
+            HardwareStatus.Retired => Color.Default,
+            _ => Color.Default
+        };
+    }
+}

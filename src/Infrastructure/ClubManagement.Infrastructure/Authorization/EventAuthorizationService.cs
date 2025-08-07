@@ -7,36 +7,30 @@ namespace ClubManagement.Infrastructure.Authorization;
 
 public class EventAuthorizationService : IEventAuthorizationService
 {
-    private readonly ClubManagementDbContext _context;
 
-    public EventAuthorizationService(ClubManagementDbContext context)
+    public async Task<EventPermissions> GetEventPermissionsAsync(Guid userId, ClubManagementDbContext tenantContext, Guid? eventId = null)
     {
-        _context = context;
-    }
-
-    public async Task<EventPermissions> GetEventPermissionsAsync(Guid userId, Guid? eventId = null)
-    {
-        var user = await GetUserWithRoleAsync(userId);
+        var user = await GetUserWithRoleAsync(userId, tenantContext);
         if (user == null)
             return new EventPermissions();
 
-        var eventEntity = eventId.HasValue ? await GetEventAsync(eventId.Value) : null;
+        var eventEntity = eventId.HasValue ? await GetEventAsync(eventId.Value, tenantContext) : null;
         
         return user.Role switch
         {
-            UserRole.Member => await GetMemberPermissionsAsync(user, eventEntity),
-            UserRole.Staff => await GetStaffPermissionsAsync(user, eventEntity),
-            UserRole.Instructor => await GetInstructorPermissionsAsync(user, eventEntity),
-            UserRole.Coach => await GetCoachPermissionsAsync(user, eventEntity),
-            UserRole.Admin => await GetAdminPermissionsAsync(user, eventEntity),
-            UserRole.SuperAdmin => await GetSuperAdminPermissionsAsync(user, eventEntity),
+            UserRole.Member => await GetMemberPermissionsAsync(user, eventEntity, tenantContext),
+            UserRole.Staff => await GetStaffPermissionsAsync(user, eventEntity, tenantContext),
+            UserRole.Instructor => await GetInstructorPermissionsAsync(user, eventEntity, tenantContext),
+            UserRole.Coach => await GetCoachPermissionsAsync(user, eventEntity, tenantContext),
+            UserRole.Admin => await GetAdminPermissionsAsync(user, eventEntity, tenantContext),
+            UserRole.SuperAdmin => await GetSuperAdminPermissionsAsync(user, eventEntity, tenantContext),
             _ => new EventPermissions()
         };
     }
 
-    public async Task<bool> CanPerformActionAsync(Guid userId, EventAction action, Guid? eventId = null)
+    public async Task<bool> CanPerformActionAsync(Guid userId, EventAction action, ClubManagementDbContext tenantContext, Guid? eventId = null)
     {
-        var permissions = await GetEventPermissionsAsync(userId, eventId);
+        var permissions = await GetEventPermissionsAsync(userId, tenantContext, eventId);
         
         return action switch
         {
@@ -57,19 +51,19 @@ public class EventAuthorizationService : IEventAuthorizationService
         };
     }
 
-    public async Task<AuthorizationResult> CheckAuthorizationAsync(Guid userId, EventAction action, Guid? eventId = null)
+    public async Task<AuthorizationResult> CheckAuthorizationAsync(Guid userId, EventAction action, ClubManagementDbContext tenantContext, Guid? eventId = null)
     {
-        var user = await GetUserWithRoleAsync(userId);
+        var user = await GetUserWithRoleAsync(userId, tenantContext);
         if (user == null)
             return AuthorizationResult.Failed("User not found");
 
-        var eventEntity = eventId.HasValue ? await GetEventAsync(eventId.Value) : null;
+        var eventEntity = eventId.HasValue ? await GetEventAsync(eventId.Value, tenantContext) : null;
         
         // Check basic permissions
-        var canPerform = await CanPerformActionAsync(userId, action, eventId);
+        var canPerform = await CanPerformActionAsync(userId, action, tenantContext, eventId);
         if (!canPerform)
         {
-            var permissions = await GetEventPermissionsAsync(userId, eventId);
+            var permissions = await GetEventPermissionsAsync(userId, tenantContext, eventId);
             var reasons = permissions.ReasonsDenied.Any() 
                 ? permissions.ReasonsDenied 
                 : new[] { $"User does not have permission to {action}" };
@@ -79,7 +73,7 @@ public class EventAuthorizationService : IEventAuthorizationService
         // Additional context-specific checks
         if (eventEntity != null)
         {
-            var contextCheck = await CheckEventContextAsync(user, eventEntity, action);
+            var contextCheck = await CheckEventContextAsync(user, eventEntity, action, tenantContext);
             if (!contextCheck.Succeeded)
                 return contextCheck;
         }
@@ -87,11 +81,11 @@ public class EventAuthorizationService : IEventAuthorizationService
         return AuthorizationResult.Success();
     }
 
-    private async Task<EventPermissions> GetMemberPermissionsAsync(User user, Event? eventEntity)
+    private async Task<EventPermissions> GetMemberPermissionsAsync(User user, Event? eventEntity, ClubManagementDbContext tenantContext)
     {
-        var member = await _context.Members.FirstOrDefaultAsync(m => m.UserId == user.Id);
+        var member = await tenantContext.Members.FirstOrDefaultAsync(m => m.UserId == user.Id);
         var isRegistered = eventEntity != null && member != null ? 
-            await IsUserRegisteredForEventAsync(member.Id, eventEntity.Id) : false;
+            await IsUserRegisteredForEventAsync(member.Id, eventEntity.Id, tenantContext) : false;
         
         var restrictions = new List<string>();
         var reasons = new List<string>();
@@ -134,7 +128,7 @@ public class EventAuthorizationService : IEventAuthorizationService
         };
     }
 
-    private async Task<EventPermissions> GetStaffPermissionsAsync(User user, Event? eventEntity)
+    private async Task<EventPermissions> GetStaffPermissionsAsync(User user, Event? eventEntity, ClubManagementDbContext tenantContext)
     {
         var restrictions = new List<string>();
         var canModifyEvent = eventEntity == null || (!IsEventStarted(eventEntity) && !IsCriticalEvent(eventEntity));
@@ -163,7 +157,7 @@ public class EventAuthorizationService : IEventAuthorizationService
         };
     }
 
-    private async Task<EventPermissions> GetInstructorPermissionsAsync(User user, Event? eventEntity)
+    private async Task<EventPermissions> GetInstructorPermissionsAsync(User user, Event? eventEntity, ClubManagementDbContext tenantContext)
     {
         var isOwnEvent = eventEntity?.InstructorId == user.Id;
         var canModifyEvent = eventEntity == null || (isOwnEvent && !IsEventStarted(eventEntity));
@@ -193,7 +187,7 @@ public class EventAuthorizationService : IEventAuthorizationService
         };
     }
 
-    private async Task<EventPermissions> GetCoachPermissionsAsync(User user, Event? eventEntity)
+    private async Task<EventPermissions> GetCoachPermissionsAsync(User user, Event? eventEntity, ClubManagementDbContext tenantContext)
     {
         var isOwnEvent = eventEntity?.InstructorId == user.Id;
         var canModifyEvent = eventEntity == null || (isOwnEvent && !IsEventStarted(eventEntity));
@@ -223,7 +217,7 @@ public class EventAuthorizationService : IEventAuthorizationService
         };
     }
 
-    private async Task<EventPermissions> GetAdminPermissionsAsync(User user, Event? eventEntity)
+    private async Task<EventPermissions> GetAdminPermissionsAsync(User user, Event? eventEntity, ClubManagementDbContext tenantContext)
     {
         return new EventPermissions
         {
@@ -244,7 +238,7 @@ public class EventAuthorizationService : IEventAuthorizationService
         };
     }
 
-    private async Task<EventPermissions> GetSuperAdminPermissionsAsync(User user, Event? eventEntity)
+    private async Task<EventPermissions> GetSuperAdminPermissionsAsync(User user, Event? eventEntity, ClubManagementDbContext tenantContext)
     {
         return new EventPermissions
         {
@@ -265,7 +259,7 @@ public class EventAuthorizationService : IEventAuthorizationService
         };
     }
 
-    private async Task<AuthorizationResult> CheckEventContextAsync(User user, Event eventEntity, EventAction action)
+    private async Task<AuthorizationResult> CheckEventContextAsync(User user, Event eventEntity, EventAction action, ClubManagementDbContext tenantContext)
     {
         var reasons = new List<string>();
 
@@ -303,21 +297,21 @@ public class EventAuthorizationService : IEventAuthorizationService
         return reasons.Any() ? AuthorizationResult.Failed(reasons.ToArray()) : AuthorizationResult.Success();
     }
 
-    private async Task<User?> GetUserWithRoleAsync(Guid userId)
+    private async Task<User?> GetUserWithRoleAsync(Guid userId, ClubManagementDbContext tenantContext)
     {
-        return await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        return await tenantContext.Users.FirstOrDefaultAsync(u => u.Id == userId);
     }
 
-    private async Task<Event?> GetEventAsync(Guid eventId)
+    private async Task<Event?> GetEventAsync(Guid eventId, ClubManagementDbContext tenantContext)
     {
-        return await _context.Events
+        return await tenantContext.Events
             .Include(e => e.Registrations)
             .FirstOrDefaultAsync(e => e.Id == eventId);
     }
 
-    private async Task<bool> IsUserRegisteredForEventAsync(Guid memberId, Guid eventId)
+    private async Task<bool> IsUserRegisteredForEventAsync(Guid memberId, Guid eventId, ClubManagementDbContext tenantContext)
     {
-        return await _context.EventRegistrations
+        return await tenantContext.EventRegistrations
             .AnyAsync(r => r.MemberId == memberId && r.EventId == eventId && 
                           r.Status == RegistrationStatus.Confirmed);
     }

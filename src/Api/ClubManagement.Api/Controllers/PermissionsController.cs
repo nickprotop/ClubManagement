@@ -14,12 +14,12 @@ namespace ClubManagement.Api.Controllers;
 [Authorize]
 public class PermissionsController : ControllerBase
 {
-    private readonly ClubManagementDbContext _context;
+    private readonly ITenantDbContextFactory _tenantDbContextFactory;
     private readonly ITenantService _tenantService;
 
-    public PermissionsController(ClubManagementDbContext context, ITenantService tenantService)
+    public PermissionsController(ITenantDbContextFactory tenantDbContextFactory, ITenantService tenantService)
     {
-        _context = context;
+        _tenantDbContextFactory = tenantDbContextFactory;
         _tenantService = tenantService;
     }
 
@@ -31,15 +31,15 @@ public class PermissionsController : ControllerBase
             var userId = this.GetCurrentUserId();
             var tenantId = this.GetCurrentTenantId();
             
-            // Get tenant and switch to tenant schema
+            // Get tenant and create tenant-specific database context
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
                 return BadRequest(ApiResponse<GlobalPermissionsDto>.ErrorResult("Invalid tenant"));
                 
-            await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             // Get current user with role
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+            var user = await tenantContext.Users.FirstOrDefaultAsync(u => u.Id == userId);
             if (user == null)
                 return NotFound(ApiResponse<GlobalPermissionsDto>.ErrorResult("User not found"));
 
@@ -129,6 +129,23 @@ public class PermissionsController : ControllerBase
             CanCancelBookings = true
         };
 
+        permissions.Hardware = new GlobalHardwarePermissions
+        {
+            CanView = true,
+            CanCreate = true,
+            CanEdit = true,
+            CanDelete = true,
+            CanAssign = true,
+            CanViewAll = true,
+            CanViewOwn = true,
+            CanManageTypes = true,
+            CanManageInventory = true,
+            CanProcessFees = true,
+            CanViewFinancials = true,
+            CanScheduleMaintenance = true,
+            CanManageEventEquipment = true
+        };
+
         permissions.Payments = new GlobalPaymentPermissions
         {
             CanView = true,
@@ -180,6 +197,7 @@ public class PermissionsController : ControllerBase
             ShowMembers = true,
             ShowEvents = true,
             ShowFacilities = true,
+            ShowHardware = true,
             ShowPayments = true,
             ShowCommunications = true,
             ShowReports = true,
@@ -187,6 +205,7 @@ public class PermissionsController : ControllerBase
             ShowMemberManagement = true,
             ShowEventManagement = true,
             ShowFacilityManagement = true,
+            ShowHardwareManagement = true,
             ShowPaymentManagement = true,
             ShowUserManagement = true
         };
@@ -233,6 +252,23 @@ public class PermissionsController : ControllerBase
             CanViewAllBookings = true,
             CanViewOwnBookings = true,
             CanCancelBookings = true
+        };
+
+        permissions.Hardware = new GlobalHardwarePermissions
+        {
+            CanView = true,
+            CanCreate = true,
+            CanEdit = true,
+            CanDelete = true,
+            CanAssign = true,
+            CanViewAll = true,
+            CanViewOwn = true,
+            CanManageTypes = true,
+            CanManageInventory = true,
+            CanProcessFees = true,
+            CanViewFinancials = true,
+            CanScheduleMaintenance = true,
+            CanManageEventEquipment = true
         };
 
         permissions.Payments = new GlobalPaymentPermissions
@@ -286,6 +322,7 @@ public class PermissionsController : ControllerBase
             ShowMembers = true,
             ShowEvents = true,
             ShowFacilities = true,
+            ShowHardware = true,
             ShowPayments = true,
             ShowCommunications = true,
             ShowReports = true,
@@ -293,6 +330,7 @@ public class PermissionsController : ControllerBase
             ShowMemberManagement = true,
             ShowEventManagement = true,
             ShowFacilityManagement = true,
+            ShowHardwareManagement = true,
             ShowPaymentManagement = true,
             ShowUserManagement = true
         };
@@ -339,6 +377,23 @@ public class PermissionsController : ControllerBase
             CanViewAllBookings = true,
             CanViewOwnBookings = true,
             CanCancelBookings = false
+        };
+
+        permissions.Hardware = new GlobalHardwarePermissions
+        {
+            CanView = true,
+            CanCreate = false,
+            CanEdit = false,
+            CanDelete = false,
+            CanAssign = true,
+            CanViewAll = true,
+            CanViewOwn = true,
+            CanManageInventory = false,
+            CanProcessFees = false,
+            CanManageTypes = false,
+            CanViewFinancials = false,
+            CanScheduleMaintenance = false,
+            CanManageEventEquipment = true
         };
 
         permissions.Payments = new GlobalPaymentPermissions
@@ -392,6 +447,7 @@ public class PermissionsController : ControllerBase
             ShowMembers = true,
             ShowEvents = true,
             ShowFacilities = true,
+            ShowHardware = true,
             ShowPayments = false,
             ShowCommunications = true,
             ShowReports = false,
@@ -399,6 +455,7 @@ public class PermissionsController : ControllerBase
             ShowMemberManagement = false,
             ShowEventManagement = true,
             ShowFacilityManagement = false,
+            ShowHardwareManagement = false,
             ShowPaymentManagement = false,
             ShowUserManagement = false
         };
@@ -445,6 +502,23 @@ public class PermissionsController : ControllerBase
             CanViewAllBookings = true,
             CanViewOwnBookings = true,
             CanCancelBookings = true
+        };
+
+        permissions.Hardware = new GlobalHardwarePermissions
+        {
+            CanView = true,
+            CanCreate = true,
+            CanEdit = true,
+            CanDelete = false,
+            CanAssign = true,
+            CanViewAll = true,
+            CanViewOwn = true,
+            CanManageInventory = true,
+            CanProcessFees = true,
+            CanManageTypes = false,
+            CanViewFinancials = false,
+            CanScheduleMaintenance = true,
+            CanManageEventEquipment = false
         };
 
         permissions.Payments = new GlobalPaymentPermissions
@@ -498,6 +572,7 @@ public class PermissionsController : ControllerBase
             ShowMembers = true,
             ShowEvents = true,
             ShowFacilities = true,
+            ShowHardware = true,
             ShowPayments = true,
             ShowCommunications = true,
             ShowReports = true,
@@ -505,6 +580,7 @@ public class PermissionsController : ControllerBase
             ShowMemberManagement = true,
             ShowEventManagement = false,
             ShowFacilityManagement = true,
+            ShowHardwareManagement = false,
             ShowPaymentManagement = true,
             ShowUserManagement = false
         };
@@ -551,6 +627,23 @@ public class PermissionsController : ControllerBase
             CanViewAllBookings = true,
             CanViewOwnBookings = true,
             CanCancelBookings = false
+        };
+
+        permissions.Hardware = new GlobalHardwarePermissions
+        {
+            CanView = true,
+            CanCreate = false,
+            CanEdit = false,
+            CanDelete = false,
+            CanAssign = true,
+            CanViewAll = true,
+            CanViewOwn = true,
+            CanManageTypes = false,
+            CanManageInventory = false,
+            CanProcessFees = false,
+            CanViewFinancials = false,
+            CanScheduleMaintenance = false,
+            CanManageEventEquipment = true
         };
 
         permissions.Payments = new GlobalPaymentPermissions
@@ -604,6 +697,7 @@ public class PermissionsController : ControllerBase
             ShowMembers = true,
             ShowEvents = true,
             ShowFacilities = true,
+            ShowHardware = true,
             ShowPayments = false,
             ShowCommunications = true,
             ShowReports = false,
@@ -611,6 +705,7 @@ public class PermissionsController : ControllerBase
             ShowMemberManagement = false,
             ShowEventManagement = true,
             ShowFacilityManagement = false,
+            ShowHardwareManagement = false,
             ShowPaymentManagement = false,
             ShowUserManagement = false
         };
@@ -657,6 +752,23 @@ public class PermissionsController : ControllerBase
             CanViewAllBookings = false,
             CanViewOwnBookings = true,
             CanCancelBookings = true
+        };
+
+        permissions.Hardware = new GlobalHardwarePermissions
+        {
+            CanView = true,
+            CanCreate = false,
+            CanEdit = false,
+            CanDelete = false,
+            CanAssign = false,
+            CanViewAll = false,
+            CanViewOwn = true,
+            CanManageInventory = false,
+            CanProcessFees = false,
+            CanManageTypes = false,
+            CanViewFinancials = false,
+            CanScheduleMaintenance = false,
+            CanManageEventEquipment = false
         };
 
         permissions.Payments = new GlobalPaymentPermissions
@@ -710,6 +822,7 @@ public class PermissionsController : ControllerBase
             ShowMembers = false,
             ShowEvents = true,
             ShowFacilities = true,
+            ShowHardware = true,
             ShowPayments = false,
             ShowCommunications = false,
             ShowReports = false,
@@ -717,6 +830,7 @@ public class PermissionsController : ControllerBase
             ShowMemberManagement = false,
             ShowEventManagement = false,
             ShowFacilityManagement = false,
+            ShowHardwareManagement = false,
             ShowPaymentManagement = false,
             ShowUserManagement = false
         };

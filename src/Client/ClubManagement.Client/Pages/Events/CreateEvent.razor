@@ -3,6 +3,7 @@
 @using ClubManagement.Shared.DTOs
 @using ClubManagement.Shared.Models
 @inject IEventService EventService
+@inject IHardwareTypeService HardwareTypeService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 
@@ -203,6 +204,130 @@
             </MudCardContent>
         </MudCard>
 
+        <!-- Equipment Requirements Section -->
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Equipment Requirements</MudText>
+                </CardHeaderContent>
+                <CardHeaderActions>
+                    <MudButton Variant="Variant.Text" 
+                               Color="Color.Primary" 
+                               StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="AddEquipmentRequirement"
+                               Size="Size.Small">
+                        Add Equipment
+                    </MudButton>
+                </CardHeaderActions>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudGrid>
+                    <!-- Legacy Required Equipment Text Field -->
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_requiredEquipmentText" 
+                                      Label="Required Equipment (Text)" 
+                                      Variant="Variant.Outlined"
+                                      Lines="2"
+                                      HelperText="General equipment notes or items not in the hardware system"
+                                      Placeholder="e.g., Comfortable clothing, water bottle, yoga mat..." />
+                    </MudItem>
+                    
+                    <!-- Hardware Requirements -->
+                    @if (_equipmentRequirements.Any())
+                    {
+                        <MudItem xs="12">
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">Hardware Requirements</MudText>
+                            <MudStack Spacing="2">
+                                @for (int i = 0; i < _equipmentRequirements.Count; i++)
+                                {
+                                    var index = i; // Capture for closure
+                                    var requirement = _equipmentRequirements[index];
+                                    
+                                    <MudCard Outlined="true">
+                                        <MudCardContent>
+                                            <MudGrid AlignItems="AlignItems.Center">
+                                                <MudItem xs="12" md="4">
+                                                    <MudSelect T="Guid" @bind-Value="requirement.HardwareTypeId"
+                                                               Label="Hardware Type"
+                                                               Variant="Variant.Outlined"
+                                                               Required="true">
+                                                        @if (_hardwareTypes != null)
+                                                        {
+                                                            @foreach (var type in _hardwareTypes)
+                                                            {
+                                                                <MudSelectItem T="Guid" Value="type.Id">
+                                                                    <div class="d-flex align-center">
+                                                                        <MudIcon Icon="@type.Icon" Class="mr-2" Size="Size.Small" />
+                                                                        @type.Name
+                                                                    </div>
+                                                                </MudSelectItem>
+                                                            }
+                                                        }
+                                                    </MudSelect>
+                                                </MudItem>
+                                                <MudItem xs="6" md="2">
+                                                    <MudNumericField @bind-Value="requirement.QuantityRequired"
+                                                                     Label="Quantity"
+                                                                     Variant="Variant.Outlined"
+                                                                     Min="1"
+                                                                     Max="50" />
+                                                </MudItem>
+                                                <MudItem xs="6" md="2">
+                                                    <MudSwitch @bind-Value="requirement.IsMandatory"
+                                                               Label="Mandatory"
+                                                               Color="Color.Primary" />
+                                                </MudItem>
+                                                <MudItem xs="6" md="2">
+                                                    <MudSwitch @bind-Value="requirement.AutoAssign"
+                                                               Label="Auto-assign"
+                                                               Color="Color.Secondary" />
+                                                </MudItem>
+                                                <MudItem xs="6" md="2">
+                                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                                   Color="Color.Error"
+                                                                   Size="Size.Small"
+                                                                   OnClick="() => RemoveEquipmentRequirement(index)"
+                                                                   Title="Remove requirement" />
+                                                </MudItem>
+                                                @if (!string.IsNullOrEmpty(requirement.Notes))
+                                                {
+                                                    <MudItem xs="12">
+                                                        <MudTextField @bind-Value="requirement.Notes"
+                                                                      Label="Notes"
+                                                                      Variant="Variant.Outlined"
+                                                                      Lines="1" />
+                                                    </MudItem>
+                                                }
+                                                else
+                                                {
+                                                    <MudItem xs="12">
+                                                        <MudButton Variant="Variant.Text" 
+                                                                   Size="Size.Small"
+                                                                   StartIcon="@Icons.Material.Filled.Note"
+                                                                   OnClick="() => requirement.Notes = string.Empty">
+                                                            Add Notes
+                                                        </MudButton>
+                                                    </MudItem>
+                                                }
+                                            </MudGrid>
+                                        </MudCardContent>
+                                    </MudCard>
+                                }
+                            </MudStack>
+                        </MudItem>
+                    }
+                    else
+                    {
+                        <MudItem xs="12">
+                            <MudAlert Severity="Severity.Info">
+                                No specific hardware requirements. Use the text field above for general equipment notes.
+                            </MudAlert>
+                        </MudItem>
+                    }
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+
         <MudCard>
             <MudCardActions>
                 <MudButton Variant="Variant.Filled" 
@@ -248,6 +373,11 @@
     private DateTime? _recurrenceEndDate;
     private int? _maxOccurrences;
     
+    // Equipment requirements
+    private List<CreateEventEquipmentRequirementRequest> _equipmentRequirements = new();
+    private List<HardwareTypeDto>? _hardwareTypes;
+    private string _requiredEquipmentText = string.Empty;
+    
     public enum RecurrenceEndType
     {
         Never,
@@ -265,6 +395,7 @@
     protected override async Task OnInitializedAsync()
     {
         InitializeDaysOfWeek();
+        await LoadHardwareTypes();
         
         // Set default date if provided from query parameter
         if (!string.IsNullOrEmpty(Date) && DateTime.TryParse(Date, out var parsedDate))
@@ -285,6 +416,40 @@
         foreach (DayOfWeek day in Enum.GetValues<DayOfWeek>())
         {
             _selectedDays[day] = false;
+        }
+    }
+
+    private async Task LoadHardwareTypes()
+    {
+        try
+        {
+            var response = await HardwareTypeService.GetHardwareTypesAsync();
+            if (response.Success)
+            {
+                _hardwareTypes = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load hardware types: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private void AddEquipmentRequirement()
+    {
+        _equipmentRequirements.Add(new CreateEventEquipmentRequirementRequest
+        {
+            QuantityRequired = 1,
+            IsMandatory = true,
+            AutoAssign = false
+        });
+    }
+
+    private void RemoveEquipmentRequirement(int index)
+    {
+        if (index >= 0 && index < _equipmentRequirements.Count)
+        {
+            _equipmentRequirements.RemoveAt(index);
         }
     }
 
@@ -345,6 +510,31 @@
                         break;
                 }
             }
+
+            // Prepare equipment data - combine text and hardware requirements
+            var equipmentList = new List<string>();
+            
+            // Add text-based equipment
+            if (!string.IsNullOrWhiteSpace(_requiredEquipmentText))
+            {
+                var textEquipment = _requiredEquipmentText.Split('\n').Where(s => !string.IsNullOrWhiteSpace(s));
+                equipmentList.AddRange(textEquipment);
+            }
+            
+            // Add hardware requirements as text (for now, until backend integration is complete)
+            foreach (var req in _equipmentRequirements.Where(eq => eq.HardwareTypeId != Guid.Empty))
+            {
+                var hardwareType = _hardwareTypes?.FirstOrDefault(ht => ht.Id == req.HardwareTypeId);
+                if (hardwareType != null)
+                {
+                    var description = $"{req.QuantityRequired}x {hardwareType.Name}";
+                    if (req.IsMandatory) description += " (Required)";
+                    if (!string.IsNullOrEmpty(req.Notes)) description += $" - {req.Notes}";
+                    equipmentList.Add(description);
+                }
+            }
+            
+            _request.RequiredEquipment = equipmentList;
 
             var response = await EventService.CreateEventAsync(_request);
             

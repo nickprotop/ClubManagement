@@ -1,0 +1,351 @@
+@page "/hardware/assignments/create"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IHardwareAssignmentService AssignmentService
+@inject IHardwareService HardwareService
+@inject IMemberService MemberService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>Create Hardware Assignment</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <MudBreadcrumbs Items="_breadcrumbItems" />
+    <MudButton Variant="Variant.Outlined" 
+               StartIcon="@Icons.Material.Filled.ArrowBack"
+               OnClick="@(() => Navigation.NavigateTo("/hardware/assignments"))">
+        Back to Assignments
+    </MudButton>
+</div>
+
+<MudCard>
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h6">Create New Hardware Assignment</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Assign available hardware to a member
+            </MudText>
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudGrid>
+            <MudItem xs="12" md="8">
+                <MudStack Spacing="4">
+                    <!-- Hardware Selection -->
+                    <div>
+                        <MudText Typo="Typo.h6" Class="mb-3">Select Hardware</MudText>
+                        <MudAutocomplete T="HardwareDto"
+                                        @bind-Value="_selectedHardware"
+                                        Label="Search for available hardware"
+                                        Variant="Variant.Outlined"
+                                        SearchFunc="SearchHardware"
+                                        ToStringFunc="@(h => h?.Name + " - " + h?.SerialNumber)"
+                                        Required="true"
+                                        ResetValueOnEmptyText="true"
+                                        MaxItems="20">
+                            <ItemTemplate Context="hardware">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudIcon Icon="@Icons.Material.Filled.Build" Size="Size.Small" />
+                                    <div>
+                                        <MudText Typo="Typo.body2">@hardware.Name</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @hardware.HardwareTypeName • @hardware.SerialNumber • @hardware.Location
+                                        </MudText>
+                                    </div>
+                                    <MudSpacer />
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled">
+                                        Available
+                                    </MudChip>
+                                </MudStack>
+                            </ItemTemplate>
+                        </MudAutocomplete>
+                        
+                        @if (_selectedHardware != null)
+                        {
+                            <MudCard Variant="Variant.Outlined" Class="mt-3">
+                                <MudCardContent>
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                                        <MudIcon Icon="@Icons.Material.Filled.Build" Size="Size.Large" Color="Color.Primary" />
+                                        <div>
+                                            <MudText Typo="Typo.h6">@_selectedHardware.Name</MudText>
+                                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                                @_selectedHardware.HardwareTypeName • @_selectedHardware.SerialNumber
+                                            </MudText>
+                                            @if (!string.IsNullOrEmpty(_selectedHardware.Location))
+                                            {
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                    Located: @_selectedHardware.Location
+                                                </MudText>
+                                            }
+                                        </div>
+                                    </MudStack>
+                                </MudCardContent>
+                            </MudCard>
+                        }
+                    </div>
+
+                    <!-- Member Selection -->
+                    <div>
+                        <MudText Typo="Typo.h6" Class="mb-3">Select Member</MudText>
+                        <MudAutocomplete T="MemberDto"
+                                        @bind-Value="_selectedMember"
+                                        Label="Search for a member"
+                                        Variant="Variant.Outlined"
+                                        SearchFunc="SearchMembers"
+                                        ToStringFunc="@(m => m?.FirstName + " " + m?.LastName + " (" + m?.Email + ")")"
+                                        Required="true"
+                                        ResetValueOnEmptyText="true"
+                                        MaxItems="20">
+                            <ItemTemplate Context="member">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudAvatar Size="Size.Small">
+                                        <MudIcon Icon="@Icons.Material.Filled.Person" />
+                                    </MudAvatar>
+                                    <div>
+                                        <MudText Typo="Typo.body2">@member.FirstName @member.LastName</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @member.Email • @member.Tier
+                                        </MudText>
+                                    </div>
+                                </MudStack>
+                            </ItemTemplate>
+                        </MudAutocomplete>
+                        
+                        @if (_selectedMember != null)
+                        {
+                            <MudCard Variant="Variant.Outlined" Class="mt-3">
+                                <MudCardContent>
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                                        <MudAvatar Size="Size.Medium">
+                                            <MudIcon Icon="@Icons.Material.Filled.Person" />
+                                        </MudAvatar>
+                                        <div>
+                                            <MudText Typo="Typo.h6">@_selectedMember.FirstName @_selectedMember.LastName</MudText>
+                                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                                @_selectedMember.Email
+                                            </MudText>
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Primary">
+                                                @_selectedMember.Tier
+                                            </MudChip>
+                                        </div>
+                                    </MudStack>
+                                </MudCardContent>
+                            </MudCard>
+                        }
+                    </div>
+
+                    <!-- Assignment Notes -->
+                    <div>
+                        <MudText Typo="Typo.h6" Class="mb-3">Assignment Details</MudText>
+                        <MudTextField @bind-Value="_notes" 
+                                     Label="Assignment Notes" 
+                                     Variant="Variant.Outlined"
+                                     Lines="3"
+                                     Placeholder="Optional notes about this assignment..." />
+                    </div>
+                </MudStack>
+            </MudItem>
+
+            <MudItem xs="12" md="4">
+                <MudCard>
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Assignment Summary</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudStack Spacing="3">
+                            <div>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Hardware:</MudText>
+                                <MudText Typo="Typo.body2">
+                                    @(_selectedHardware?.Name ?? "Not selected")
+                                </MudText>
+                            </div>
+                            
+                            <MudDivider />
+                            
+                            <div>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Member:</MudText>
+                                <MudText Typo="Typo.body2">
+                                    @((_selectedMember != null) ? $"{_selectedMember.FirstName} {_selectedMember.LastName}" : "Not selected")
+                                </MudText>
+                            </div>
+                            
+                            <MudDivider />
+                            
+                            <div>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Assignment Date:</MudText>
+                                <MudText Typo="Typo.body2">
+                                    @DateTime.Now.ToString("MMM dd, yyyy 'at' h:mm tt")
+                                </MudText>
+                            </div>
+                            
+                            @if (!string.IsNullOrWhiteSpace(_notes))
+                            {
+                                <MudDivider />
+                                <div>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">Notes:</MudText>
+                                    <MudText Typo="Typo.body2">@_notes</MudText>
+                                </div>
+                            }
+                        </MudStack>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Filled" 
+                                   Color="Color.Primary" 
+                                   StartIcon="@Icons.Material.Filled.Assignment"
+                                   OnClick="CreateHardwareAssignment"
+                                   Disabled="@(!CanCreateAssignment() || _creating)"
+                                   FullWidth="true">
+                            @if (_creating)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            }
+                            Create Assignment
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+
+                <!-- Tips Card -->
+                <MudCard Class="mt-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudIcon Icon="@Icons.Material.Filled.Lightbulb" Color="Color.Info" />
+                                <MudText Typo="Typo.h6">Tips</MudText>
+                            </MudStack>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudStack Spacing="2">
+                            <MudText Typo="Typo.body2">
+                                • Only available hardware can be assigned
+                            </MudText>
+                            <MudText Typo="Typo.body2">
+                                • Members can have multiple active assignments
+                            </MudText>
+                            <MudText Typo="Typo.body2">
+                                • Add notes to track assignment purpose
+                            </MudText>
+                            <MudText Typo="Typo.body2">
+                                • Hardware status will automatically change to "Assigned"
+                            </MudText>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+    </MudCardContent>
+</MudCard>
+
+@code {
+    private HardwareDto? _selectedHardware;
+    private MemberDto? _selectedMember;
+    private string _notes = string.Empty;
+    private bool _creating = false;
+    
+    private List<BreadcrumbItem> _breadcrumbItems = new()
+    {
+        new BreadcrumbItem("Hardware", href: "/hardware", icon: Icons.Material.Filled.Build),
+        new BreadcrumbItem("Assignments", href: "/hardware/assignments", icon: Icons.Material.Filled.Assignment),
+        new BreadcrumbItem("Create", href: null, disabled: true, icon: Icons.Material.Filled.Add)
+    };
+
+    private async Task<IEnumerable<HardwareDto>> SearchHardware(string value, CancellationToken token = default)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+            return Array.Empty<HardwareDto>();
+
+        try
+        {
+            var response = await HardwareService.SearchHardwareAsync(value, status: HardwareStatus.Available);
+            if (response.Success && response.Data != null)
+            {
+                return response.Data.Where(h => h.IsAvailableForAssignment);
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to search hardware: {ex.Message}");
+        }
+
+        return Array.Empty<HardwareDto>();
+    }
+
+    private async Task<IEnumerable<MemberDto>> SearchMembers(string value, CancellationToken token = default)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+            return Array.Empty<MemberDto>();
+
+        try
+        {
+            var request = new MemberQuickSearchRequest { SearchTerm = value };
+            var response = await MemberService.SearchMembersAsync(request);
+            if (response?.Success == true && response.Data != null)
+            {
+                // Convert MemberSearchDto to MemberDto for compatibility
+                return response.Data.Select(m => new MemberDto
+                {
+                    Id = m.Id,
+                    FirstName = m.FirstName,
+                    LastName = m.LastName,
+                    Email = m.Email,
+                    Tier = MembershipTier.Basic, // Default tier for search results
+                    Status = m.Status
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to search members: {ex.Message}");
+        }
+
+        return Array.Empty<MemberDto>();
+    }
+
+    private bool CanCreateAssignment()
+    {
+        return _selectedHardware != null && _selectedMember != null;
+    }
+
+    private async Task CreateHardwareAssignment()
+    {
+        if (!CanCreateAssignment())
+            return;
+
+        try
+        {
+            _creating = true;
+            
+            var request = new AssignHardwareRequest
+            {
+                HardwareId = _selectedHardware!.Id,
+                MemberId = _selectedMember!.Id,
+                Notes = string.IsNullOrWhiteSpace(_notes) ? null : _notes
+            };
+
+            var response = await AssignmentService.AssignHardwareAsync(request);
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync($"Hardware '{_selectedHardware.Name}' successfully assigned to {_selectedMember.FirstName} {_selectedMember.LastName}");
+                Navigation.NavigateTo($"/hardware/assignments/{response.Data?.Id}");
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to create assignment");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to create assignment: {ex.Message}");
+        }
+        finally
+        {
+            _creating = false;
+        }
+    }
+}

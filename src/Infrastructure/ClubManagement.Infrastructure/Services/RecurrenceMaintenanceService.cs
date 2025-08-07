@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ClubManagement.Infrastructure.Data;
 
 namespace ClubManagement.Infrastructure.Services;
 
@@ -55,28 +56,53 @@ public class RecurrenceMaintenanceService : BackgroundService
     private async Task PerformMaintenanceAsync()
     {
         using var scope = _serviceProvider.CreateScope();
+        var catalogContext = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
+        var tenantContextFactory = scope.ServiceProvider.GetRequiredService<ITenantDbContextFactory>();
         var recurrenceManager = scope.ServiceProvider.GetRequiredService<IRecurrenceManager>();
 
         _logger.LogDebug("Starting recurrence maintenance cycle");
 
         try
         {
-            // 1. Extend recurring events that need more future occurrences
-            await ExtendRecurrences(recurrenceManager);
+            // Get all active tenants
+            var activeTenants = await catalogContext.Tenants
+                .Where(t => t.Status == ClubManagement.Shared.Models.TenantStatus.Active)
+                .ToListAsync();
 
-            // 2. Clean up old completed occurrences
-            if (_settings.EnableCleanup)
+            _logger.LogDebug("Running recurrence maintenance for {TenantCount} active tenants", activeTenants.Count);
+
+            // Run maintenance for each tenant
+            foreach (var tenant in activeTenants)
             {
-                await recurrenceManager.CleanupOldOccurrencesAsync();
+                try
+                {
+                    _logger.LogDebug("Running maintenance for tenant: {TenantDomain}", tenant.Domain);
+                    
+                    // 1. Extend recurring events that need more future occurrences
+                    await ExtendRecurrencesForTenant(tenant.Domain, recurrenceManager, tenantContextFactory);
+
+                    // 2. Clean up old completed occurrences for this tenant
+                    if (_settings.EnableCleanup)
+                    {
+                        using var tenantContextForCleanup = await tenantContextFactory.CreateTenantDbContextAsync(tenant.Domain);
+                        await recurrenceManager.CleanupOldOccurrencesAsync(tenantContextForCleanup);
+                    }
+
+                    // 3. Validate recurrence integrity for this tenant
+                    if (_settings.EnableIntegrityCheck)
+                    {
+                        using var tenantContextForIntegrity = await tenantContextFactory.CreateTenantDbContextAsync(tenant.Domain);
+                        await recurrenceManager.ValidateRecurrenceIntegrityAsync(tenantContextForIntegrity);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to run maintenance for tenant {TenantDomain}", tenant.Domain);
+                    // Continue with other tenants even if one fails
+                }
             }
 
-            // 3. Validate recurrence integrity
-            if (_settings.EnableIntegrityCheck)
-            {
-                await recurrenceManager.ValidateRecurrenceIntegrityAsync();
-            }
-
-            _logger.LogDebug("Recurrence maintenance cycle completed successfully");
+            _logger.LogDebug("Recurrence maintenance cycle completed successfully for all tenants");
         }
         catch (Exception ex)
         {
@@ -85,29 +111,28 @@ public class RecurrenceMaintenanceService : BackgroundService
         }
     }
 
-    private async Task ExtendRecurrences(IRecurrenceManager recurrenceManager)
+    private async Task ExtendRecurrencesForTenant(string tenantDomain, IRecurrenceManager recurrenceManager, ITenantDbContextFactory tenantContextFactory)
     {
-        using var scope = _serviceProvider.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<ClubManagement.Infrastructure.Data.ClubManagementDbContext>();
+        using var tenantContext = await tenantContextFactory.CreateTenantDbContextAsync(tenantDomain);
 
         // Get all active master events that might need extension
-        var activeMasterEvents = await context.Events
+        var activeMasterEvents = await tenantContext.Events
             .Where(e => e.IsRecurringMaster && 
                        e.RecurrenceStatus == ClubManagement.Shared.Models.RecurrenceStatus.Active)
             .Select(e => e.Id)
             .ToListAsync();
 
-        _logger.LogDebug("Checking {Count} active recurring events for extension", activeMasterEvents.Count);
+        _logger.LogDebug("Checking {Count} active recurring events for extension in tenant {TenantDomain}", activeMasterEvents.Count, tenantDomain);
 
         foreach (var masterEventId in activeMasterEvents)
         {
             try
             {
-                await recurrenceManager.ExtendRecurrenceAsync(masterEventId);
+                await recurrenceManager.ExtendRecurrenceAsync(masterEventId, tenantContext);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to extend recurrence for event {EventId}", masterEventId);
+                _logger.LogWarning(ex, "Failed to extend recurrence for event {EventId} in tenant {TenantDomain}", masterEventId, tenantDomain);
                 // Continue with other events even if one fails
             }
         }

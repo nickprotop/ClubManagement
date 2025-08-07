@@ -1,0 +1,388 @@
+@page "/hardware/assignments"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IHardwareAssignmentService AssignmentService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>Hardware Assignments</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <MudText Typo="Typo.h4">Hardware Assignments</MudText>
+    @if (_permissions?.CanAssign == true)
+    {
+        <MudButton Variant="Variant.Filled" 
+                   Color="Color.Primary" 
+                   StartIcon="@Icons.Material.Filled.Assignment"
+                   OnClick="@(() => Navigation.NavigateTo("/hardware/assignments/create"))">
+            New Assignment
+        </MudButton>
+    }
+</div>
+
+<MudCard>
+    <MudCardContent>
+        <!-- Filters -->
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="_searchTerm"
+                             Label="Search assignments"
+                             Variant="Variant.Outlined"
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Filled.Search"
+                             OnKeyUp="OnSearchKeyUp"
+                             Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudSelect @bind-Value="_statusFilter"
+                          Label="Status"
+                          Variant="Variant.Outlined"
+                          Clearable="true">
+                    <MudSelectItem T="AssignmentStatus?" Value="AssignmentStatus.Active">Active</MudSelectItem>
+                    <MudSelectItem T="AssignmentStatus?" Value="AssignmentStatus.Returned">Returned</MudSelectItem>
+                    <MudSelectItem T="AssignmentStatus?" Value="AssignmentStatus.Overdue">Overdue</MudSelectItem>
+                    <MudSelectItem T="AssignmentStatus?" Value="AssignmentStatus.Lost">Lost</MudSelectItem>
+                    <MudSelectItem T="AssignmentStatus?" Value="AssignmentStatus.Damaged">Damaged</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker @bind-Date="_assignedAfter"
+                              Label="Assigned After"
+                              Variant="Variant.Outlined"
+                              Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Variant="Variant.Outlined" 
+                               StartIcon="@Icons.Material.Filled.FilterList"
+                               OnClick="ApplyFilters">
+                        Filter
+                    </MudButton>
+                    <MudButton Variant="Variant.Text" 
+                               StartIcon="@Icons.Material.Filled.Clear"
+                               OnClick="ClearFilters">
+                        Clear
+                    </MudButton>
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+
+        <!-- Quick Actions -->
+        <MudStack Row="true" Spacing="2" Class="mb-4">
+            <MudButton Variant="Variant.Text" 
+                       StartIcon="@Icons.Material.Filled.Assignment"
+                       OnClick="@(() => LoadActiveAssignments())"
+                       Color="Color.Primary">
+                Active (@_dashboardData?.ActiveAssignments)
+            </MudButton>
+            <MudButton Variant="Variant.Text" 
+                       StartIcon="@Icons.Material.Filled.Warning"
+                       OnClick="@(() => LoadOverdueAssignments())"
+                       Color="Color.Warning">
+                Overdue (@_dashboardData?.OverdueAssignments)
+            </MudButton>
+        </MudStack>
+
+        <!-- Data Grid -->
+        <MudDataGrid T="HardwareAssignmentDto"
+                     Items="_assignments"
+                     Loading="_loading"
+                     Elevation="0"
+                     Dense="true"
+                     Hover="true"
+                     Striped="true"
+                     SortMode="SortMode.None">
+            <Columns>
+                <PropertyColumn Property="x => x.HardwareName" Title="Hardware">
+                    <CellTemplate>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Build" Size="Size.Small" />
+                            <div>
+                                <MudText Typo="Typo.body2">@context.Item.HardwareName</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @context.Item.HardwareSerialNumber
+                                </MudText>
+                            </div>
+                        </MudStack>
+                    </CellTemplate>
+                </PropertyColumn>
+
+                <PropertyColumn Property="x => x.MemberName" Title="Member">
+                    <CellTemplate>
+                        <div>
+                            <MudText Typo="Typo.body2">@context.Item.MemberName</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @context.Item.MemberEmail
+                            </MudText>
+                        </div>
+                    </CellTemplate>
+                </PropertyColumn>
+
+                <PropertyColumn Property="x => x.AssignedAt" Title="Assigned">
+                    <CellTemplate>
+                        <div>
+                            <MudText Typo="Typo.body2">@context.Item.AssignedAt.ToString("MMM dd, yyyy")</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @context.Item.DaysAssigned days ago
+                            </MudText>
+                        </div>
+                    </CellTemplate>
+                </PropertyColumn>
+
+                <PropertyColumn Property="x => x.Status" Title="Status">
+                    <CellTemplate>
+                        <MudChip T="string" 
+                                 Size="Size.Small" 
+                                 Color="@GetStatusColor(context.Item.Status)"
+                                 Variant="Variant.Filled">
+                            @context.Item.Status
+                        </MudChip>
+                    </CellTemplate>
+                </PropertyColumn>
+
+                <PropertyColumn Property="x => x.ReturnedAt" Title="Returned">
+                    <CellTemplate>
+                        @if (context.Item.ReturnedAt.HasValue)
+                        {
+                            <div>
+                                <MudText Typo="Typo.body2">@context.Item.ReturnedAt.Value.ToString("MMM dd, yyyy")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    by @context.Item.ReturnedByName
+                                </MudText>
+                            </div>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">-</MudText>
+                        }
+                    </CellTemplate>
+                </PropertyColumn>
+
+                <TemplateColumn Title="Actions" Sortable="false">
+                    <CellTemplate>
+                        <MudStack Row="true" Spacing="1">
+                            <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                         Size="Size.Small"
+                                         Color="Color.Primary"
+                                         OnClick="@(() => ViewAssignment(context.Item.Id))"
+                                         Title="View Details" />
+                            
+                            @if (context.Item.Status == AssignmentStatus.Active || context.Item.Status == AssignmentStatus.Overdue)
+                            {
+                                @if (_permissions?.CanAssign == true)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Assignment"
+                                                 Size="Size.Small"
+                                                 Color="Color.Success"
+                                                 OnClick="@(() => ReturnHardware(context.Item))"
+                                                 Title="Return Hardware" />
+                                }
+                            }
+                        </MudStack>
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+
+        <!-- Pagination -->
+        <div class="d-flex justify-center mt-4">
+            <MudPagination Count="@_totalPages"
+                          Selected="@_currentPage"
+                          SelectedChanged="OnPageChanged"
+                          BoundaryCount="1"
+                          MiddleCount="3"
+                          ShowFirstButton="true"
+                          ShowLastButton="true" />
+        </div>
+    </MudCardContent>
+</MudCard>
+
+@code {
+    private List<HardwareAssignmentDto> _assignments = new();
+    private HardwarePermissions? _permissions;
+    private HardwareAssignmentDashboardDto? _dashboardData;
+    private bool _loading = true;
+    
+    private string _searchTerm = string.Empty;
+    private AssignmentStatus? _statusFilter;
+    private DateTime? _assignedAfter;
+    
+    private int _currentPage = 1;
+    private int _pageSize = 20;
+    private int _totalPages = 1;
+    private Timer? _searchTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissions();
+        await LoadDashboard();
+        await LoadAssignments();
+    }
+
+    private async Task LoadPermissions()
+    {
+        // Get permissions from the hardware service or permission service
+        // For now, assume we have permissions
+        _permissions = new HardwarePermissions { CanView = true, CanAssign = true };
+    }
+
+    private async Task LoadDashboard()
+    {
+        try
+        {
+            var response = await AssignmentService.GetDashboardAsync();
+            if (response.Success)
+            {
+                _dashboardData = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load dashboard: {ex.Message}");
+        }
+    }
+
+    private async Task LoadAssignments()
+    {
+        try
+        {
+            _loading = true;
+            var filter = new HardwareAssignmentFilter
+            {
+                Search = string.IsNullOrWhiteSpace(_searchTerm) ? null : _searchTerm,
+                Status = _statusFilter,
+                AssignedAfter = _assignedAfter,
+                Page = _currentPage,
+                PageSize = _pageSize,
+                SortBy = "AssignedDate",
+                SortDescending = true
+            };
+
+            var response = await AssignmentService.GetAssignmentsAsync(filter);
+            if (response.Success)
+            {
+                _assignments = response.Data?.Items ?? new List<HardwareAssignmentDto>();
+                var totalCount = response.Data?.TotalCount ?? 0;
+                _totalPages = (int)Math.Ceiling((double)totalCount / _pageSize);
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to load assignments");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load assignments: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadActiveAssignments()
+    {
+        _statusFilter = AssignmentStatus.Active;
+        _currentPage = 1;
+        await LoadAssignments();
+    }
+
+    private async Task LoadOverdueAssignments()
+    {
+        _statusFilter = AssignmentStatus.Overdue;
+        _currentPage = 1;
+        await LoadAssignments();
+    }
+
+    private void OnSearchKeyUp(KeyboardEventArgs e)
+    {
+        _searchTimer?.Dispose();
+        _searchTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(() =>
+            {
+                _currentPage = 1;
+                LoadAssignments();
+            });
+        }, null, 300, Timeout.Infinite);
+    }
+
+    private async Task ApplyFilters()
+    {
+        _currentPage = 1;
+        await LoadAssignments();
+    }
+
+    private async Task ClearFilters()
+    {
+        _searchTerm = string.Empty;
+        _statusFilter = null;
+        _assignedAfter = null;
+        _currentPage = 1;
+        await LoadAssignments();
+    }
+
+    private async Task OnPageChanged(int page)
+    {
+        _currentPage = page;
+        await LoadAssignments();
+    }
+
+    private void ViewAssignment(Guid assignmentId)
+    {
+        Navigation.NavigateTo($"/hardware/assignments/{assignmentId}");
+    }
+
+    private async Task ReturnHardware(HardwareAssignmentDto assignment)
+    {
+        var confirmed = await NotificationService.ShowConfirmationAsync(
+            "Return Hardware",
+            $"Are you sure you want to process the return of '{assignment.HardwareName}' from {assignment.MemberName}?");
+            
+        if (!confirmed) return;
+
+        try
+        {
+            var request = new ReturnHardwareRequest
+            {
+                Status = AssignmentStatus.Returned,
+                ReturnNotes = "Returned via web interface"
+            };
+
+            var response = await AssignmentService.ReturnHardwareAsync(assignment.Id, request);
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync("Hardware returned successfully");
+                await LoadAssignments();
+                await LoadDashboard();
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to return hardware");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to return hardware: {ex.Message}");
+        }
+    }
+
+    private static Color GetStatusColor(AssignmentStatus status) => status switch
+    {
+        AssignmentStatus.Active => Color.Success,
+        AssignmentStatus.Overdue => Color.Warning,
+        AssignmentStatus.Returned => Color.Info,
+        AssignmentStatus.Lost => Color.Error,
+        AssignmentStatus.Damaged => Color.Warning,
+        _ => Color.Default
+    };
+
+    public void Dispose()
+    {
+        _searchTimer?.Dispose();
+    }
+}

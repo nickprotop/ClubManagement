@@ -8,32 +8,29 @@ namespace ClubManagement.Infrastructure.Services;
 
 public interface IRecurrenceManager
 {
-    Task<List<Event>> GenerateInitialOccurrencesAsync(Event masterEvent);
-    Task ExtendRecurrenceAsync(Guid masterEventId);
+    Task<List<Event>> GenerateInitialOccurrencesAsync(Event masterEvent, ClubManagementDbContext tenantContext);
+    Task ExtendRecurrenceAsync(Guid masterEventId, ClubManagementDbContext tenantContext);
     Task<List<Event>> GenerateOccurrencesAsync(Event masterEvent, DateTime startDate, DateTime endDate);
-    Task CleanupOldOccurrencesAsync();
-    Task ValidateRecurrenceIntegrityAsync();
-    Task<List<Event>> GetUpcomingOccurrencesAsync(Guid masterEventId, int count = 10);
-    Task<Event?> GetSpecificOccurrenceAsync(Guid masterEventId, DateTime targetDate);
+    Task CleanupOldOccurrencesAsync(ClubManagementDbContext tenantContext);
+    Task ValidateRecurrenceIntegrityAsync(ClubManagementDbContext tenantContext);
+    Task<List<Event>> GetUpcomingOccurrencesAsync(Guid masterEventId, int count = 10, ClubManagementDbContext? tenantContext = null);
+    Task<Event?> GetSpecificOccurrenceAsync(Guid masterEventId, DateTime targetDate, ClubManagementDbContext? tenantContext = null);
 }
 
 public class RecurrenceManager : IRecurrenceManager
 {
-    private readonly ClubManagementDbContext _context;
     private readonly ILogger<RecurrenceManager> _logger;
     private readonly RecurrenceSettings _settings;
 
     public RecurrenceManager(
-        ClubManagementDbContext context,
         ILogger<RecurrenceManager> logger,
         IOptions<RecurrenceSettings> settings)
     {
-        _context = context;
         _logger = logger;
         _settings = settings.Value;
     }
 
-    public async Task<List<Event>> GenerateInitialOccurrencesAsync(Event masterEvent)
+    public async Task<List<Event>> GenerateInitialOccurrencesAsync(Event masterEvent, ClubManagementDbContext tenantContext)
     {
         if (masterEvent.Recurrence?.Type == RecurrenceType.None)
             return new List<Event>();
@@ -46,7 +43,7 @@ public class RecurrenceManager : IRecurrenceManager
         masterEvent.IsRecurringMaster = true;
         masterEvent.RecurrenceStatus = RecurrenceStatus.Active;
 
-        await _context.Events.AddRangeAsync(occurrences);
+        await tenantContext.Events.AddRangeAsync(occurrences);
         
         _logger.LogInformation("Generated {Count} initial occurrences for event {EventId} until {EndDate}", 
             occurrences.Count, masterEvent.Id, endDate);
@@ -61,7 +58,7 @@ public class RecurrenceManager : IRecurrenceManager
 
         var occurrences = new List<Event>();
         var currentDate = startDate;
-        var occurrenceNumber = await GetNextOccurrenceNumber(masterEvent.Id);
+        var occurrenceNumber = 1; // Start from 1 for new occurrences
 
         // Safety limit to prevent runaway generation
         var maxOccurrences = _settings.MaxOccurrencesPerGeneration;
@@ -90,9 +87,9 @@ public class RecurrenceManager : IRecurrenceManager
         return occurrences;
     }
 
-    public async Task ExtendRecurrenceAsync(Guid masterEventId)
+    public async Task ExtendRecurrenceAsync(Guid masterEventId, ClubManagementDbContext tenantContext)
     {
-        var masterEvent = await _context.Events
+        var masterEvent = await tenantContext.Events
             .FirstOrDefaultAsync(e => e.Id == masterEventId && e.IsRecurringMaster);
 
         if (masterEvent?.Recurrence?.Type == RecurrenceType.None || 
@@ -109,9 +106,9 @@ public class RecurrenceManager : IRecurrenceManager
 
             if (newOccurrences.Any())
             {
-                await _context.Events.AddRangeAsync(newOccurrences);
+                await tenantContext.Events.AddRangeAsync(newOccurrences);
                 masterEvent.LastGeneratedUntil = newEndDate;
-                await _context.SaveChangesAsync();
+                await tenantContext.SaveChangesAsync();
 
                 _logger.LogInformation("Extended recurrence for event {EventId} with {Count} new occurrences until {EndDate}",
                     masterEventId, newOccurrences.Count, newEndDate);
@@ -119,11 +116,11 @@ public class RecurrenceManager : IRecurrenceManager
         }
     }
 
-    public async Task CleanupOldOccurrencesAsync()
+    public async Task CleanupOldOccurrencesAsync(ClubManagementDbContext tenantContext)
     {
         var cutoffDate = DateTime.UtcNow.AddMonths(-_settings.HistoryRetentionMonths);
 
-        var oldOccurrences = await _context.Events
+        var oldOccurrences = await tenantContext.Events
             .Where(e => e.MasterEventId != null &&
                        e.EndDateTime < cutoffDate &&
                        e.Status == EventStatus.Completed)
@@ -131,24 +128,24 @@ public class RecurrenceManager : IRecurrenceManager
 
         if (oldOccurrences.Any())
         {
-            _context.Events.RemoveRange(oldOccurrences);
-            await _context.SaveChangesAsync();
+            tenantContext.Events.RemoveRange(oldOccurrences);
+            await tenantContext.SaveChangesAsync();
 
             _logger.LogInformation("Cleaned up {Count} old event occurrences before {CutoffDate}",
                 oldOccurrences.Count, cutoffDate);
         }
     }
 
-    public async Task ValidateRecurrenceIntegrityAsync()
+    public async Task ValidateRecurrenceIntegrityAsync(ClubManagementDbContext tenantContext)
     {
         // Find master events with missing occurrences
-        var masterEvents = await _context.Events
+        var masterEvents = await tenantContext.Events
             .Where(e => e.IsRecurringMaster && e.RecurrenceStatus == RecurrenceStatus.Active)
             .ToListAsync();
 
         foreach (var masterEvent in masterEvents)
         {
-            var occurrenceCount = await _context.Events
+            var occurrenceCount = await tenantContext.Events
                 .CountAsync(e => e.MasterEventId == masterEvent.Id);
 
             if (occurrenceCount == 0)
@@ -158,9 +155,9 @@ public class RecurrenceManager : IRecurrenceManager
         }
 
         // Find orphaned occurrences
-        var orphanedCount = await _context.Events
+        var orphanedCount = await tenantContext.Events
             .Where(e => e.MasterEventId != null)
-            .Where(e => !_context.Events.Any(m => m.Id == e.MasterEventId))
+            .Where(e => !tenantContext.Events.Any(m => m.Id == e.MasterEventId))
             .CountAsync();
 
         if (orphanedCount > 0)
@@ -169,18 +166,24 @@ public class RecurrenceManager : IRecurrenceManager
         }
     }
 
-    public async Task<List<Event>> GetUpcomingOccurrencesAsync(Guid masterEventId, int count = 10)
+    public async Task<List<Event>> GetUpcomingOccurrencesAsync(Guid masterEventId, int count = 10, ClubManagementDbContext? tenantContext = null)
     {
-        return await _context.Events
+        if (tenantContext == null)
+            throw new ArgumentNullException(nameof(tenantContext), "Tenant context is required for database-per-tenant architecture");
+
+        return await tenantContext.Events
             .Where(e => e.MasterEventId == masterEventId && e.StartDateTime >= DateTime.UtcNow)
             .OrderBy(e => e.StartDateTime)
             .Take(count)
             .ToListAsync();
     }
 
-    public async Task<Event?> GetSpecificOccurrenceAsync(Guid masterEventId, DateTime targetDate)
+    public async Task<Event?> GetSpecificOccurrenceAsync(Guid masterEventId, DateTime targetDate, ClubManagementDbContext? tenantContext = null)
     {
-        return await _context.Events
+        if (tenantContext == null)
+            throw new ArgumentNullException(nameof(tenantContext), "Tenant context is required for database-per-tenant architecture");
+
+        return await tenantContext.Events
             .FirstOrDefaultAsync(e => e.MasterEventId == masterEventId && 
                                     e.StartDateTime.Date == targetDate.Date);
     }
@@ -298,15 +301,6 @@ public class RecurrenceManager : IRecurrenceManager
             : calculatedDeadline.ToUniversalTime();
     }
 
-    private async Task<int> GetNextOccurrenceNumber(Guid masterEventId)
-    {
-        var lastOccurrence = await _context.Events
-            .Where(e => e.MasterEventId == masterEventId)
-            .OrderByDescending(e => e.OccurrenceNumber)
-            .FirstOrDefaultAsync();
-
-        return (lastOccurrence?.OccurrenceNumber ?? 0) + 1;
-    }
 }
 
 public class RecurrenceSettings

@@ -19,6 +19,8 @@ public class ClubManagementDbContext : DbContext
     public DbSet<HardwareType> HardwareTypes { get; set; }
     public DbSet<Hardware> Hardware { get; set; }
     public DbSet<HardwareAssignment> HardwareAssignments { get; set; }
+    public DbSet<EventEquipmentRequirement> EventEquipmentRequirements { get; set; }
+    public DbSet<EventEquipmentAssignment> EventEquipmentAssignments { get; set; }
     public DbSet<Event> Events { get; set; }
     public DbSet<EventRegistration> EventRegistrations { get; set; }
     public DbSet<FacilityBooking> FacilityBookings { get; set; }

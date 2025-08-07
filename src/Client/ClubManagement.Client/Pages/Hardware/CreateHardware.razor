@@ -1,0 +1,309 @@
+@page "/hardware/create"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IHardwareService HardwareService
+@inject IHardwareTypeService HardwareTypeService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>Create Hardware</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudBreadcrumbs Items="_breadcrumbs" Class="pa-0"></MudBreadcrumbs>
+        <MudText Typo="Typo.h4" Class="mt-2">Create Hardware</MudText>
+    </div>
+</div>
+
+<MudCard>
+    <MudCardContent>
+        <EditForm Model="_model" OnValidSubmit="CreateHardwareAsync">
+            <DataAnnotationsValidator />
+            <div class="d-flex flex-column gap-4">
+                
+                <!-- Basic Information -->
+                <MudText Typo="Typo.h6" Class="mb-2">Basic Information</MudText>
+                
+                <div class="d-flex gap-4">
+                    <MudTextField @bind-Value="_model.Name"
+                                 Label="Hardware Name"
+                                 Variant="Variant.Outlined"
+                                 Required="true"
+                                 For="@(() => _model.Name)"
+                                 Class="flex-grow-1" />
+                                 
+                    <MudSelect @bind-Value="_model.HardwareTypeId"
+                              Label="Hardware Type"
+                              Variant="Variant.Outlined"
+                              Required="true"
+                              For="@(() => _model.HardwareTypeId)"
+                              OnSelectionChanged="OnHardwareTypeChanged"
+                              Class="flex-grow-1">
+                        @if (_hardwareTypes != null)
+                        {
+                            @foreach (var type in _hardwareTypes)
+                            {
+                                <MudSelectItem T="Guid" Value="type.Id">@type.Name</MudSelectItem>
+                            }
+                        }
+                    </MudSelect>
+                </div>
+
+                <MudTextField @bind-Value="_model.Description"
+                             Label="Description"
+                             Variant="Variant.Outlined"
+                             Lines="3"
+                             For="@(() => _model.Description)" />
+
+                <div class="d-flex gap-4">
+                    <MudTextField @bind-Value="_model.SerialNumber"
+                                 Label="Serial Number"
+                                 Variant="Variant.Outlined"
+                                 For="@(() => _model.SerialNumber)"
+                                 Class="flex-grow-1" />
+                                 
+                    <MudTextField @bind-Value="_model.Location"
+                                 Label="Location"
+                                 Variant="Variant.Outlined"
+                                 For="@(() => _model.Location)"
+                                 Class="flex-grow-1" />
+                </div>
+
+                <!-- Purchase Information -->
+                <MudDivider Class="my-4" />
+                <MudText Typo="Typo.h6" Class="mb-2">Purchase Information</MudText>
+                
+                <div class="d-flex gap-4">
+                    <MudDatePicker @bind-Date="_model.PurchaseDate"
+                                  Label="Purchase Date"
+                                  Variant="Variant.Outlined"
+                                  For="@(() => _model.PurchaseDate)"
+                                  Class="flex-grow-1" />
+                                  
+                    <MudNumericField @bind-Value="_model.PurchasePrice"
+                                    Label="Purchase Price"
+                                    Variant="Variant.Outlined"
+                                    Format="C"
+                                    For="@(() => _model.PurchasePrice)"
+                                    Class="flex-grow-1" />
+                </div>
+
+                <div class="d-flex gap-4">
+                    <MudTextField @bind-Value="_model.Supplier"
+                                 Label="Supplier"
+                                 Variant="Variant.Outlined"
+                                 For="@(() => _model.Supplier)"
+                                 Class="flex-grow-1" />
+                                 
+                    <MudDatePicker @bind-Date="_model.WarrantyExpiry"
+                                  Label="Warranty Expiry"
+                                  Variant="Variant.Outlined"
+                                  For="@(() => _model.WarrantyExpiry)"
+                                  Class="flex-grow-1" />
+                </div>
+
+                <!-- Maintenance Information -->
+                <MudDivider Class="my-4" />
+                <MudText Typo="Typo.h6" Class="mb-2">Maintenance</MudText>
+                
+                <div class="d-flex gap-4">
+                    <MudDatePicker @bind-Date="_model.LastMaintenanceDate"
+                                  Label="Last Maintenance Date"
+                                  Variant="Variant.Outlined"
+                                  For="@(() => _model.LastMaintenanceDate)"
+                                  Class="flex-grow-1" />
+                                  
+                    <MudDatePicker @bind-Date="_model.NextMaintenanceDate"
+                                  Label="Next Maintenance Date"
+                                  Variant="Variant.Outlined"
+                                  For="@(() => _model.NextMaintenanceDate)"
+                                  Class="flex-grow-1" />
+                </div>
+
+                <!-- Dynamic Properties -->
+                @if (_selectedHardwareType != null && _selectedHardwareType.PropertySchema?.Properties?.Any() == true)
+                {
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.h6" Class="mb-2">Specifications</MudText>
+                    
+                    @foreach (var propertyDef in _selectedHardwareType.PropertySchema.Properties)
+                    {
+                        <div class="mb-3">
+                            @switch (propertyDef.Type)
+                            {
+                                case PropertyType.Text:
+                                    <MudTextField @bind-Value="_dynamicProperties[propertyDef.Key]"
+                                                 Label="@propertyDef.Label"
+                                                 Variant="Variant.Outlined"
+                                                 Required="@propertyDef.Required" />
+                                    break;
+                                    
+                                case PropertyType.Number:
+                                    <MudTextField @bind-Value="_dynamicProperties[propertyDef.Key]"
+                                                 Label="@propertyDef.Label"
+                                                 Variant="Variant.Outlined"
+                                                 Required="@propertyDef.Required"
+                                                 InputType="InputType.Number" />
+                                    break;
+                                    
+                                case PropertyType.Boolean:
+                                    <MudCheckBox Value="@GetBooleanValue(propertyDef.Key)"
+                                               ValueChanged="@((bool value) => SetBooleanValue(propertyDef.Key, value))"
+                                               Label="@propertyDef.Label"
+                                               Color="Color.Primary" />
+                                    break;
+                                    
+                                case PropertyType.Select:
+                                    <MudSelect @bind-Value="_dynamicProperties[propertyDef.Key]"
+                                              Label="@propertyDef.Label"
+                                              Variant="Variant.Outlined"
+                                              Required="@propertyDef.Required">
+                                        @if (propertyDef.Options != null)
+                                        {
+                                            @foreach (var option in propertyDef.Options)
+                                            {
+                                                <MudSelectItem Value="@option">@option</MudSelectItem>
+                                            }
+                                        }
+                                    </MudSelect>
+                                    break;
+                            }
+                        </div>
+                    }
+                }
+
+                <!-- Actions -->
+                <MudDivider Class="my-4" />
+                <div class="d-flex justify-end gap-2">
+                    <MudButton Variant="Variant.Outlined"
+                              OnClick="Cancel">
+                        Cancel
+                    </MudButton>
+                    
+                    <MudButton ButtonType="ButtonType.Submit"
+                              Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              Disabled="_submitting"
+                              StartIcon="@Icons.Material.Filled.Save">
+                        @if (_submitting)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                            <span class="ml-2">Creating...</span>
+                        }
+                        else
+                        {
+                            <span>Create Hardware</span>
+                        }
+                    </MudButton>
+                </div>
+            </div>
+        </EditForm>
+    </MudCardContent>
+</MudCard>
+
+@code {
+    private CreateHardwareRequest _model = new();
+    private List<HardwareTypeDto>? _hardwareTypes;
+    private HardwareTypeDto? _selectedHardwareType;
+    private Dictionary<string, string> _dynamicProperties = new();
+    private bool _submitting = false;
+
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new("Home", "/"),
+        new("Hardware", "/hardware"),
+        new("Create", null, disabled: true)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHardwareTypes();
+    }
+
+    private async Task LoadHardwareTypes()
+    {
+        try
+        {
+            var response = await HardwareTypeService.GetHardwareTypesAsync();
+            if (response.Success)
+            {
+                _hardwareTypes = response.Data;
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to load hardware types");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load hardware types: {ex.Message}");
+        }
+    }
+
+    private void OnHardwareTypeChanged()
+    {
+        _selectedHardwareType = _hardwareTypes?.FirstOrDefault(ht => ht.Id == _model.HardwareTypeId);
+        _dynamicProperties.Clear();
+        
+        if (_selectedHardwareType?.PropertySchema?.Properties != null)
+        {
+            foreach (var prop in _selectedHardwareType.PropertySchema.Properties)
+            {
+                _dynamicProperties[prop.Key] = prop.DefaultValue ?? "";
+            }
+        }
+        
+        StateHasChanged();
+    }
+
+    private bool GetBooleanValue(string key)
+    {
+        return _dynamicProperties.TryGetValue(key, out var value) && 
+               bool.TryParse(value, out var boolValue) && boolValue;
+    }
+    
+    private void SetBooleanValue(string key, bool value)
+    {
+        _dynamicProperties[key] = value.ToString();
+    }
+
+    private async Task CreateHardwareAsync()
+    {
+        try
+        {
+            _submitting = true;
+            
+            // Set dynamic properties
+            _model.Properties = _dynamicProperties.Where(kv => !string.IsNullOrEmpty(kv.Value))
+                                                 .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+            var response = await HardwareService.CreateHardwareAsync(_model);
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync("Hardware created successfully");
+                Navigation.NavigateTo($"/hardware/{response.Data!.Id}");
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to create hardware");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to create hardware: {ex.Message}");
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/hardware");
+    }
+}

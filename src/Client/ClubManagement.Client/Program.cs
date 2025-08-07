@@ -26,6 +26,9 @@ builder.Services.AddScoped<IMemberPermissionService, MemberPermissionService>();
 builder.Services.AddScoped<IImpersonationService, ImpersonationService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IPermissionsService, PermissionsService>();
+builder.Services.AddScoped<IHardwareService, HardwareService>();
+builder.Services.AddScoped<IHardwareTypeService, HardwareTypeService>();
+builder.Services.AddScoped<IHardwareAssignmentService, HardwareAssignmentService>();
 
 // Add authentication
 builder.Services.AddAuthorizationCore();

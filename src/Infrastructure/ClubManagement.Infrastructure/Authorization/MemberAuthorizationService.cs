@@ -8,23 +8,21 @@ namespace ClubManagement.Infrastructure.Authorization;
 
 public class MemberAuthorizationService : IMemberAuthorizationService
 {
-    private readonly ClubManagementDbContext _context;
     private readonly IMemberAuditService _auditService;
 
-    public MemberAuthorizationService(ClubManagementDbContext context, IMemberAuditService auditService)
+    public MemberAuthorizationService(IMemberAuditService auditService)
     {
-        _context = context;
         _auditService = auditService;
     }
 
-    public async Task<MemberPermissions> GetMemberPermissionsAsync(Guid userId, Guid? memberId = null)
+    public async Task<MemberPermissions> GetMemberPermissionsAsync(Guid userId, ClubManagementDbContext tenantContext, Guid? memberId = null)
     {
-        var user = await GetUserWithRoleAsync(userId);
+        var user = await GetUserWithRoleAsync(userId, tenantContext);
         if (user == null)
             return new MemberPermissions();
 
-        var targetMember = memberId.HasValue ? await GetMemberAsync(memberId.Value) : null;
-        var currentUserMember = await _context.Members.FirstOrDefaultAsync(m => m.UserId == userId);
+        var targetMember = memberId.HasValue ? await GetMemberAsync(memberId.Value, tenantContext) : null;
+        var currentUserMember = await tenantContext.Members.FirstOrDefaultAsync(m => m.UserId == userId);
         
         return user.Role switch
         {
@@ -38,9 +36,9 @@ public class MemberAuthorizationService : IMemberAuthorizationService
         };
     }
 
-    public async Task<bool> CanPerformActionAsync(Guid userId, MemberAction action, Guid? memberId = null)
+    public async Task<bool> CanPerformActionAsync(Guid userId, MemberAction action, ClubManagementDbContext tenantContext, Guid? memberId = null)
     {
-        var permissions = await GetMemberPermissionsAsync(userId, memberId);
+        var permissions = await GetMemberPermissionsAsync(userId, tenantContext, memberId);
         
         return action switch
         {
@@ -73,25 +71,25 @@ public class MemberAuthorizationService : IMemberAuthorizationService
         };
     }
 
-    public async Task<AuthorizationResult> CheckAuthorizationAsync(Guid userId, MemberAction action, Guid? memberId = null)
+    public async Task<AuthorizationResult> CheckAuthorizationAsync(Guid userId, MemberAction action, ClubManagementDbContext tenantContext, Guid? memberId = null)
     {
-        var user = await GetUserWithRoleAsync(userId);
+        var user = await GetUserWithRoleAsync(userId, tenantContext);
         if (user == null)
             return AuthorizationResult.Failed("User not found");
 
-        var targetMember = memberId.HasValue ? await GetMemberAsync(memberId.Value) : null;
+        var targetMember = memberId.HasValue ? await GetMemberAsync(memberId.Value, tenantContext) : null;
         
         // Check basic permissions
-        var canPerform = await CanPerformActionAsync(userId, action, memberId);
+        var canPerform = await CanPerformActionAsync(userId, action, tenantContext, memberId);
         if (!canPerform)
         {
-            var permissions = await GetMemberPermissionsAsync(userId, memberId);
+            var permissions = await GetMemberPermissionsAsync(userId, tenantContext, memberId);
             var reasons = permissions.ReasonsDenied.Any() 
                 ? permissions.ReasonsDenied 
                 : new[] { $"User does not have permission to {action}" };
             
             // Log permission denied
-            await _auditService.LogPermissionDeniedAsync(userId, action, memberId, reasons);
+            await _auditService.LogPermissionDeniedAsync(tenantContext, userId, action, memberId, reasons);
             
             return AuthorizationResult.Failed(reasons);
         }
@@ -99,11 +97,11 @@ public class MemberAuthorizationService : IMemberAuthorizationService
         // Additional context-specific checks
         if (targetMember != null)
         {
-            var contextCheck = await CheckMemberContextAsync(user, targetMember, action);
+            var contextCheck = await CheckMemberContextAsync(user, targetMember, action, tenantContext);
             if (!contextCheck.Succeeded)
             {
                 // Log permission denied for context-specific failure
-                await _auditService.LogPermissionDeniedAsync(userId, action, memberId, contextCheck.Reasons);
+                await _auditService.LogPermissionDeniedAsync(tenantContext, userId, action, memberId, contextCheck.Reasons);
                 return contextCheck;
             }
         }
@@ -111,7 +109,7 @@ public class MemberAuthorizationService : IMemberAuthorizationService
         // Log successful authorization (but only for sensitive actions)
         if (IsSensitiveAction(action))
         {
-            await _auditService.LogMemberActionAsync(userId, memberId, action, "Permission granted");
+            await _auditService.LogMemberActionAsync(tenantContext, userId, memberId, action, "Permission granted");
         }
 
         return AuthorizationResult.Success();
@@ -389,7 +387,7 @@ public class MemberAuthorizationService : IMemberAuthorizationService
         };
     }
 
-    private async Task<AuthorizationResult> CheckMemberContextAsync(User user, Member targetMember, MemberAction action)
+    private async Task<AuthorizationResult> CheckMemberContextAsync(User user, Member targetMember, MemberAction action, ClubManagementDbContext tenantContext)
     {
         var reasons = new List<string>();
 
@@ -403,7 +401,7 @@ public class MemberAuthorizationService : IMemberAuthorizationService
         // Check if trying to impersonate higher privilege user
         if (action == MemberAction.ImpersonateMember)
         {
-            var targetUser = await _context.Users.FindAsync(targetMember.UserId);
+            var targetUser = await tenantContext.Users.FindAsync(targetMember.UserId);
             if (targetUser != null && IsHigherPrivilege(targetUser.Role, user.Role))
                 reasons.Add("Cannot impersonate users with higher privileges");
         }
@@ -419,14 +417,14 @@ public class MemberAuthorizationService : IMemberAuthorizationService
         return reasons.Any() ? AuthorizationResult.Failed(reasons.ToArray()) : AuthorizationResult.Success();
     }
 
-    private async Task<User?> GetUserWithRoleAsync(Guid userId)
+    private async Task<User?> GetUserWithRoleAsync(Guid userId, ClubManagementDbContext tenantContext)
     {
-        return await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        return await tenantContext.Users.FirstOrDefaultAsync(u => u.Id == userId);
     }
 
-    private async Task<Member?> GetMemberAsync(Guid memberId)
+    private async Task<Member?> GetMemberAsync(Guid memberId, ClubManagementDbContext tenantContext)
     {
-        return await _context.Members
+        return await tenantContext.Members
             .Include(m => m.User)
             .FirstOrDefaultAsync(m => m.Id == memberId);
     }

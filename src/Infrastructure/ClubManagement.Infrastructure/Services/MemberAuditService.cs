@@ -8,25 +8,23 @@ namespace ClubManagement.Infrastructure.Services;
 
 public interface IMemberAuditService
 {
-    Task LogMemberActionAsync(Guid performedBy, Guid? targetMemberId, MemberAction action, string? details = null, Dictionary<string, object>? metadata = null);
-    Task LogImpersonationStartAsync(Guid adminUserId, Guid targetMemberId, string reason, int durationMinutes);
-    Task LogImpersonationEndAsync(Guid sessionId, string? reason = null);
-    Task LogPermissionDeniedAsync(Guid userId, MemberAction action, Guid? targetMemberId, string[] reasons);
-    Task<List<MemberAuditLog>> GetMemberAuditLogsAsync(Guid? memberId = null, DateTime? fromDate = null, DateTime? toDate = null, int maxResults = 100);
+    Task LogMemberActionAsync(ClubManagementDbContext tenantContext, Guid performedBy, Guid? targetMemberId, MemberAction action, string? details = null, Dictionary<string, object>? metadata = null);
+    Task LogImpersonationStartAsync(ClubManagementDbContext tenantContext, Guid adminUserId, Guid targetMemberId, string reason, int durationMinutes);
+    Task LogImpersonationEndAsync(ClubManagementDbContext tenantContext, Guid sessionId, string? reason = null);
+    Task LogPermissionDeniedAsync(ClubManagementDbContext tenantContext, Guid userId, MemberAction action, Guid? targetMemberId, string[] reasons);
+    Task<List<MemberAuditLog>> GetMemberAuditLogsAsync(ClubManagementDbContext tenantContext, Guid? memberId = null, DateTime? fromDate = null, DateTime? toDate = null, int maxResults = 100);
 }
 
 public class MemberAuditService : IMemberAuditService
 {
-    private readonly ClubManagementDbContext _context;
     private readonly ILogger<MemberAuditService> _logger;
 
-    public MemberAuditService(ClubManagementDbContext context, ILogger<MemberAuditService> logger)
+    public MemberAuditService(ILogger<MemberAuditService> logger)
     {
-        _context = context;
         _logger = logger;
     }
 
-    public async Task LogMemberActionAsync(Guid performedBy, Guid? targetMemberId, MemberAction action, string? details = null, Dictionary<string, object>? metadata = null)
+    public async Task LogMemberActionAsync(ClubManagementDbContext tenantContext, Guid performedBy, Guid? targetMemberId, MemberAction action, string? details = null, Dictionary<string, object>? metadata = null)
     {
         try
         {
@@ -43,8 +41,8 @@ public class MemberAuditService : IMemberAuditService
                 UserAgent = GetCurrentUserAgent()
             };
 
-            _context.MemberAuditLogs.Add(auditLog);
-            await _context.SaveChangesAsync();
+            tenantContext.MemberAuditLogs.Add(auditLog);
+            await tenantContext.SaveChangesAsync();
 
             _logger.LogInformation("Member action logged: {Action} by {PerformedBy} on {TargetMemberId}", 
                 action, performedBy, targetMemberId);
@@ -55,7 +53,7 @@ public class MemberAuditService : IMemberAuditService
         }
     }
 
-    public async Task LogImpersonationStartAsync(Guid adminUserId, Guid targetMemberId, string reason, int durationMinutes)
+    public async Task LogImpersonationStartAsync(ClubManagementDbContext tenantContext, Guid adminUserId, Guid targetMemberId, string reason, int durationMinutes)
     {
         var metadata = new Dictionary<string, object>
         {
@@ -64,15 +62,15 @@ public class MemberAuditService : IMemberAuditService
             ["started_at"] = DateTime.UtcNow
         };
 
-        await LogMemberActionAsync(adminUserId, targetMemberId, MemberAction.ImpersonateMember, 
+        await LogMemberActionAsync(tenantContext, adminUserId, targetMemberId, MemberAction.ImpersonateMember, 
             $"Started impersonation for {durationMinutes} minutes: {reason}", metadata);
     }
 
-    public async Task LogImpersonationEndAsync(Guid sessionId, string? reason = null)
+    public async Task LogImpersonationEndAsync(ClubManagementDbContext tenantContext, Guid sessionId, string? reason = null)
     {
         try
         {
-            var session = await _context.ImpersonationSessions
+            var session = await tenantContext.ImpersonationSessions
                 .FirstOrDefaultAsync(s => s.Id == sessionId);
 
             if (session != null)
@@ -87,7 +85,7 @@ public class MemberAuditService : IMemberAuditService
                 if (!string.IsNullOrEmpty(reason))
                     metadata["end_reason"] = reason;
 
-                await LogMemberActionAsync(session.AdminUserId, session.TargetMemberId, MemberAction.ImpersonateMember,
+                await LogMemberActionAsync(tenantContext, session.AdminUserId, session.TargetMemberId, MemberAction.ImpersonateMember,
                     $"Ended impersonation{(reason != null ? $": {reason}" : "")}", metadata);
             }
         }
@@ -97,7 +95,7 @@ public class MemberAuditService : IMemberAuditService
         }
     }
 
-    public async Task LogPermissionDeniedAsync(Guid userId, MemberAction action, Guid? targetMemberId, string[] reasons)
+    public async Task LogPermissionDeniedAsync(ClubManagementDbContext tenantContext, Guid userId, MemberAction action, Guid? targetMemberId, string[] reasons)
     {
         var metadata = new Dictionary<string, object>
         {
@@ -105,18 +103,18 @@ public class MemberAuditService : IMemberAuditService
             ["attempted_action"] = action.ToString()
         };
 
-        await LogMemberActionAsync(userId, targetMemberId, action, 
+        await LogMemberActionAsync(tenantContext, userId, targetMemberId, action, 
             $"Permission denied: {string.Join(", ", reasons)}", metadata);
 
         _logger.LogWarning("Permission denied for user {UserId} attempting {Action} on member {TargetMemberId}: {Reasons}",
             userId, action, targetMemberId, string.Join(", ", reasons));
     }
 
-    public async Task<List<MemberAuditLog>> GetMemberAuditLogsAsync(Guid? memberId = null, DateTime? fromDate = null, DateTime? toDate = null, int maxResults = 100)
+    public async Task<List<MemberAuditLog>> GetMemberAuditLogsAsync(ClubManagementDbContext tenantContext, Guid? memberId = null, DateTime? fromDate = null, DateTime? toDate = null, int maxResults = 100)
     {
         try
         {
-            var query = _context.MemberAuditLogs.AsQueryable();
+            var query = tenantContext.MemberAuditLogs.AsQueryable();
 
             if (memberId.HasValue)
                 query = query.Where(log => log.TargetMemberId == memberId || log.PerformedBy == memberId);

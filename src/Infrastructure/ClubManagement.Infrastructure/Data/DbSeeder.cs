@@ -7,13 +7,17 @@ namespace ClubManagement.Infrastructure.Data;
 
 public class DbSeeder
 {
-    private readonly ClubManagementDbContext _context;
+    private readonly CatalogDbContext _catalogContext;
+    private readonly ClubManagementDbContext _migrationContext;
+    private readonly ITenantDbContextFactory _tenantContextFactory;
     private readonly ILogger<DbSeeder> _logger;
     private readonly IPasswordService _passwordService;
 
-    public DbSeeder(ClubManagementDbContext context, ILogger<DbSeeder> logger, IPasswordService passwordService)
+    public DbSeeder(CatalogDbContext catalogContext, ClubManagementDbContext migrationContext, ITenantDbContextFactory tenantContextFactory, ILogger<DbSeeder> logger, IPasswordService passwordService)
     {
-        _context = context;
+        _catalogContext = catalogContext;
+        _migrationContext = migrationContext;
+        _tenantContextFactory = tenantContextFactory;
         _logger = logger;
         _passwordService = passwordService;
     }
@@ -24,14 +28,13 @@ public class DbSeeder
         {
             _logger.LogInformation("Starting database seeding...");
 
-            // Ensure database is created and migrations are applied
-            await _context.Database.MigrateAsync();
+            // Ensure catalog database is created and migrations are applied
+            await _catalogContext.Database.MigrateAsync();
 
             // Seed demo tenant if it doesn't exist
             await SeedDemoTenantAsync();
 
-            // Save all changes
-            await _context.SaveChangesAsync();
+            // Changes are saved within SeedDemoTenantAsync
 
             _logger.LogInformation("Database seeding completed successfully!");
         }
@@ -45,7 +48,7 @@ public class DbSeeder
     private async Task SeedDemoTenantAsync()
     {
         // Check if demo tenant already exists
-        var existingTenant = await _context.Tenants
+        var existingTenant = await _catalogContext.Tenants
             .FirstOrDefaultAsync(t => t.Domain == "demo.localhost");
 
         if (existingTenant != null)
@@ -80,9 +83,19 @@ public class DbSeeder
             CreatedBy = "System"
         };
 
-        _context.Tenants.Add(demoTenant);
-        await _context.SaveChangesAsync(); // Save tenant first to get the ID
+        _catalogContext.Tenants.Add(demoTenant);
+        await _catalogContext.SaveChangesAsync(); // Save tenant first to get the ID
 
+        // Create tenant database and apply migrations
+        _logger.LogInformation("Creating tenant database: {TenantDatabase}", $"clubmanagement_{demoTenant.SchemaName}");
+        using var tenantContext = await _tenantContextFactory.CreateTenantDbContextAsync(demoTenant.Domain);
+
+        // Now seed all tenant-specific data
+        await SeedTenantDataAsync(tenantContext, demoTenant);
+    }
+
+    private async Task SeedTenantDataAsync(ClubManagementDbContext tenantContext, Tenant demoTenant)
+    {
         // Create demo admin user with proper password hashing
         var adminPassword = "Admin123!"; // Default demo password
         var (passwordHash, passwordSalt) = _passwordService.HashPasswordWithSeparateSalt(adminPassword);
@@ -108,7 +121,7 @@ public class DbSeeder
             CreatedBy = "System"
         };
 
-        _context.Users.Add(adminUser);
+        tenantContext.Users.Add(adminUser);
 
         // Create demo member user with proper password hashing
         var memberPassword = "Member123!"; // Default demo password
@@ -135,8 +148,8 @@ public class DbSeeder
             CreatedBy = "System"
         };
 
-        _context.Users.Add(memberUser);
-        await _context.SaveChangesAsync(); // Save users to get IDs
+        tenantContext.Users.Add(memberUser);
+        await tenantContext.SaveChangesAsync(); // Save users to get IDs
 
         // Create member profile for the demo member user
         var demoMember = new Member
@@ -167,7 +180,7 @@ public class DbSeeder
             CreatedBy = "System"
         };
 
-        _context.Members.Add(demoMember);
+        tenantContext.Members.Add(demoMember);
 
         // Create demo coach user with proper password hashing
         var coachPassword = "Coach123!"; // Default demo password
@@ -194,8 +207,8 @@ public class DbSeeder
             CreatedBy = "System"
         };
 
-        _context.Users.Add(coachUser);
-        await _context.SaveChangesAsync(); // Save all users
+        tenantContext.Users.Add(coachUser);
+        await tenantContext.SaveChangesAsync(); // Save all users
 
         // Create member profile for the demo coach user so they can register for events
         var demoCoachMember = new Member
@@ -230,7 +243,7 @@ public class DbSeeder
             CreatedBy = "System"
         };
 
-        _context.Members.Add(demoCoachMember);
+        tenantContext.Members.Add(demoCoachMember);
 
         // Create facility types
         var facilityTypes = new List<FacilityType>
@@ -301,8 +314,8 @@ public class DbSeeder
             }
         };
 
-        _context.FacilityTypes.AddRange(facilityTypes);
-        await _context.SaveChangesAsync(); // Save facility types to get IDs
+        tenantContext.FacilityTypes.AddRange(facilityTypes);
+        await tenantContext.SaveChangesAsync(); // Save facility types to get IDs
 
         // Create sample facilities
         var facilities = new List<Facility>
@@ -414,8 +427,379 @@ public class DbSeeder
             }
         };
 
-        _context.Facilities.AddRange(facilities);
-        await _context.SaveChangesAsync(); // Save facilities to get IDs
+        tenantContext.Facilities.AddRange(facilities);
+        await tenantContext.SaveChangesAsync(); // Save facilities to get IDs
+
+        // Create hardware types
+        var hardwareTypes = new List<HardwareType>
+        {
+            new()
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                Name = "Tennis Rackets",
+                Description = "Professional and recreational tennis rackets",
+                Icon = "sports_tennis",
+                PropertySchema = new PropertySchema
+                {
+                    Properties = new List<PropertyDefinition>
+                    {
+                        new() { Key = "brand", Label = "Brand", Type = PropertyType.Select, Required = true, Options = new List<string> { "Wilson", "Babolat", "Head", "Prince", "Yonex" } },
+                        new() { Key = "weight", Label = "Weight (grams)", Type = PropertyType.Number, Required = true },
+                        new() { Key = "head_size", Label = "Head Size (sq in)", Type = PropertyType.Number, Required = false },
+                        new() { Key = "string_pattern", Label = "String Pattern", Type = PropertyType.Text, Required = false },
+                        new() { Key = "grip_size", Label = "Grip Size", Type = PropertyType.Select, Required = true, Options = new List<string> { "4 1/8", "4 1/4", "4 3/8", "4 1/2", "4 5/8" } }
+                    }
+                },
+                IsActive = true,
+                SortOrder = 1,
+                RequiresAssignment = true,
+                AllowMultipleAssignments = false,
+                MaxAssignmentDurationHours = 24,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "System"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                Name = "Pool Equipment",
+                Description = "Swimming pool training and safety equipment",
+                Icon = "pool",
+                PropertySchema = new PropertySchema
+                {
+                    Properties = new List<PropertyDefinition>
+                    {
+                        new() { Key = "equipment_type", Label = "Equipment Type", Type = PropertyType.Select, Required = true, Options = new List<string> { "Kickboard", "Pool Noodle", "Lane Rope", "Starting Block", "Rescue Equipment" } },
+                        new() { Key = "material", Label = "Material", Type = PropertyType.Select, Required = false, Options = new List<string> { "Foam", "Plastic", "Rubber", "Metal" } },
+                        new() { Key = "size", Label = "Size", Type = PropertyType.Select, Required = false, Options = new List<string> { "Small", "Medium", "Large", "Extra Large" } }
+                    }
+                },
+                IsActive = true,
+                SortOrder = 2,
+                RequiresAssignment = true,
+                AllowMultipleAssignments = true,
+                MaxAssignmentDurationHours = 8,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "System"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                Name = "Fitness Equipment",
+                Description = "Portable fitness and training equipment",
+                Icon = "fitness_center",
+                PropertySchema = new PropertySchema
+                {
+                    Properties = new List<PropertyDefinition>
+                    {
+                        new() { Key = "equipment_type", Label = "Equipment Type", Type = PropertyType.Select, Required = true, Options = new List<string> { "Dumbbells", "Resistance Bands", "Yoga Mats", "Medicine Ball", "Kettlebell", "Jump Rope" } },
+                        new() { Key = "weight", Label = "Weight (kg)", Type = PropertyType.Number, Required = false },
+                        new() { Key = "color", Label = "Color", Type = PropertyType.Select, Required = false, Options = new List<string> { "Black", "Blue", "Red", "Green", "Purple", "Pink" } },
+                        new() { Key = "condition", Label = "Condition", Type = PropertyType.Select, Required = true, Options = new List<string> { "New", "Good", "Fair", "Needs Repair" } }
+                    }
+                },
+                IsActive = true,
+                SortOrder = 3,
+                RequiresAssignment = false,
+                AllowMultipleAssignments = true,
+                MaxAssignmentDurationHours = 4,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "System"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                Name = "Audio/Visual Equipment",
+                Description = "Audio and visual equipment for classes and events",
+                Icon = "audiotrack",
+                PropertySchema = new PropertySchema
+                {
+                    Properties = new List<PropertyDefinition>
+                    {
+                        new() { Key = "equipment_type", Label = "Equipment Type", Type = PropertyType.Select, Required = true, Options = new List<string> { "Wireless Microphone", "Bluetooth Speaker", "Projector", "Screen", "Sound System" } },
+                        new() { Key = "brand", Label = "Brand", Type = PropertyType.Text, Required = false },
+                        new() { Key = "battery_life", Label = "Battery Life (hours)", Type = PropertyType.Number, Required = false },
+                        new() { Key = "connectivity", Label = "Connectivity", Type = PropertyType.MultiSelect, Required = false, Options = new List<string> { "Bluetooth", "WiFi", "USB", "AUX", "XLR" } }
+                    }
+                },
+                IsActive = true,
+                SortOrder = 4,
+                RequiresAssignment = true,
+                AllowMultipleAssignments = false,
+                MaxAssignmentDurationHours = 12,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "System"
+            }
+        };
+
+        tenantContext.HardwareTypes.AddRange(hardwareTypes);
+        await tenantContext.SaveChangesAsync(); // Save hardware types to get IDs
+
+        // Create sample hardware items
+        var hardwareItems = new List<Hardware>
+        {
+            // Tennis Rackets
+            new()
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                Name = "Wilson Pro Staff 97",
+                SerialNumber = "WIL-2024-001",
+                HardwareTypeId = hardwareTypes[0].Id,
+                Properties = new Dictionary<string, object>
+                {
+                    { "brand", "Wilson" },
+                    { "weight", 315 },
+                    { "head_size", 97 },
+                    { "string_pattern", "16x19" },
+                    { "grip_size", "4 3/8" }
+                },
+                Status = HardwareStatus.Available,
+                PurchaseDate = DateTime.UtcNow.AddMonths(-6),
+                PurchasePrice = 199.99m,
+                NextMaintenanceDate = DateTime.UtcNow.AddMonths(3),
+                Location = "Equipment Room A",
+                Notes = "Professional grade racket, excellent condition",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "System"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                Name = "Babolat Pure Drive",
+                SerialNumber = "BAB-2024-001",
+                HardwareTypeId = hardwareTypes[0].Id,
+                Properties = new Dictionary<string, object>
+                {
+                    { "brand", "Babolat" },
+                    { "weight", 300 },
+                    { "head_size", 100 },
+                    { "string_pattern", "16x19" },
+                    { "grip_size", "4 1/4" }
+                },
+                Status = HardwareStatus.Available,
+                PurchaseDate = DateTime.UtcNow.AddMonths(-4),
+                PurchasePrice = 179.99m,
+                NextMaintenanceDate = DateTime.UtcNow.AddMonths(2),
+                Location = "Equipment Room A",
+                Notes = "Popular recreational racket",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "System"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                Name = "Head Radical MP",
+                SerialNumber = "HEAD-2024-001",
+                HardwareTypeId = hardwareTypes[0].Id,
+                Properties = new Dictionary<string, object>
+                {
+                    { "brand", "Head" },
+                    { "weight", 295 },
+                    { "head_size", 98 },
+                    { "string_pattern", "16x19" },
+                    { "grip_size", "4 1/2" }
+                },
+                Status = HardwareStatus.Available,
+                PurchaseDate = DateTime.UtcNow.AddMonths(-3),
+                PurchasePrice = 189.99m,
+                NextMaintenanceDate = DateTime.UtcNow.AddMonths(4),
+                Location = "Equipment Room A",
+                Notes = "Intermediate level racket",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "System"
+            },
+            
+            // Pool Equipment
+            new()
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                Name = "Training Kickboard - Blue",
+                SerialNumber = "KB-BLUE-001",
+                HardwareTypeId = hardwareTypes[1].Id,
+                Properties = new Dictionary<string, object>
+                {
+                    { "equipment_type", "Kickboard" },
+                    { "material", "Foam" },
+                    { "size", "Large" }
+                },
+                Status = HardwareStatus.Available,
+                PurchaseDate = DateTime.UtcNow.AddMonths(-8),
+                PurchasePrice = 15.99m,
+                Location = "Pool Equipment Storage",
+                Notes = "Standard training kickboard",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "System"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                Name = "Pool Noodle Set",
+                SerialNumber = "PN-SET-001",
+                HardwareTypeId = hardwareTypes[1].Id,
+                Properties = new Dictionary<string, object>
+                {
+                    { "equipment_type", "Pool Noodle" },
+                    { "material", "Foam" },
+                    { "size", "Medium" }
+                },
+                Status = HardwareStatus.Available,
+                PurchaseDate = DateTime.UtcNow.AddMonths(-5),
+                PurchasePrice = 29.99m,
+                Location = "Pool Equipment Storage",
+                Notes = "Set of 6 colorful pool noodles",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "System"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                Name = "Safety Ring Buoy",
+                SerialNumber = "RESCUE-001",
+                HardwareTypeId = hardwareTypes[1].Id,
+                Properties = new Dictionary<string, object>
+                {
+                    { "equipment_type", "Rescue Equipment" },
+                    { "material", "Plastic" },
+                    { "size", "Large" }
+                },
+                Status = HardwareStatus.Available,
+                PurchaseDate = DateTime.UtcNow.AddMonths(-12),
+                PurchasePrice = 89.99m,
+                NextMaintenanceDate = DateTime.UtcNow.AddMonths(6),
+                Location = "Pool Deck",
+                Notes = "Safety equipment - inspect regularly",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "System"
+            },
+            
+            // Fitness Equipment
+            new()
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                Name = "Adjustable Dumbbells 5-25kg",
+                SerialNumber = "DB-ADJ-001",
+                HardwareTypeId = hardwareTypes[2].Id,
+                Properties = new Dictionary<string, object>
+                {
+                    { "equipment_type", "Dumbbells" },
+                    { "weight", 25 },
+                    { "color", "Black" },
+                    { "condition", "Good" }
+                },
+                Status = HardwareStatus.Available,
+                PurchaseDate = DateTime.UtcNow.AddMonths(-10),
+                PurchasePrice = 299.99m,
+                NextMaintenanceDate = DateTime.UtcNow.AddMonths(6),
+                Location = "Fitness Center",
+                Notes = "High-quality adjustable dumbbells",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "System"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                Name = "Resistance Band Set",
+                SerialNumber = "RB-SET-001",
+                HardwareTypeId = hardwareTypes[2].Id,
+                Properties = new Dictionary<string, object>
+                {
+                    { "equipment_type", "Resistance Bands" },
+                    { "weight", 0 },
+                    { "color", "Multi" },
+                    { "condition", "New" }
+                },
+                Status = HardwareStatus.Available,
+                PurchaseDate = DateTime.UtcNow.AddMonths(-2),
+                PurchasePrice = 39.99m,
+                Location = "Fitness Center",
+                Notes = "Complete resistance band set with handles",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "System"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                Name = "Premium Yoga Mat",
+                SerialNumber = "YM-PREM-001",
+                HardwareTypeId = hardwareTypes[2].Id,
+                Properties = new Dictionary<string, object>
+                {
+                    { "equipment_type", "Yoga Mats" },
+                    { "weight", 2 },
+                    { "color", "Purple" },
+                    { "condition", "Good" }
+                },
+                Status = HardwareStatus.Available,
+                PurchaseDate = DateTime.UtcNow.AddMonths(-7),
+                PurchasePrice = 79.99m,
+                Location = "Fitness Center",
+                Notes = "Extra thick premium yoga mat",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "System"
+            },
+            
+            // Audio/Visual Equipment
+            new()
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                Name = "Wireless Microphone System",
+                SerialNumber = "MIC-WL-001",
+                HardwareTypeId = hardwareTypes[3].Id,
+                Properties = new Dictionary<string, object>
+                {
+                    { "equipment_type", "Wireless Microphone" },
+                    { "brand", "Shure" },
+                    { "battery_life", 8 },
+                    { "connectivity", new List<string> { "USB", "XLR" } }
+                },
+                Status = HardwareStatus.Available,
+                PurchaseDate = DateTime.UtcNow.AddMonths(-9),
+                PurchasePrice = 449.99m,
+                NextMaintenanceDate = DateTime.UtcNow.AddMonths(3),
+                Location = "AV Equipment Room",
+                Notes = "Professional wireless microphone system",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "System"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                Name = "Portable Bluetooth Speaker",
+                SerialNumber = "SPKR-BT-001",
+                HardwareTypeId = hardwareTypes[3].Id,
+                Properties = new Dictionary<string, object>
+                {
+                    { "equipment_type", "Bluetooth Speaker" },
+                    { "brand", "JBL" },
+                    { "battery_life", 12 },
+                    { "connectivity", new List<string> { "Bluetooth", "AUX", "USB" } }
+                },
+                Status = HardwareStatus.Available,
+                PurchaseDate = DateTime.UtcNow.AddMonths(-4),
+                PurchasePrice = 129.99m,
+                Location = "AV Equipment Room",
+                Notes = "High-quality portable speaker for fitness classes",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "System"
+            }
+        };
+
+        tenantContext.Hardware.AddRange(hardwareItems);
+        await tenantContext.SaveChangesAsync(); // Save hardware items to get IDs
 
         // Create demo recurring master events
         var recurringMasterEvents = new List<Event>
@@ -654,25 +1038,221 @@ public class DbSeeder
         };
 
         // Add regular events
-        _context.Events.AddRange(events);
+        tenantContext.Events.AddRange(events);
 
         // Add recurring master events and generate their occurrences
-        _context.Events.AddRange(recurringMasterEvents);
-        await _context.SaveChangesAsync(); // Save masters first to get IDs
+        tenantContext.Events.AddRange(recurringMasterEvents);
+        await tenantContext.SaveChangesAsync(); // Save masters first to get IDs
 
         // Generate occurrences for each recurring master event
         foreach (var masterEvent in recurringMasterEvents)
         {
             var occurrences = await GenerateEventOccurrences(masterEvent);
-            _context.Events.AddRange(occurrences);
+            tenantContext.Events.AddRange(occurrences);
             
             // Update the master event with generation tracking
             masterEvent.LastGeneratedUntil = DateTime.UtcNow.Date.AddMonths(6);
         }
 
-        await _context.SaveChangesAsync();
+        await tenantContext.SaveChangesAsync();
 
-        _logger.LogInformation("Demo tenant, users, member, facility types, facilities, and events created successfully");
+        // Create Event-Hardware Integration Demo Data
+        _logger.LogInformation("Creating event-hardware integration demo data...");
+
+        // Get some events to add equipment requirements to
+        var tennisTrainingEvent = recurringMasterEvents.FirstOrDefault(e => e.Title.Contains("Tennis Training"));
+        var fitnessClassEvent = events.FirstOrDefault(e => e.Title.Contains("Morning Fitness"));
+        var poolEventEvent = events.FirstOrDefault(e => e.Title.Contains("Pool"));
+        var tournamentEvent = events.FirstOrDefault(e => e.Type == EventType.Tournament);
+
+        var eventEquipmentRequirements = new List<EventEquipmentRequirement>();
+
+        // Tennis Training needs tennis rackets
+        if (tennisTrainingEvent != null)
+        {
+            var tennisRacketType = hardwareTypes.FirstOrDefault(ht => ht.Name == "Tennis Rackets");
+            if (tennisRacketType != null)
+            {
+                eventEquipmentRequirements.Add(new EventEquipmentRequirement
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = demoTenant.Id,
+                    EventId = tennisTrainingEvent.Id,
+                    HardwareTypeId = tennisRacketType.Id,
+                    Quantity = 8,
+                    IsMandatory = true,
+                    AutoAssign = false,
+                    Notes = "Professional rackets for training session. Participants can bring their own or use club equipment.",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = "System"
+                });
+            }
+        }
+
+        // Pool event needs pool equipment
+        if (poolEventEvent != null)
+        {
+            var poolEquipmentType = hardwareTypes.FirstOrDefault(ht => ht.Name == "Pool Equipment");
+            if (poolEquipmentType != null)
+            {
+                eventEquipmentRequirements.Add(new EventEquipmentRequirement
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = demoTenant.Id,
+                    EventId = poolEventEvent.Id,
+                    HardwareTypeId = poolEquipmentType.Id,
+                    Quantity = 20,
+                    IsMandatory = true,
+                    AutoAssign = true, // Auto-assign pool equipment
+                    Notes = "Kickboards and pool noodles for aqua fitness activities.",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = "System"
+                });
+            }
+        }
+
+        // Tournament needs AV equipment and fitness equipment
+        if (tournamentEvent != null)
+        {
+            var avEquipmentType = hardwareTypes.FirstOrDefault(ht => ht.Name == "Audio/Visual Equipment");
+            var fitnessEquipmentType = hardwareTypes.FirstOrDefault(ht => ht.Name == "Fitness Equipment");
+            
+            if (avEquipmentType != null)
+            {
+                eventEquipmentRequirements.Add(new EventEquipmentRequirement
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = demoTenant.Id,
+                    EventId = tournamentEvent.Id,
+                    HardwareTypeId = avEquipmentType.Id,
+                    Quantity = 1,
+                    IsMandatory = true,
+                    AutoAssign = false,
+                    Notes = "Sound system for tournament announcements and ceremony.",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = "System"
+                });
+            }
+
+            if (fitnessEquipmentType != null)
+            {
+                eventEquipmentRequirements.Add(new EventEquipmentRequirement
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = demoTenant.Id,
+                    EventId = tournamentEvent.Id,
+                    HardwareTypeId = fitnessEquipmentType.Id,
+                    Quantity = 2,
+                    IsMandatory = false,
+                    AutoAssign = false,
+                    Notes = "Optional equipment for warm-up area during tournament.",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = "System"
+                });
+            }
+        }
+
+        // Fitness class needs fitness equipment
+        if (fitnessClassEvent != null)
+        {
+            var fitnessEquipmentType = hardwareTypes.FirstOrDefault(ht => ht.Name == "Fitness Equipment");
+            if (fitnessEquipmentType != null)
+            {
+                eventEquipmentRequirements.Add(new EventEquipmentRequirement
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = demoTenant.Id,
+                    EventId = fitnessClassEvent.Id,
+                    HardwareTypeId = fitnessEquipmentType.Id,
+                    Quantity = 15,
+                    IsMandatory = true,
+                    AutoAssign = true, // Auto-assign fitness equipment
+                    Notes = "Yoga mats and resistance bands for class participants.",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = "System"
+                });
+            }
+        }
+
+        tenantContext.EventEquipmentRequirements.AddRange(eventEquipmentRequirements);
+        await tenantContext.SaveChangesAsync(); // Save requirements to get IDs
+
+        // Create Event Equipment Assignments (demonstrate hardware assigned to specific requirements)
+        var eventEquipmentAssignments = new List<EventEquipmentAssignment>();
+
+        foreach (var requirement in eventEquipmentRequirements.Where(r => r.AutoAssign))
+        {
+            // Get available hardware for this requirement type
+            var availableHardware = hardwareItems
+                .Where(h => h.HardwareTypeId == requirement.HardwareTypeId && h.Status == HardwareStatus.Available)
+                .Take(requirement.Quantity)
+                .ToList();
+
+            foreach (var hardware in availableHardware)
+            {
+                var assignment = new EventEquipmentAssignment
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = demoTenant.Id,
+                    EventId = requirement.EventId,
+                    RequirementId = requirement.Id,
+                    HardwareId = hardware.Id,
+                    AssignedAt = DateTime.UtcNow,
+                    Status = EventEquipmentAssignmentStatus.Reserved,
+                    Notes = "Auto-assigned for demo data",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = "System"
+                };
+
+                eventEquipmentAssignments.Add(assignment);
+                
+                // Update hardware status to assigned
+                hardware.Status = HardwareStatus.Assigned;
+                hardware.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        // Manually assign some specific hardware for non-auto-assign requirements
+        var tennisRequirement = eventEquipmentRequirements.FirstOrDefault(r => 
+            r.HardwareTypeId == hardwareTypes.FirstOrDefault(ht => ht.Name == "Tennis Rackets")?.Id);
+        
+        if (tennisRequirement != null)
+        {
+            var tennisRackets = hardwareItems
+                .Where(h => h.HardwareTypeId == tennisRequirement.HardwareTypeId && h.Status == HardwareStatus.Available)
+                .Take(6) // Assign 6 out of 8 required
+                .ToList();
+
+            foreach (var racket in tennisRackets)
+            {
+                var assignment = new EventEquipmentAssignment
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = demoTenant.Id,
+                    EventId = tennisRequirement.EventId,
+                    RequirementId = tennisRequirement.Id,
+                    HardwareId = racket.Id,
+                    AssignedAt = DateTime.UtcNow.AddHours(-2), // Assigned 2 hours ago
+                    Status = EventEquipmentAssignmentStatus.Reserved,
+                    Notes = "Reserved for tennis training session",
+                    CreatedAt = DateTime.UtcNow.AddHours(-2),
+                    CreatedBy = "admin@demo.localhost"
+                };
+
+                eventEquipmentAssignments.Add(assignment);
+                
+                racket.Status = HardwareStatus.Assigned;
+                racket.UpdatedAt = DateTime.UtcNow.AddHours(-2);
+            }
+        }
+
+        tenantContext.EventEquipmentAssignments.AddRange(eventEquipmentAssignments);
+        await tenantContext.SaveChangesAsync();
+
+        _logger.LogInformation("Created {RequirementCount} equipment requirements and {AssignmentCount} equipment assignments", 
+            eventEquipmentRequirements.Count, eventEquipmentAssignments.Count);
+
+        _logger.LogInformation("Demo tenant, users, member, facility types, facilities, hardware, and events with equipment integration created successfully");
         _logger.LogInformation("Created {RegularCount} regular events and {RecurringCount} recurring series", 
             events.Count, recurringMasterEvents.Count);
         _logger.LogInformation("=========== DEMO CREDENTIALS ===========");
@@ -684,6 +1264,8 @@ public class DbSeeder
         _logger.LogInformation("Coach Email: coach@demo.localhost");
         _logger.LogInformation("Coach Password: {CoachPassword}", coachPassword);
         _logger.LogInformation("======================================");
+
+        // Tenant context is disposed automatically - no schema switching needed
     }
 
     private static DateTime GetNextWeekday(DateTime start, DayOfWeek targetDay)

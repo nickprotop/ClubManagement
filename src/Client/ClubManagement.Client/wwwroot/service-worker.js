@@ -1,4 +1,4 @@
-const CACHE_VERSION = '1.0.29';
+const CACHE_VERSION = '1.1.8';
 const STATIC_CACHE_NAME = `clubmanagement-static-v${CACHE_VERSION}`;
 const DYNAMIC_CACHE_NAME = `clubmanagement-dynamic-v${CACHE_VERSION}`;
 const OFFLINE_PAGE = '/offline.html';

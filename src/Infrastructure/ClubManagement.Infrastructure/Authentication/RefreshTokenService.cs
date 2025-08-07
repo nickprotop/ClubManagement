@@ -8,29 +8,27 @@ namespace ClubManagement.Infrastructure.Authentication;
 
 public interface IRefreshTokenService
 {
-    Task<RefreshToken> GenerateRefreshTokenAsync(Guid userId, string ipAddress);
-    Task<RefreshToken?> GetRefreshTokenAsync(string token);
-    Task<bool> ValidateRefreshTokenAsync(string token);
-    Task RevokeRefreshTokenAsync(string token, string ipAddress, string reason = "Manual revocation");
-    Task RevokeUserRefreshTokensAsync(Guid userId, string ipAddress, string reason = "User logout");
-    Task<RefreshToken> RotateRefreshTokenAsync(RefreshToken oldToken, string ipAddress);
-    Task CleanupExpiredTokensAsync();
+    Task<RefreshToken> GenerateRefreshTokenAsync(ClubManagementDbContext tenantContext, Guid userId, string ipAddress);
+    Task<RefreshToken?> GetRefreshTokenAsync(ClubManagementDbContext tenantContext, string token);
+    Task<bool> ValidateRefreshTokenAsync(ClubManagementDbContext tenantContext, string token);
+    Task RevokeRefreshTokenAsync(ClubManagementDbContext tenantContext, string token, string ipAddress, string reason = "Manual revocation");
+    Task RevokeUserRefreshTokensAsync(ClubManagementDbContext tenantContext, Guid userId, string ipAddress, string reason = "User logout");
+    Task<RefreshToken> RotateRefreshTokenAsync(ClubManagementDbContext tenantContext, RefreshToken oldToken, string ipAddress);
+    Task CleanupExpiredTokensAsync(ClubManagementDbContext tenantContext);
 }
 
 public class RefreshTokenService : IRefreshTokenService
 {
-    private readonly ClubManagementDbContext _context;
     private readonly IConfiguration _configuration;
     private readonly int _refreshTokenExpirationDays;
 
-    public RefreshTokenService(ClubManagementDbContext context, IConfiguration configuration)
+    public RefreshTokenService(IConfiguration configuration)
     {
-        _context = context;
         _configuration = configuration;
         _refreshTokenExpirationDays = int.Parse(configuration["Jwt:RefreshTokenExpirationDays"] ?? "7");
     }
 
-    public async Task<RefreshToken> GenerateRefreshTokenAsync(Guid userId, string ipAddress)
+    public async Task<RefreshToken> GenerateRefreshTokenAsync(ClubManagementDbContext tenantContext, Guid userId, string ipAddress)
     {
         var refreshToken = new RefreshToken
         {
@@ -40,28 +38,28 @@ public class RefreshTokenService : IRefreshTokenService
             CreatedByIp = ipAddress
         };
 
-        _context.RefreshTokens.Add(refreshToken);
-        await _context.SaveChangesAsync();
+        tenantContext.RefreshTokens.Add(refreshToken);
+        await tenantContext.SaveChangesAsync();
 
         return refreshToken;
     }
 
-    public async Task<RefreshToken?> GetRefreshTokenAsync(string token)
+    public async Task<RefreshToken?> GetRefreshTokenAsync(ClubManagementDbContext tenantContext, string token)
     {
-        return await _context.RefreshTokens
+        return await tenantContext.RefreshTokens
             .Include(rt => rt.User)
             .FirstOrDefaultAsync(rt => rt.Token == token);
     }
 
-    public async Task<bool> ValidateRefreshTokenAsync(string token)
+    public async Task<bool> ValidateRefreshTokenAsync(ClubManagementDbContext tenantContext, string token)
     {
-        var refreshToken = await GetRefreshTokenAsync(token);
+        var refreshToken = await GetRefreshTokenAsync(tenantContext, token);
         return refreshToken?.IsActive == true;
     }
 
-    public async Task RevokeRefreshTokenAsync(string token, string ipAddress, string reason = "Manual revocation")
+    public async Task RevokeRefreshTokenAsync(ClubManagementDbContext tenantContext, string token, string ipAddress, string reason = "Manual revocation")
     {
-        var refreshToken = await GetRefreshTokenAsync(token);
+        var refreshToken = await GetRefreshTokenAsync(tenantContext, token);
         if (refreshToken != null && refreshToken.IsActive)
         {
             refreshToken.IsRevoked = true;
@@ -69,13 +67,13 @@ public class RefreshTokenService : IRefreshTokenService
             refreshToken.RevokedByIp = ipAddress;
             refreshToken.RevokedReason = reason;
 
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
         }
     }
 
-    public async Task RevokeUserRefreshTokensAsync(Guid userId, string ipAddress, string reason = "User logout")
+    public async Task RevokeUserRefreshTokensAsync(ClubManagementDbContext tenantContext, Guid userId, string ipAddress, string reason = "User logout")
     {
-        var activeTokens = await _context.RefreshTokens
+        var activeTokens = await tenantContext.RefreshTokens
             .Where(rt => rt.UserId == userId && !rt.IsRevoked && rt.ExpiresAt >= DateTime.UtcNow)
             .ToListAsync();
 
@@ -89,11 +87,11 @@ public class RefreshTokenService : IRefreshTokenService
 
         if (activeTokens.Any())
         {
-            await _context.SaveChangesAsync();
+            await tenantContext.SaveChangesAsync();
         }
     }
 
-    public async Task<RefreshToken> RotateRefreshTokenAsync(RefreshToken oldToken, string ipAddress)
+    public async Task<RefreshToken> RotateRefreshTokenAsync(ClubManagementDbContext tenantContext, RefreshToken oldToken, string ipAddress)
     {
         // Revoke the old token
         oldToken.IsRevoked = true;
@@ -113,22 +111,22 @@ public class RefreshTokenService : IRefreshTokenService
         // Link the tokens
         oldToken.ReplacedByToken = newToken.Token;
 
-        _context.RefreshTokens.Add(newToken);
-        await _context.SaveChangesAsync();
+        tenantContext.RefreshTokens.Add(newToken);
+        await tenantContext.SaveChangesAsync();
 
         return newToken;
     }
 
-    public async Task CleanupExpiredTokensAsync()
+    public async Task CleanupExpiredTokensAsync(ClubManagementDbContext tenantContext)
     {
-        var expiredTokens = await _context.RefreshTokens
+        var expiredTokens = await tenantContext.RefreshTokens
             .Where(rt => rt.ExpiresAt < DateTime.UtcNow)
             .ToListAsync();
 
         if (expiredTokens.Any())
         {
-            _context.RefreshTokens.RemoveRange(expiredTokens);
-            await _context.SaveChangesAsync();
+            tenantContext.RefreshTokens.RemoveRange(expiredTokens);
+            await tenantContext.SaveChangesAsync();
         }
     }
 

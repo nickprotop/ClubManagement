@@ -5,6 +5,7 @@ using ClubManagement.Infrastructure.Services;
 using ClubManagement.Infrastructure.Authentication;
 using ClubManagement.Shared.DTOs;
 using ClubManagement.Shared.Models;
+using ClubManagement.Domain.Entities;
 using System.Security.Claims;
 
 namespace ClubManagement.Api.Controllers;
@@ -13,20 +14,20 @@ namespace ClubManagement.Api.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
-    private readonly ClubManagementDbContext _context;
+    private readonly ITenantDbContextFactory _tenantDbContextFactory;
     private readonly ITenantService _tenantService;
     private readonly IJwtService _jwtService;
     private readonly IPasswordService _passwordService;
     private readonly IRefreshTokenService _refreshTokenService;
 
     public AuthController(
-        ClubManagementDbContext context,
+        ITenantDbContextFactory tenantDbContextFactory,
         ITenantService tenantService,
         IJwtService jwtService,
         IPasswordService passwordService,
         IRefreshTokenService refreshTokenService)
     {
-        _context = context;
+        _tenantDbContextFactory = tenantDbContextFactory;
         _tenantService = tenantService;
         _jwtService = jwtService;
         _passwordService = passwordService;
@@ -47,10 +48,10 @@ public class AuthController : ControllerBase
             return BadRequest(ApiResponse<LoginResponse>.ErrorResult("Invalid tenant domain"));
         }
 
-        // Switch to tenant schema
-        await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+        // Get tenant database context
+        using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
-        var user = await _context.Users
+        var user = await tenantContext.Users
             .FirstOrDefaultAsync(u => u.Email == request.Email && u.TenantId == tenant.Id);
 
         if (user == null)
@@ -73,11 +74,11 @@ public class AuthController : ControllerBase
         
         // Generate and store refresh token
         var ipAddress = GetIpAddress();
-        var refreshTokenEntity = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, ipAddress);
+        var refreshTokenEntity = await _refreshTokenService.GenerateRefreshTokenAsync(tenantContext, user.Id, ipAddress);
 
         // Update last login
         user.LastLoginAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
+        await tenantContext.SaveChangesAsync();
 
         var userProfile = new UserProfileDto
         {
@@ -114,10 +115,9 @@ public class AuthController : ControllerBase
             return BadRequest(ApiResponse<LoginResponse>.ErrorResult("Invalid tenant domain"));
         }
 
-        // Switch to tenant schema
-        await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+        using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
-        var existingUser = await _context.Users
+        var existingUser = await tenantContext.Users
             .FirstOrDefaultAsync(u => u.Email == request.Email && u.TenantId == tenant.Id);
 
         if (existingUser != null)
@@ -143,14 +143,14 @@ public class AuthController : ControllerBase
             PasswordChangedAt = DateTime.UtcNow
         };
 
-        _context.Users.Add(user);
-        await _context.SaveChangesAsync();
+        tenantContext.Users.Add(user);
+        await tenantContext.SaveChangesAsync();
 
         var accessToken = _jwtService.GenerateAccessToken(user, tenant.Id);
         
         // Generate and store refresh token
         var ipAddress = GetIpAddress();
-        var refreshTokenEntity = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, ipAddress);
+        var refreshTokenEntity = await _refreshTokenService.GenerateRefreshTokenAsync(tenantContext, user.Id, ipAddress);
 
         var userProfile = new UserProfileDto
         {
@@ -186,8 +186,37 @@ public class AuthController : ControllerBase
             return BadRequest(ApiResponse<RefreshTokenResponse>.ErrorResult("Refresh token is required"));
         }
 
-        var refreshToken = await _refreshTokenService.GetRefreshTokenAsync(request.RefreshToken);
-        if (refreshToken == null || !refreshToken.IsActive)
+        // Get tenant from request (we need it to create tenant context)
+        // For now, we'll extract it from the existing refresh token's user data
+        // This is a temporary approach - in production you might want to store tenant info in the refresh token
+        
+        // First, we need to find which tenant this refresh token belongs to
+        // We'll search across all tenants - this is not ideal but necessary for this migration
+        var allTenants = await _tenantService.GetAllTenantsAsync();
+        RefreshToken? refreshToken = null;
+        ClubManagementDbContext? tenantContext = null;
+        
+        foreach (var tenantItem in allTenants)
+        {
+            try
+            {
+                using var tempContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenantItem.Domain);
+                var tempToken = await _refreshTokenService.GetRefreshTokenAsync(tempContext, request.RefreshToken);
+                if (tempToken != null)
+                {
+                    refreshToken = tempToken;
+                    tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenantItem.Domain);
+                    break;
+                }
+            }
+            catch
+            {
+                // Continue searching other tenants
+                continue;
+            }
+        }
+        
+        if (refreshToken == null || tenantContext == null || !refreshToken.IsActive)
         {
             return BadRequest(ApiResponse<RefreshTokenResponse>.ErrorResult("Invalid or expired refresh token"));
         }
@@ -195,23 +224,25 @@ public class AuthController : ControllerBase
         var user = refreshToken.User;
         if (user.Status != UserStatus.Active)
         {
+            tenantContext.Dispose();
             return BadRequest(ApiResponse<RefreshTokenResponse>.ErrorResult("Account is not active"));
         }
 
         // Get tenant for token generation
-        var tenant = await _context.Tenants.FirstOrDefaultAsync(t => t.Id == user.TenantId);
+        var tenant = await _tenantService.GetTenantByIdAsync(user.TenantId);
         if (tenant == null)
         {
+            tenantContext.Dispose();
             return BadRequest(ApiResponse<RefreshTokenResponse>.ErrorResult("Invalid tenant"));
         }
-
-        // Switch to tenant schema
-        await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
 
         // Generate new tokens
         var newAccessToken = _jwtService.GenerateAccessToken(user, tenant.Id);
         var ipAddress = GetIpAddress();
-        var newRefreshToken = await _refreshTokenService.RotateRefreshTokenAsync(refreshToken, ipAddress);
+        var newRefreshToken = await _refreshTokenService.RotateRefreshTokenAsync(tenantContext, refreshToken, ipAddress);
+        
+        // Dispose the tenant context
+        tenantContext.Dispose();
 
         var response = new RefreshTokenResponse
         {
@@ -229,7 +260,26 @@ public class AuthController : ControllerBase
         if (!string.IsNullOrEmpty(request.RefreshToken))
         {
             var ipAddress = GetIpAddress();
-            await _refreshTokenService.RevokeRefreshTokenAsync(request.RefreshToken, ipAddress, "User logout");
+            // Similar approach - find the tenant context for this refresh token
+            var allTenants = await _tenantService.GetAllTenantsAsync();
+            foreach (var tenantItem in allTenants)
+            {
+                try
+                {
+                    using var tempContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenantItem.Domain);
+                    var tempToken = await _refreshTokenService.GetRefreshTokenAsync(tempContext, request.RefreshToken);
+                    if (tempToken != null)
+                    {
+                        await _refreshTokenService.RevokeRefreshTokenAsync(tempContext, request.RefreshToken, ipAddress, "User logout");
+                        break;
+                    }
+                }
+                catch
+                {
+                    // Continue searching other tenants
+                    continue;
+                }
+            }
         }
 
         return Ok(ApiResponse<object>.SuccessResult(new object(), "Logout successful"));
