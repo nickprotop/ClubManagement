@@ -284,6 +284,51 @@ When implementing new endpoints, ALWAYS test:
 
 **⚠️ REMEMBER: Multi-tenant security is CRITICAL. One missing database context switch can expose ALL tenant data. ALWAYS review tenant context switching in code reviews.**
 
+## CRITICAL: API Response Consistency
+
+**EVERY API endpoint MUST return responses wrapped in `ApiResponse<T>` format for consistent client-side handling.**
+
+### **MANDATORY Pattern for ALL API Endpoints:**
+
+```csharp
+[HttpGet]
+[Authorize]
+public async Task<ActionResult<ApiResponse<YourDataType>>> YourEndpoint()
+{
+    try
+    {
+        // Your logic here
+        var result = await SomeOperation();
+        return Ok(ApiResponse<YourDataType>.SuccessResult(result));
+    }
+    catch (UnauthorizedAccessException ex)
+    {
+        return Unauthorized(ApiResponse<YourDataType>.ErrorResult($"Unauthorized: {ex.Message}"));
+    }
+    catch (Exception ex)
+    {
+        return StatusCode(500, ApiResponse<YourDataType>.ErrorResult($"Error: {ex.Message}"));
+    }
+}
+```
+
+### **Critical Rules:**
+
+1. **NEVER return raw objects** - Always wrap in `ApiResponse<T>`
+2. **ALWAYS use `ApiResponse<T>.SuccessResult(data)`** for successful responses
+3. **ALWAYS use `ApiResponse<T>.ErrorResult(message)`** for error responses
+4. **ALWAYS specify return type as `ActionResult<ApiResponse<T>>`** in method signature
+5. **ALWAYS handle exceptions** with appropriate HTTP status codes and error messages
+
+### **Why This is Critical:**
+
+- **Client Consistency**: All client services expect the same response format
+- **Error Handling**: Standardized error reporting across all endpoints
+- **Debugging**: Consistent structure makes issues easier to trace
+- **Future-Proofing**: Allows adding metadata without breaking existing clients
+
+**⚠️ VIOLATION OF THIS PATTERN WILL CAUSE CLIENT-SIDE FAILURES. Always verify API response format matches expectations.**
+
 ## Authorization System (Hybrid Approach)
 
 **Use this approach for ALL new controllers and features requiring authorization.**

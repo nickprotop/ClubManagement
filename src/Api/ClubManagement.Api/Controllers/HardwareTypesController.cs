@@ -85,7 +85,7 @@ public class HardwareTypesController : ControllerBase
     }
 
     [HttpGet("permissions")]
-    public async Task<ActionResult<HardwarePermissions>> GetPermissions()
+    public async Task<ActionResult<ApiResponse<HardwarePermissions>>> GetPermissions()
     {
         try
         {
@@ -94,20 +94,20 @@ public class HardwareTypesController : ControllerBase
             
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
-                return BadRequest("Invalid tenant");
+                return BadRequest(ApiResponse<HardwarePermissions>.ErrorResult("Invalid tenant"));
                 
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
             
             var permissions = await _authService.GetPermissionsAsync(userId, tenantContext);
-            return Ok(permissions);
+            return Ok(ApiResponse<HardwarePermissions>.SuccessResult(permissions));
         }
         catch (UnauthorizedAccessException ex)
         {
-            return Unauthorized($"Unauthorized: {ex.Message}");
+            return Unauthorized(ApiResponse<HardwarePermissions>.ErrorResult($"Unauthorized: {ex.Message}"));
         }
         catch (Exception ex)
         {
-            return StatusCode(500, $"Error: {ex.Message}");
+            return StatusCode(500, ApiResponse<HardwarePermissions>.ErrorResult($"Error: {ex.Message}"));
         }
     }
 
