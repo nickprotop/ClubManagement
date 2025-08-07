@@ -453,7 +453,7 @@ public class EventEquipmentController : ControllerBase
             };
 
             // Update hardware status
-            hardware.Status = HardwareStatus.Assigned;
+            // Note: Hardware status remains unchanged - staff controls it manually
             hardware.UpdatedAt = DateTime.UtcNow;
 
             tenantContext.EventEquipmentAssignments.Add(assignment);
@@ -629,7 +629,7 @@ public class EventEquipmentController : ControllerBase
                 CreatedBy = "System"
             };
 
-            hardware.Status = HardwareStatus.Assigned;
+            // Note: Hardware status remains unchanged - staff controls it manually
             hardware.UpdatedAt = DateTime.UtcNow;
 
             tenantContext.EventEquipmentAssignments.Add(assignment);

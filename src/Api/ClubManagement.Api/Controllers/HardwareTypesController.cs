@@ -67,7 +67,7 @@ public class HardwareTypesController : ControllerBase
                     UpdatedAt = ht.UpdatedAt ?? ht.CreatedAt,
                     HardwareCount = tenantContext.Hardware.Count(h => h.HardwareTypeId == ht.Id),
                     AvailableCount = tenantContext.Hardware.Count(h => h.HardwareTypeId == ht.Id && h.Status == HardwareStatus.Available),
-                    AssignedCount = tenantContext.Hardware.Count(h => h.HardwareTypeId == ht.Id && h.Status == HardwareStatus.Assigned),
+                    AssignedCount = tenantContext.Hardware.Count(h => h.HardwareTypeId == ht.Id && h.Assignments.Any(a => a.Status == AssignmentStatus.Active)),
                     MaintenanceCount = tenantContext.Hardware.Count(h => h.HardwareTypeId == ht.Id && h.Status == HardwareStatus.Maintenance)
                 })
                 .ToListAsync();
@@ -150,7 +150,7 @@ public class HardwareTypesController : ControllerBase
                 UpdatedAt = hardwareType.UpdatedAt ?? hardwareType.CreatedAt,
                 HardwareCount = await tenantContext.Hardware.CountAsync(h => h.HardwareTypeId == hardwareType.Id),
                 AvailableCount = await tenantContext.Hardware.CountAsync(h => h.HardwareTypeId == hardwareType.Id && h.Status == HardwareStatus.Available),
-                AssignedCount = await tenantContext.Hardware.CountAsync(h => h.HardwareTypeId == hardwareType.Id && h.Status == HardwareStatus.Assigned),
+                AssignedCount = await tenantContext.Hardware.CountAsync(h => h.HardwareTypeId == hardwareType.Id && h.Assignments.Any(a => a.Status == AssignmentStatus.Active)),
                 MaintenanceCount = await tenantContext.Hardware.CountAsync(h => h.HardwareTypeId == hardwareType.Id && h.Status == HardwareStatus.Maintenance)
             };
 
@@ -304,7 +304,7 @@ public class HardwareTypesController : ControllerBase
                 UpdatedAt = hardwareType.UpdatedAt ?? hardwareType.CreatedAt,
                 HardwareCount = await tenantContext.Hardware.CountAsync(h => h.HardwareTypeId == hardwareType.Id),
                 AvailableCount = await tenantContext.Hardware.CountAsync(h => h.HardwareTypeId == hardwareType.Id && h.Status == HardwareStatus.Available),
-                AssignedCount = await tenantContext.Hardware.CountAsync(h => h.HardwareTypeId == hardwareType.Id && h.Status == HardwareStatus.Assigned),
+                AssignedCount = await tenantContext.Hardware.CountAsync(h => h.HardwareTypeId == hardwareType.Id && h.Assignments.Any(a => a.Status == AssignmentStatus.Active)),
                 MaintenanceCount = await tenantContext.Hardware.CountAsync(h => h.HardwareTypeId == hardwareType.Id && h.Status == HardwareStatus.Maintenance)
             };
 

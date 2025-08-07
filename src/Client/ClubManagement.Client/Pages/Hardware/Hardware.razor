@@ -57,7 +57,7 @@
                       Clearable="true"
                       OnSelectionChanged="OnFilterChanged">
                 <MudSelectItem T="HardwareStatus?" Value="HardwareStatus.Available">Available</MudSelectItem>
-                <MudSelectItem T="HardwareStatus?" Value="HardwareStatus.Assigned">Assigned</MudSelectItem>
+                <MudSelectItem T="HardwareStatus?" Value="HardwareStatus.Unavailable">Unavailable</MudSelectItem>
                 <MudSelectItem T="HardwareStatus?" Value="HardwareStatus.InUse">In Use</MudSelectItem>
                 <MudSelectItem T="HardwareStatus?" Value="HardwareStatus.Maintenance">Maintenance</MudSelectItem>
                 <MudSelectItem T="HardwareStatus?" Value="HardwareStatus.OutOfService">Out of Service</MudSelectItem>
@@ -89,11 +89,35 @@
                 
                 <PropertyColumn Property="x => x.Status" Title="Status">
                     <CellTemplate>
-                        <MudChip Color="@GetStatusColor(context.Item.Status)" 
-                                Size="Size.Small" 
-                                Variant="Variant.Filled">
-                            @context.Item.Status
-                        </MudChip>
+                        @if (context.Item.Status == HardwareStatus.Available)
+                        {
+                            @if (context.Item.IsCurrentlyAssigned && context.Item.CurrentAssignment != null)
+                            {
+                                <MudChip Color="Color.Info" 
+                                        Size="Size.Small" 
+                                        Variant="Variant.Filled"
+                                        Icon="@Icons.Material.Filled.Person">
+                                    Assigned to @context.Item.CurrentAssignment.MemberName
+                                </MudChip>
+                            }
+                            else
+                            {
+                                <MudChip Color="Color.Success" 
+                                        Size="Size.Small" 
+                                        Variant="Variant.Filled"
+                                        Icon="@Icons.Material.Filled.Check">
+                                    Available
+                                </MudChip>
+                            }
+                        }
+                        else
+                        {
+                            <MudChip Color="@GetStatusColor(context.Item.Status)" 
+                                    Size="Size.Small" 
+                                    Variant="Variant.Filled">
+                                @context.Item.Status
+                            </MudChip>
+                        }
                     </CellTemplate>
                 </PropertyColumn>
                 
@@ -121,7 +145,7 @@
                                              Title="Edit Hardware" />
                             }
                             
-                            @if (_permissions?.CanDelete == true && context.Item.Status == HardwareStatus.Available)
+                            @if (_permissions?.CanDelete == true && context.Item.IsAvailableForAssignment && !context.Item.IsCurrentlyAssigned)
                             {
                                 <MudIconButton Icon="@Icons.Material.Filled.Delete"
                                              Size="Size.Small"
@@ -297,7 +321,7 @@
         return status switch
         {
             HardwareStatus.Available => Color.Success,
-            HardwareStatus.Assigned => Color.Info,
+            HardwareStatus.Unavailable => Color.Warning,
             HardwareStatus.InUse => Color.Warning,
             HardwareStatus.Maintenance => Color.Warning,
             HardwareStatus.OutOfService => Color.Error,

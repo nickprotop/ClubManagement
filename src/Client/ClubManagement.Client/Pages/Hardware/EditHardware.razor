@@ -6,6 +6,7 @@
 @using Microsoft.AspNetCore.Authorization
 @inject IHardwareService HardwareService
 @inject IHardwareTypeService HardwareTypeService
+@inject IHardwareAssignmentService AssignmentService
 @inject INotificationService NotificationService
 @inject NavigationManager Navigation
 @attribute [Authorize]
@@ -16,18 +17,21 @@
 {
     <MudProgressLinear Indeterminate="true" />
 }
-else if (_model != null)
+else if (_model != null && _hardware != null)
 {
     <div class="d-flex justify-space-between align-center mb-4">
         <div>
             <MudBreadcrumbs Items="_breadcrumbs" Class="pa-0"></MudBreadcrumbs>
-            <MudText Typo="Typo.h4" Class="mt-2">Edit Hardware</MudText>
+            <MudText Typo="Typo.h4" Class="mt-2">
+                <MudIcon Icon="@_hardware.HardwareTypeIcon" Class="mr-2" />
+                Edit @_hardware.Name
+            </MudText>
         </div>
     </div>
 
     <MudCard>
         <MudCardContent>
-            <EditForm Model="_model" OnValidSubmit="UpdateHardware">
+            <EditForm Model="_model" OnValidSubmit="UpdateHardwareAsync">
                 <DataAnnotationsValidator />
                 <div class="d-flex flex-column gap-4">
                     
@@ -42,21 +46,11 @@ else if (_model != null)
                                      For="@(() => _model.Name)"
                                      Class="flex-grow-1" />
                                      
-                        <MudSelect @bind-Value="_model.HardwareTypeId"
-                                  Label="Hardware Type"
-                                  Variant="Variant.Outlined"
-                                  Required="true"
-                                  For="@(() => _model.HardwareTypeId)"
-                                  OnSelectionChanged="OnHardwareTypeChanged"
-                                  Class="flex-grow-1">
-                            @if (_hardwareTypes != null)
-                            {
-                                @foreach (var type in _hardwareTypes)
-                                {
-                                    <MudSelectItem T="Guid" Value="type.Id">@type.Name</MudSelectItem>
-                                }
-                            }
-                        </MudSelect>
+                        <MudTextField @bind-Value="_model.SerialNumber"
+                                     Label="Serial Number"
+                                     Variant="Variant.Outlined"
+                                     For="@(() => _model.SerialNumber)"
+                                     Class="flex-grow-1" />
                     </div>
 
                     <MudTextField @bind-Value="_model.Description"
@@ -66,33 +60,63 @@ else if (_model != null)
                                  For="@(() => _model.Description)" />
 
                     <div class="d-flex gap-4">
-                        <MudTextField @bind-Value="_model.SerialNumber"
-                                     Label="Serial Number"
-                                     Variant="Variant.Outlined"
-                                     For="@(() => _model.SerialNumber)"
-                                     Class="flex-grow-1" />
-                                     
                         <MudTextField @bind-Value="_model.Location"
                                      Label="Location"
                                      Variant="Variant.Outlined"
                                      For="@(() => _model.Location)"
                                      Class="flex-grow-1" />
+
+                        <!-- Status Field with Assignment Checking -->
+                        @if (_checkingAssignments)
+                        {
+                            <MudSkeleton Width="100%" Height="56px" />
+                        }
+                        else
+                        {
+                            <MudSelect @bind-Value="_model.Status"
+                                      Label="Status"
+                                      Variant="Variant.Outlined"
+                                      Required="true"
+                                      Disabled="@_hasActiveAssignments"
+                                      For="@(() => _model.Status)"
+                                      HelperText="@GetStatusHelperText()"
+                                      Class="flex-grow-1">
+                                <MudSelectItem T="HardwareStatus" Value="HardwareStatus.Available">Available</MudSelectItem>
+                                <MudSelectItem T="HardwareStatus" Value="HardwareStatus.Unavailable">Unavailable</MudSelectItem>
+                                <MudSelectItem T="HardwareStatus" Value="HardwareStatus.InUse">In Use</MudSelectItem>
+                                <MudSelectItem T="HardwareStatus" Value="HardwareStatus.Maintenance">Maintenance</MudSelectItem>
+                                <MudSelectItem T="HardwareStatus" Value="HardwareStatus.OutOfOrder">Out of Order</MudSelectItem>
+                                <MudSelectItem T="HardwareStatus" Value="HardwareStatus.OutOfService">Out of Service</MudSelectItem>
+                                <MudSelectItem T="HardwareStatus" Value="HardwareStatus.Lost">Lost</MudSelectItem>
+                                <MudSelectItem T="HardwareStatus" Value="HardwareStatus.Retired">Retired</MudSelectItem>
+                            </MudSelect>
+                        }
                     </div>
 
-                    <div>
-                        <MudSelect @bind-Value="_model.Status"
-                                  Label="Status"
-                                  Variant="Variant.Outlined"
-                                  Required="true"
-                                  For="@(() => _model.Status)">
-                            <MudSelectItem T="HardwareStatus" Value="HardwareStatus.Available">Available</MudSelectItem>
-                            <MudSelectItem T="HardwareStatus" Value="HardwareStatus.Assigned">Assigned</MudSelectItem>
-                            <MudSelectItem T="HardwareStatus" Value="HardwareStatus.InUse">In Use</MudSelectItem>
-                            <MudSelectItem T="HardwareStatus" Value="HardwareStatus.Maintenance">Maintenance</MudSelectItem>
-                            <MudSelectItem T="HardwareStatus" Value="HardwareStatus.OutOfService">Out of Service</MudSelectItem>
-                            <MudSelectItem T="HardwareStatus" Value="HardwareStatus.Retired">Retired</MudSelectItem>
-                        </MudSelect>
-                    </div>
+                    <!-- Status Lock Alert -->
+                    @if (_hasActiveAssignments)
+                    {
+                        <MudAlert Severity="Severity.Info" Class="mt-2">
+                            <div class="d-flex align-center justify-space-between">
+                                <div>
+                                    <MudIcon Icon="@Icons.Material.Filled.Lock" Class="mr-2" />
+                                    Status is locked due to active assignments:
+                                    @if (_activeAssignments?.Any() == true)
+                                    {
+                                        <ul class="mt-2 mb-0">
+                                            @foreach (var assignment in _activeAssignments)
+                                            {
+                                                <li>@assignment.MemberName (assigned @assignment.DaysAssigned days ago)</li>
+                                            }
+                                        </ul>
+                                    }
+                                    <MudText Typo="Typo.caption" Class="mt-2">
+                                        Process returns first to change hardware status.
+                                    </MudText>
+                                </div>
+                            </div>
+                        </MudAlert>
+                    }
 
                     <!-- Purchase Information -->
                     <MudDivider Class="my-4" />
@@ -145,6 +169,12 @@ else if (_model != null)
                                       Class="flex-grow-1" />
                     </div>
 
+                    <MudTextField @bind-Value="_model.Notes"
+                                 Label="Notes"
+                                 Variant="Variant.Outlined"
+                                 Lines="3"
+                                 For="@(() => _model.Notes)" />
+
                     <!-- Dynamic Properties -->
                     @if (_selectedHardwareType != null && _selectedHardwareType.PropertySchema?.Properties?.Any() == true)
                     {
@@ -187,7 +217,7 @@ else if (_model != null)
                                             {
                                                 @foreach (var option in propertyDef.Options)
                                                 {
-                                                    <MudSelectItem T="string" Value="@option">@option</MudSelectItem>
+                                                    <MudSelectItem Value="@option">@option</MudSelectItem>
                                                 }
                                             }
                                         </MudSelect>
@@ -234,46 +264,30 @@ else
 @code {
     [Parameter] public Guid Id { get; set; }
 
-    private UpdateHardwareRequest? _model;
+    private UpdateHardwareRequest _model = new();
+    private HardwareDto? _hardware;
     private List<HardwareTypeDto>? _hardwareTypes;
     private HardwareTypeDto? _selectedHardwareType;
     private Dictionary<string, string> _dynamicProperties = new();
+    private List<HardwareAssignmentDto>? _activeAssignments;
     private bool _loading = true;
     private bool _submitting = false;
+    private bool _checkingAssignments = true;
+    private bool _hasActiveAssignments = false;
 
-    private List<BreadcrumbItem> _breadcrumbs = new();
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new("Home", "/"),
+        new("Hardware", "/hardware"),
+        new("Edit", null, disabled: true)
+    };
 
     protected override async Task OnInitializedAsync()
     {
-        _breadcrumbs = new List<BreadcrumbItem>
-        {
-            new("Home", "/"),
-            new("Hardware", "/hardware"),
-            new("Edit", null, disabled: true)
-        };
-
-        await LoadHardwareTypes();
         await LoadHardware();
-    }
-
-    private async Task LoadHardwareTypes()
-    {
-        try
-        {
-            var response = await HardwareTypeService.GetHardwareTypesAsync();
-            if (response.Success)
-            {
-                _hardwareTypes = response.Data;
-            }
-            else
-            {
-                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to load hardware types");
-            }
-        }
-        catch (Exception ex)
-        {
-            await NotificationService.ShowErrorAsync($"Failed to load hardware types: {ex.Message}");
-        }
+        await LoadHardwareTypes();
+        await CheckActiveAssignments();
+        _loading = false;
     }
 
     private async Task LoadHardware()
@@ -281,50 +295,31 @@ else
         try
         {
             var response = await HardwareService.GetHardwareByIdAsync(Id);
-            if (response.Success)
+            if (response.Success && response.Data != null)
             {
-                var hardware = response.Data!;
+                _hardware = response.Data;
+                
+                // Initialize the form model with current hardware data
                 _model = new UpdateHardwareRequest
                 {
-                    Name = hardware.Name,
-                    Description = hardware.Description,
-                    HardwareTypeId = hardware.HardwareTypeId,
-                    SerialNumber = hardware.SerialNumber,
-                    Location = hardware.Location,
-                    Status = hardware.Status,
-                    PurchaseDate = hardware.PurchaseDate,
-                    PurchasePrice = hardware.PurchasePrice,
-                    Supplier = hardware.Supplier,
-                    WarrantyExpiry = hardware.WarrantyExpiry,
-                    LastMaintenanceDate = hardware.LastMaintenanceDate,
-                    NextMaintenanceDate = hardware.NextMaintenanceDate,
-                    Properties = new Dictionary<string, string>()
+                    Name = _hardware.Name,
+                    Description = _hardware.Description,
+                    HardwareTypeId = _hardware.HardwareTypeId,
+                    SerialNumber = _hardware.SerialNumber,
+                    Status = _hardware.Status,
+                    PurchaseDate = _hardware.PurchaseDate,
+                    PurchasePrice = _hardware.PurchasePrice,
+                    Supplier = _hardware.Supplier,
+                    WarrantyExpiry = _hardware.WarrantyExpiry,
+                    LastMaintenanceDate = _hardware.LastMaintenanceDate,
+                    NextMaintenanceDate = _hardware.NextMaintenanceDate,
+                    Location = _hardware.Location,
+                    Notes = _hardware.Notes,
+                    Properties = _hardware.Properties?.ToDictionary(kv => kv.Key, kv => kv.Value?.ToString() ?? "") ?? new Dictionary<string, string>()
                 };
 
                 // Initialize dynamic properties
-                _dynamicProperties = new Dictionary<string, string>();
-                if (hardware.Properties != null)
-                {
-                    foreach (var prop in hardware.Properties)
-                    {
-                        _dynamicProperties[prop.Key] = prop.Value?.ToString() ?? "";
-                    }
-                }
-                
-                // Set selected hardware type to load property schema
-                _selectedHardwareType = _hardwareTypes?.FirstOrDefault(ht => ht.Id == hardware.HardwareTypeId);
-                
-                // Initialize missing properties with defaults
-                if (_selectedHardwareType?.PropertySchema?.Properties != null)
-                {
-                    foreach (var prop in _selectedHardwareType.PropertySchema.Properties)
-                    {
-                        if (!_dynamicProperties.ContainsKey(prop.Key))
-                        {
-                            _dynamicProperties[prop.Key] = prop.DefaultValue ?? "";
-                        }
-                    }
-                }
+                _dynamicProperties = _model.Properties.ToDictionary(kv => kv.Key, kv => kv.Value);
             }
             else
             {
@@ -335,38 +330,50 @@ else
         {
             await NotificationService.ShowErrorAsync($"Failed to load hardware: {ex.Message}");
         }
-        finally
-        {
-            _loading = false;
-        }
     }
 
-    private void OnHardwareTypeChanged()
+    private async Task LoadHardwareTypes()
     {
-        if (_model == null) return;
-        
-        _selectedHardwareType = _hardwareTypes?.FirstOrDefault(ht => ht.Id == _model.HardwareTypeId);
-        
-        // Preserve existing properties that match new schema
-        var newProperties = new Dictionary<string, string>();
-        
-        if (_selectedHardwareType?.PropertySchema?.Properties != null)
+        try
         {
-            foreach (var prop in _selectedHardwareType.PropertySchema.Properties)
+            var response = await HardwareTypeService.GetHardwareTypesAsync();
+            if (response.Success)
             {
-                if (_dynamicProperties.ContainsKey(prop.Key))
+                _hardwareTypes = response.Data;
+                
+                // Set the selected hardware type based on current hardware
+                if (_hardware != null)
                 {
-                    newProperties[prop.Key] = _dynamicProperties[prop.Key];
-                }
-                else
-                {
-                    newProperties[prop.Key] = prop.DefaultValue ?? "";
+                    _selectedHardwareType = _hardwareTypes?.FirstOrDefault(ht => ht.Id == _hardware.HardwareTypeId);
                 }
             }
         }
-        
-        _dynamicProperties = newProperties;
-        StateHasChanged();
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load hardware types: {ex.Message}");
+        }
+    }
+
+    private async Task CheckActiveAssignments()
+    {
+        try
+        {
+            _checkingAssignments = true;
+            var response = await AssignmentService.GetAssignmentsByHardwareAsync(Id, page: 1, pageSize: 50);
+            if (response.Success && response.Data != null)
+            {
+                _activeAssignments = response.Data.Items.Where(a => a.Status == AssignmentStatus.Active).ToList();
+                _hasActiveAssignments = _activeAssignments.Any();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Assignment check is non-critical, so we don't show an error
+        }
+        finally
+        {
+            _checkingAssignments = false;
+        }
     }
 
     private bool GetBooleanValue(string key)
@@ -374,21 +381,26 @@ else
         return _dynamicProperties.TryGetValue(key, out var value) && 
                bool.TryParse(value, out var boolValue) && boolValue;
     }
-    
+
     private void SetBooleanValue(string key, bool value)
     {
         _dynamicProperties[key] = value.ToString();
     }
 
-    private async Task UpdateHardware()
+    private string GetStatusHelperText()
     {
-        if (_model == null) return;
-        
+        if (_hasActiveAssignments)
+            return "Status cannot be changed while hardware has active assignments";
+        return "Current operational status of the hardware";
+    }
+
+    private async Task UpdateHardwareAsync()
+    {
         try
         {
             _submitting = true;
             
-            // Set dynamic properties
+            // Update dynamic properties from form
             _model.Properties = _dynamicProperties.Where(kv => !string.IsNullOrEmpty(kv.Value))
                                                  .ToDictionary(kv => kv.Key, kv => kv.Value);
 

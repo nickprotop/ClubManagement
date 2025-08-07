@@ -4,6 +4,7 @@
 @using ClubManagement.Shared.Models
 @using ClubManagement.Shared.Models.Authorization
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
 @inject IHardwareAssignmentService AssignmentService
 @inject IHardwareService HardwareService
 @inject IMemberService MemberService
@@ -40,13 +41,14 @@
                         <MudText Typo="Typo.h6" Class="mb-3">Select Hardware</MudText>
                         <MudAutocomplete T="HardwareDto"
                                         @bind-Value="_selectedHardware"
-                                        Label="Search for available hardware"
+                                        Label="Search for available hardware (type at least 2 characters)"
                                         Variant="Variant.Outlined"
                                         SearchFunc="SearchHardware"
                                         ToStringFunc="@(h => h?.Name + " - " + h?.SerialNumber)"
                                         Required="true"
                                         ResetValueOnEmptyText="true"
-                                        MaxItems="20">
+                                        MaxItems="20"
+                                        NoItemsTemplate="@_noItemsTemplate">
                             <ItemTemplate Context="hardware">
                                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                                     <MudIcon Icon="@Icons.Material.Filled.Build" Size="Size.Small" />
@@ -243,10 +245,33 @@
 </MudCard>
 
 @code {
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "hardwareId")]
+    public Guid? HardwareId { get; set; }
+    
     private HardwareDto? _selectedHardware;
     private MemberDto? _selectedMember;
     private string _notes = string.Empty;
     private bool _creating = false;
+    private string _lastSearchTerm = string.Empty;
+    private readonly RenderFragment _noItemsTemplate = @<div class="pa-4 text-center">
+        <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large" Color="Color.Secondary" />
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+            No available hardware found for assignment.
+        </MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+            Hardware must have "Available" status and no active assignments to appear here.
+            If you see hardware items but they're not available, they may already be assigned to other members.
+        </MudText>
+        <MudButton Variant="Variant.Text" 
+                   Color="Color.Primary" 
+                   StartIcon="@Icons.Material.Filled.Build"
+                   Href="/hardware"
+                   Size="Size.Small"
+                   Class="mt-2">
+            View All Hardware
+        </MudButton>
+    </div>;
     
     private List<BreadcrumbItem> _breadcrumbItems = new()
     {
@@ -254,6 +279,44 @@
         new BreadcrumbItem("Assignments", href: "/hardware/assignments", icon: Icons.Material.Filled.Assignment),
         new BreadcrumbItem("Create", href: null, disabled: true, icon: Icons.Material.Filled.Add)
     };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // If hardware ID is provided via query parameter, load that hardware
+        if (HardwareId.HasValue)
+        {
+            await LoadPreselectedHardware();
+        }
+    }
+
+    private async Task LoadPreselectedHardware()
+    {
+        try
+        {
+            var response = await HardwareService.GetHardwareByIdAsync(HardwareId!.Value);
+            if (response.Success && response.Data != null)
+            {
+                // Check if the hardware is available for assignment
+                if (response.Data.IsAvailableForAssignment)
+                {
+                    _selectedHardware = response.Data;
+                    await NotificationService.ShowInfoAsync($"Pre-selected hardware: {response.Data.Name}");
+                }
+                else
+                {
+                    await NotificationService.ShowWarningAsync($"Hardware '{response.Data.Name}' is not available for assignment.");
+                }
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync("Failed to load the specified hardware.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error loading hardware: {ex.Message}");
+        }
+    }
 
     private async Task<IEnumerable<HardwareDto>> SearchHardware(string value, CancellationToken token = default)
     {
@@ -266,6 +329,13 @@
             if (response.Success && response.Data != null)
             {
                 return response.Data.Where(h => h.IsAvailableForAssignment);
+            }
+            else
+            {
+                if (!response.Success && !string.IsNullOrEmpty(response.Message))
+                {
+                    await NotificationService.ShowErrorAsync($"Search failed: {response.Message}");
+                }
             }
         }
         catch (Exception ex)

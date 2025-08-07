@@ -62,11 +62,36 @@ else if (_hardware != null)
                 <div class="d-flex flex-wrap gap-6">
                     <div>
                         <MudText Typo="Typo.caption">Status</MudText>
-                        <MudChip T="string" Color="@GetStatusColor(_hardware.Status)" 
-                                Size="Size.Medium" 
-                                Variant="Variant.Filled">
-                            @_hardware.Status
-                        </MudChip>
+                        @if (_hardware.Status == HardwareStatus.Available)
+                        {
+                            @if (_hardware.IsCurrentlyAssigned && _hardware.CurrentAssignment != null)
+                            {
+                                <MudChip T="string" Color="Color.Info" 
+                                        Size="Size.Medium" 
+                                        Variant="Variant.Filled">
+                                    <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Class="mr-1" />
+                                    Assigned to @_hardware.CurrentAssignment.MemberName
+                                </MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Color="Color.Success" 
+                                        Size="Size.Medium" 
+                                        Variant="Variant.Filled">
+                                    <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Class="mr-1" />
+                                    Available
+                                </MudChip>
+                            }
+                        }
+                        else
+                        {
+                            <MudChip T="string" Color="@GetStatusColor(_hardware.Status)" 
+                                    Size="Size.Medium" 
+                                    Variant="Variant.Filled">
+                                <MudIcon Icon="@GetStatusIcon(_hardware.Status)" Size="Size.Small" Class="mr-1" />
+                                @_hardware.Status
+                            </MudChip>
+                        }
                     </div>
                     
                     <div>
@@ -540,7 +565,7 @@ else
         return status switch
         {
             HardwareStatus.Available => Color.Success,
-            HardwareStatus.Assigned => Color.Info,
+            HardwareStatus.Unavailable => Color.Warning,
             HardwareStatus.InUse => Color.Warning,
             HardwareStatus.Maintenance => Color.Warning,
             HardwareStatus.OutOfService => Color.Error,
@@ -561,4 +586,17 @@ else
             _ => Color.Default
         };
     }
+    
+    private string GetStatusIcon(HardwareStatus status) => status switch
+    {
+        HardwareStatus.Available => Icons.Material.Filled.CheckCircle,
+        HardwareStatus.Unavailable => Icons.Material.Filled.Block,
+        HardwareStatus.InUse => Icons.Material.Filled.PlayArrow,
+        HardwareStatus.Maintenance => Icons.Material.Filled.Build,
+        HardwareStatus.OutOfOrder => Icons.Material.Filled.Warning,
+        HardwareStatus.OutOfService => Icons.Material.Filled.PauseCircle,
+        HardwareStatus.Lost => Icons.Material.Filled.SearchOff,
+        HardwareStatus.Retired => Icons.Material.Filled.Archive,
+        _ => Icons.Material.Filled.Help
+    };
 }

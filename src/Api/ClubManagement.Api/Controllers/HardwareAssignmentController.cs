@@ -254,7 +254,21 @@ public class HardwareAssignmentController : ControllerBase
                 return BadRequest(ApiResponse<HardwareAssignmentDto>.ErrorResult("Hardware not found"));
 
             if (hardware.Status != HardwareStatus.Available)
-                return BadRequest(ApiResponse<HardwareAssignmentDto>.ErrorResult("Hardware is not available for assignment"));
+            {
+                var statusMessage = hardware.Status switch
+                {
+                    HardwareStatus.Unavailable => "Hardware is marked as unavailable and cannot be assigned.",
+                    HardwareStatus.InUse => "Hardware is currently in use and cannot be assigned.",
+                    HardwareStatus.Maintenance => "Hardware is under maintenance and cannot be assigned.",
+                    HardwareStatus.OutOfOrder => "Hardware is out of order and cannot be assigned.",
+                    HardwareStatus.OutOfService => "Hardware is out of service and cannot be assigned.",
+                    HardwareStatus.Lost => "Hardware is marked as lost and cannot be assigned.",
+                    HardwareStatus.Retired => "Hardware has been retired and cannot be assigned.",
+                    _ => $"Hardware status '{hardware.Status}' does not allow assignment. Status must be 'Available'."
+                };
+                
+                return BadRequest(ApiResponse<HardwareAssignmentDto>.ErrorResult(statusMessage));
+            }
 
             if (hardware.Assignments.Any(a => a.Status == AssignmentStatus.Active))
                 return BadRequest(ApiResponse<HardwareAssignmentDto>.ErrorResult("Hardware is already assigned to another member"));
@@ -282,8 +296,7 @@ public class HardwareAssignmentController : ControllerBase
                 CreatedBy = this.GetCurrentUserEmail() ?? "System"
             };
 
-            // Update hardware status
-            hardware.Status = HardwareStatus.Assigned;
+            // Note: Hardware status remains unchanged - staff controls it manually
             hardware.UpdatedAt = DateTime.UtcNow;
 
             tenantContext.HardwareAssignments.Add(assignment);
@@ -371,13 +384,8 @@ public class HardwareAssignmentController : ControllerBase
             assignment.DamageFee = request.DamageFee;
             assignment.UpdatedAt = DateTime.UtcNow;
 
-            // Update hardware status based on return condition
-            assignment.Hardware.Status = request.Status switch
-            {
-                AssignmentStatus.Damaged => HardwareStatus.Maintenance,
-                AssignmentStatus.Lost => HardwareStatus.Lost,
-                _ => HardwareStatus.Available
-            };
+            // Note: Hardware status remains unchanged - staff controls it manually
+            // Staff can separately change hardware status if needed (e.g., to Maintenance if damaged)
             assignment.Hardware.UpdatedAt = DateTime.UtcNow;
 
             await tenantContext.SaveChangesAsync();

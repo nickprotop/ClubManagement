@@ -1206,8 +1206,7 @@ public class DbSeeder
 
                 eventEquipmentAssignments.Add(assignment);
                 
-                // Update hardware status to assigned
-                hardware.Status = HardwareStatus.Assigned;
+                // Note: Hardware status remains unchanged - staff controls it manually
                 hardware.UpdatedAt = DateTime.UtcNow;
             }
         }
@@ -1241,7 +1240,7 @@ public class DbSeeder
 
                 eventEquipmentAssignments.Add(assignment);
                 
-                racket.Status = HardwareStatus.Assigned;
+                // Note: Hardware status remains Available - staff controls it manually
                 racket.UpdatedAt = DateTime.UtcNow.AddHours(-2);
             }
         }
@@ -1249,8 +1248,36 @@ public class DbSeeder
         tenantContext.EventEquipmentAssignments.AddRange(eventEquipmentAssignments);
         await tenantContext.SaveChangesAsync();
 
-        _logger.LogInformation("Created {RequirementCount} equipment requirements and {AssignmentCount} equipment assignments", 
-            eventEquipmentRequirements.Count, eventEquipmentAssignments.Count);
+        // Create some manual hardware assignments to demonstrate the system
+        var hardwareAssignments = new List<HardwareAssignment>();
+        
+        // Assign adjustable dumbbells to demo member (long-term assignment)
+        var adjustableDumbbells = hardwareItems.FirstOrDefault(h => h.Name.Contains("Adjustable Dumbbells"));
+        if (adjustableDumbbells != null && demoMember != null)
+        {
+            hardwareAssignments.Add(new HardwareAssignment
+            {
+                Id = Guid.NewGuid(),
+                TenantId = demoTenant.Id,
+                HardwareId = adjustableDumbbells.Id,
+                MemberId = demoMember.Id,
+                AssignedByUserId = adminUser.Id,
+                AssignedAt = DateTime.UtcNow.AddDays(-10),
+                Status = AssignmentStatus.Active,
+                Notes = "Long-term home workout assignment - demo data",
+                CreatedAt = DateTime.UtcNow.AddDays(-10),
+                CreatedBy = "admin@demo.localhost"
+            });
+            
+            // Note: Hardware status remains Available - staff controls it manually
+            adjustableDumbbells.UpdatedAt = DateTime.UtcNow.AddDays(-10);
+        }
+
+        tenantContext.HardwareAssignments.AddRange(hardwareAssignments);
+        await tenantContext.SaveChangesAsync();
+
+        _logger.LogInformation("Created {RequirementCount} equipment requirements, {EventAssignmentCount} event equipment assignments, and {ManualAssignmentCount} manual assignments", 
+            eventEquipmentRequirements.Count, eventEquipmentAssignments.Count, hardwareAssignments.Count);
 
         _logger.LogInformation("Demo tenant, users, member, facility types, facilities, hardware, and events with equipment integration created successfully");
         _logger.LogInformation("Created {RegularCount} regular events and {RecurringCount} recurring series", 

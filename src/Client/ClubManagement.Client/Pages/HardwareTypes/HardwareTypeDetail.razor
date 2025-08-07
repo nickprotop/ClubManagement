@@ -423,7 +423,7 @@ else
         return status switch
         {
             HardwareStatus.Available => Color.Success,
-            HardwareStatus.Assigned => Color.Info,
+            HardwareStatus.Unavailable => Color.Warning,
             HardwareStatus.InUse => Color.Warning,
             HardwareStatus.Maintenance => Color.Warning,
             HardwareStatus.OutOfService => Color.Error,

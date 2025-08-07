@@ -21,12 +21,12 @@ public class Hardware : BaseEntity
 
 public enum HardwareStatus
 {
-    Available,
-    Assigned,
-    InUse,
-    Maintenance,
-    OutOfOrder,
-    OutOfService,
-    Lost,
-    Retired
+    Available,           // ✅ Can be assigned (formerly Available)
+    Unavailable,         // ❌ Not available (formerly Assigned - more generic)
+    InUse,              // ❌ Currently being used  
+    Maintenance,        // ❌ Under repair
+    OutOfOrder,         // ❌ Broken
+    OutOfService,       // ❌ Temporarily out of service
+    Lost,               // ❌ Missing/lost
+    Retired             // ❌ Permanently removed
 }

@@ -105,14 +105,18 @@ public class HardwareController : ControllerBase
                 {
                     Id = h.Id,
                     Name = h.Name,
+                    Description = string.Empty, // Not in entity yet
                     SerialNumber = h.SerialNumber,
                     HardwareTypeId = h.HardwareTypeId,
                     HardwareTypeName = h.HardwareType.Name,
                     HardwareTypeIcon = h.HardwareType.Icon,
+                    Icon = h.HardwareType.Icon, // Use hardware type icon as default
                     Properties = h.Properties,
                     Status = h.Status,
                     PurchaseDate = h.PurchaseDate,
                     PurchasePrice = h.PurchasePrice,
+                    Supplier = null, // Not in entity yet
+                    WarrantyExpiry = null, // Not in entity yet
                     LastMaintenanceDate = h.LastMaintenanceDate,
                     NextMaintenanceDate = h.NextMaintenanceDate,
                     Location = h.Location,
@@ -187,14 +191,18 @@ public class HardwareController : ControllerBase
             {
                 Id = hardware.Id,
                 Name = hardware.Name,
+                Description = string.Empty, // Not in entity yet
                 SerialNumber = hardware.SerialNumber,
                 HardwareTypeId = hardware.HardwareTypeId,
                 HardwareTypeName = hardware.HardwareType.Name,
                 HardwareTypeIcon = hardware.HardwareType.Icon,
+                Icon = hardware.HardwareType.Icon, // Use hardware type icon as default
                 Properties = hardware.Properties,
                 Status = hardware.Status,
                 PurchaseDate = hardware.PurchaseDate,
                 PurchasePrice = hardware.PurchasePrice,
+                Supplier = null, // Not in entity yet
+                WarrantyExpiry = null, // Not in entity yet
                 LastMaintenanceDate = hardware.LastMaintenanceDate,
                 NextMaintenanceDate = hardware.NextMaintenanceDate,
                 Location = hardware.Location,
@@ -393,6 +401,28 @@ public class HardwareController : ControllerBase
             if (hardware == null)
                 return NotFound(ApiResponse<HardwareDto>.ErrorResult("Hardware not found"));
 
+            // Check for active assignments before allowing status change
+            var activeAssignments = await tenantContext.HardwareAssignments
+                .Where(a => a.HardwareId == id && a.Status == AssignmentStatus.Active)
+                .Include(a => a.Member)
+                    .ThenInclude(m => m.User)
+                .ToListAsync();
+
+            if (activeAssignments.Any())
+            {
+                var assignmentDetails = activeAssignments.Select(a =>
+                {
+                    if (a.Member?.User != null)
+                        return $"Member: {a.Member.User.FirstName} {a.Member.User.LastName}";
+                    else
+                        return "Unknown assignment";
+                }).ToList();
+
+                return BadRequest(ApiResponse<HardwareDto>.ErrorResult(
+                    $"Cannot change status while hardware has active assignments: {string.Join(", ", assignmentDetails)}. " +
+                    $"Please process returns first."));
+            }
+
             // Update hardware properties
             hardware.Name = request.Name;
             hardware.SerialNumber = request.SerialNumber;
@@ -506,12 +536,13 @@ public class HardwareController : ControllerBase
                 .Include(h => h.Assignments.Where(a => a.Status == AssignmentStatus.Active))
                 .AsQueryable();
 
-            // Apply search filter
+            // Apply search filter (case-insensitive)
             if (!string.IsNullOrEmpty(searchTerm))
             {
-                query = query.Where(h => h.Name.Contains(searchTerm) || 
-                                       h.SerialNumber.Contains(searchTerm) ||
-                                       h.HardwareType.Name.Contains(searchTerm));
+                var lowerSearchTerm = searchTerm.ToLower();
+                query = query.Where(h => h.Name.ToLower().Contains(lowerSearchTerm) || 
+                                       (h.SerialNumber != null && h.SerialNumber.ToLower().Contains(lowerSearchTerm)) ||
+                                       h.HardwareType.Name.ToLower().Contains(lowerSearchTerm));
             }
 
             // Apply type filter
@@ -591,7 +622,7 @@ public class HardwareController : ControllerBase
 
             var totalHardware = await tenantContext.Hardware.CountAsync();
             var availableHardware = await tenantContext.Hardware.CountAsync(h => h.Status == HardwareStatus.Available);
-            var assignedHardware = await tenantContext.Hardware.CountAsync(h => h.Status == HardwareStatus.Assigned);
+            var assignedHardware = await tenantContext.Hardware.CountAsync(h => h.Assignments.Any(a => a.Status == AssignmentStatus.Active));
             var maintenanceHardware = await tenantContext.Hardware.CountAsync(h => h.Status == HardwareStatus.Maintenance);
             var outOfOrderHardware = await tenantContext.Hardware.CountAsync(h => h.Status == HardwareStatus.OutOfOrder);
             var totalAssetValue = await tenantContext.Hardware.Where(h => h.PurchasePrice.HasValue).SumAsync(h => h.PurchasePrice!.Value);
