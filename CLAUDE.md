@@ -50,11 +50,11 @@ dotnet ef database drop --project src/Infrastructure/ClubManagement.Infrastructu
 
 ## Architecture Overview
 
-### Multi-Tenant Schema-per-Tenant Design
-- **Public Schema**: Contains `Tenants` table and shared infrastructure
-- **Tenant Schemas**: Each tenant gets isolated schema (e.g., `demo_club`, `tenant_abc`)
-- All tenant-specific data (users, members, facilities, events) lives in tenant schema
-- Schema switching happens at request level using `SET search_path TO "schema_name"`
+### Multi-Tenant Database-per-Tenant Design
+- **Catalog Database**: Contains `Tenants` table and shared infrastructure (`clubmanagement`)
+- **Tenant Databases**: Each tenant gets isolated database (e.g., `clubmanagement_demo_club`, `clubmanagement_tenant_abc`)
+- All tenant-specific data (users, members, facilities, events) lives in separate tenant database
+- Database switching happens at request level using `TenantDbContextFactory`
 
 ### Clean Architecture Layers
 ```
@@ -71,9 +71,9 @@ Client (Blazor WASM) → API (Controllers) → Application (CQRS) → Infrastruc
 ### Key Services and Patterns
 
 **Multi-Tenancy Implementation:**
-- `TenantService`: Resolves tenant by domain, manages schema switching
-- `TenantDbContextFactory`: Creates DbContext instances for specific tenant schemas
-- Controllers use tenant resolution and schema switching in each request
+- `TenantService`: Resolves tenant by domain, provides tenant metadata
+- `TenantDbContextFactory`: Creates DbContext instances for specific tenant databases
+- Controllers use tenant resolution and database context switching in each request
 
 **Authentication System:**
 - JWT-based with separate access/refresh tokens
@@ -122,9 +122,9 @@ Facilities and Hardware use dynamic property schemas:
 - `PasswordService.VerifyPassword()` with constant-time comparison
 
 **Multi-Tenant Security:**
-- Complete data isolation via database schemas
-- No shared data between tenants except public tenant registry
-- Schema name validation prevents injection attacks
+- Complete data isolation via separate databases
+- No shared data between tenants except catalog database tenant registry
+- Database name validation prevents injection attacks
 
 **API Security:**
 - All controllers require `[Authorize]`
@@ -158,8 +158,8 @@ Facilities and Hardware use dynamic property schemas:
 **Multi-Tenant Request Flow:**
 1. Client sends request with tenant domain
 2. API resolves tenant via `TenantService.GetTenantByDomainAsync()`
-3. Controller executes `SET search_path TO "tenant_schema"`
-4. All subsequent DB operations use tenant schema
+3. Controller creates tenant database context via `TenantDbContextFactory.CreateTenantDbContextAsync()`
+4. All subsequent DB operations use tenant-specific database context
 5. Response includes tenant-isolated data only
 
 **Password Management:**
@@ -183,18 +183,18 @@ Facilities and Hardware use dynamic property schemas:
 
 ## Demo Access
 - **Domain**: `demo.localhost`
-- **Database Schema**: `demo_club`
+- **Database**: `clubmanagement_demo_club`
 
 **Demo Accounts:**
 - **Admin**: `admin@demo.localhost` / `Admin123!` (full system access)
 - **Member**: `member@demo.localhost` / `Member123!` (member portal access, Basic tier)
 - **Coach**: `coach@demo.localhost` / `Coach123!` (coaching and training access, Premium membership, can register for events)
 
-## CRITICAL: Multi-Tenant Schema Switching Requirements
+## CRITICAL: Multi-Tenant Database Context Requirements
 
 ⚠️ **SECURITY CRITICAL** ⚠️
 
-**EVERY API endpoint that accesses tenant-specific data MUST implement proper tenant schema switching. Failure to do this will result in:**
+**EVERY API endpoint that accesses tenant-specific data MUST implement proper tenant database context switching. Failure to do this will result in:**
 - Data leakage between tenants
 - Authentication failures  
 - Authorization bypasses
@@ -218,11 +218,11 @@ public async Task<ActionResult<ApiResponse<T>>> YourEndpoint()
         if (tenant == null)
             return BadRequest(ApiResponse<T>.ErrorResult("Invalid tenant"));
             
-        // STEP 3: CRITICAL - Switch to tenant schema BEFORE any DB operations
-        await _context.Database.ExecuteSqlRawAsync($"SET search_path TO \"{tenant.SchemaName}\"");
+        // STEP 3: CRITICAL - Create tenant-specific database context BEFORE any DB operations
+        using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
         
-        // STEP 4: Now safe to perform tenant-specific operations
-        var result = await _context.YourTenantTable.ToListAsync();
+        // STEP 4: Now safe to perform tenant-specific operations using tenantContext
+        var result = await tenantContext.YourTenantTable.ToListAsync();
         return Ok(ApiResponse<T>.SuccessResult(result));
     }
     catch (UnauthorizedAccessException ex)
@@ -238,35 +238,36 @@ public async Task<ActionResult<ApiResponse<T>>> YourEndpoint()
 
 ### **CRITICAL Rules - ALWAYS Follow These:**
 
-1. **NEVER access `_context` (DbContext) without tenant schema switching first**
+1. **NEVER access shared `_context` (DbContext) for tenant-specific data - always use tenant context**
 2. **ALWAYS use `this.GetCurrentTenantId()` to get tenant from JWT**
-3. **ALWAYS validate tenant exists before schema switching** 
+3. **ALWAYS validate tenant exists before creating tenant context** 
 4. **ALWAYS apply `[Authorize]` attribute to tenant-specific endpoints**
-5. **ALWAYS switch schema BEFORE any database queries**
+5. **ALWAYS create tenant context BEFORE any database queries**
+6. **ALWAYS use `using` statement for tenant context to ensure proper disposal**
 
-### **Endpoints That MUST Have Tenant Switching:**
+### **Endpoints That MUST Have Tenant Context Switching:**
 
 - Any endpoint accessing: Users, Members, Events, Facilities, Hardware, Registrations, etc.
 - Any endpoint with `[Authorize]` attribute
-- Any endpoint that queries `_context` (DbContext)
+- Any endpoint that queries tenant-specific data
 
-### **Endpoints That DON'T Need Tenant Switching:**
+### **Endpoints That DON'T Need Tenant Context Switching:**
 
 - Health checks (`/health`)
 - Public authentication endpoints (login - but these handle tenants differently)
-- Endpoints accessing only public schema data (Tenants table)
+- Endpoints accessing only catalog database data (Tenants table)
 
 ### **Required Services in Controller:**
 
 ```csharp
 public class YourController : ControllerBase
 {
-    private readonly ClubManagementDbContext _context;
+    private readonly ITenantDbContextFactory _tenantDbContextFactory; // REQUIRED for tenant context creation
     private readonly ITenantService _tenantService; // REQUIRED for tenant resolution
     
-    public YourController(ClubManagementDbContext context, ITenantService tenantService)
+    public YourController(ITenantDbContextFactory tenantDbContextFactory, ITenantService tenantService)
     {
-        _context = context;
+        _tenantDbContextFactory = tenantDbContextFactory; // MUST inject this
         _tenantService = tenantService; // MUST inject this
     }
 }
@@ -276,11 +277,12 @@ public class YourController : ControllerBase
 
 When implementing new endpoints, ALWAYS test:
 1. User from Tenant A cannot access Tenant B's data
-2. Schema switching works correctly
+2. Database context switching works correctly
 3. JWT token contains valid tenant_id claim
 4. Proper error handling for invalid tenants
+5. Tenant context disposal works properly
 
-**⚠️ REMEMBER: Multi-tenant security is CRITICAL. One missing schema switch can expose ALL tenant data. ALWAYS review tenant switching in code reviews.**
+**⚠️ REMEMBER: Multi-tenant security is CRITICAL. One missing database context switch can expose ALL tenant data. ALWAYS review tenant context switching in code reviews.**
 
 ## Authorization System (Hybrid Approach)
 
