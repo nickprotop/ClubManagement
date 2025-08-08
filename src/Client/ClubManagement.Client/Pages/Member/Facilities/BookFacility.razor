@@ -7,6 +7,7 @@
 @inject IFacilityService FacilityService
 @inject INotificationService NotificationService
 @inject NavigationManager Navigation
+@inject IAuthService AuthService
 @attribute [Authorize]
 
 <PageTitle>Book Facility</PageTitle>
@@ -36,17 +37,18 @@
                     <MudGrid>
                         <!-- Facility Selection -->
                         <MudItem xs="12">
-                            <MudSelect @bind-Value="_model.FacilityId"
+                            <MudSelect Value="_model.FacilityId"
                                       Label="Select Facility"
                                       Required="true"
                                       RequiredError="Please select a facility"
                                       Variant="Variant.Outlined"
-                                      OnSelectionChanged="OnFacilityChanged">
+                                      ValueChanged="@(async (Guid facilityId) => await OnFacilitySelectionChanged(facilityId))"
+                                      ToStringFunc="@(id => GetFacilityDisplayName(id))">
                                 @if (_availableFacilities != null)
                                 {
                                     @foreach (var facility in _availableFacilities)
                                     {
-                                        <MudSelectItem Value="facility.Id">
+                                        <MudSelectItem T="Guid" Value="facility.Id">
                                             <div class="d-flex align-center justify-space-between">
                                                 <div class="d-flex align-center gap-2">
                                                     <MudIcon Icon="@facility.Icon" Size="Size.Small" />
@@ -61,10 +63,10 @@
                                                         </MudText>
                                                     </div>
                                                 </div>
-                                                @if (facility.MemberHourlyRate.HasValue)
+                                                @if (facility.MemberHourlyRate > 0)
                                                 {
                                                     <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">
-                                                        @(facility.MemberHourlyRate.Value > 0 ? facility.MemberHourlyRate.Value.ToString("C") + "/hr" : "Free")
+                                                        @(facility.MemberHourlyRate > 0 ? facility.MemberHourlyRate.ToString("C") + "/hr" : "Free")
                                                     </MudChip>
                                                 }
                                             </div>
@@ -141,7 +143,7 @@
                                         This time slot conflicts with existing bookings:
                                         @foreach (var conflict in _conflictCheckResult)
                                         {
-                                            <br />- @conflict.MemberName (@conflict.StartDateTime.ToString(@"h\:mm tt") - @conflict.EndDateTime.ToString(@"h\:mm tt"))
+                                            <div>- @conflict.MemberName (@GetConflictTimeRange(conflict))</div>
                                         }
                                     </MudAlert>
                                 }
@@ -261,12 +263,12 @@
                         }
 
                         <!-- Access Requirements -->
-                        @if (_memberAccess != null && (_memberAccess.RequiredCertifications?.Count > 0 || _selectedFacility.RequiresSupervision))
+                        @if (_memberAccess != null && (_memberAccess.RequiredCertifications.Length > 0 || _selectedFacility.RequiresMemberSupervision))
                         {
                             <MudDivider Class="my-3" />
                             <MudText Typo="Typo.subtitle2" Class="mb-2">Requirements:</MudText>
                             
-                            @if (_selectedFacility.RequiresSupervision)
+                            @if (_selectedFacility.RequiresMemberSupervision)
                             {
                                 <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
                                     <MudIcon Icon="@Icons.Material.Filled.SupervisorAccount" Size="Size.Small" Class="mr-1" />
@@ -274,7 +276,7 @@
                                 </MudAlert>
                             }
 
-                            @if (_memberAccess.RequiredCertifications?.Count > 0)
+                            @if (_memberAccess.RequiredCertifications.Length > 0)
                             {
                                 <div class="d-flex flex-wrap gap-1">
                                     @foreach (var cert in _memberAccess.RequiredCertifications)
@@ -353,19 +355,34 @@
     private bool _isValidDuration = true;
     private string _durationValidationMessage = string.Empty;
 
-    // Simulated current member info
-    private Guid _currentMemberId = Guid.NewGuid();
+    private Guid? _currentMemberId;
 
     protected override async Task OnInitializedAsync()
     {
+        // Get the current member ID first
+        _currentMemberId = await AuthService.GetCurrentMemberIdAsync();
+        
+        if (!_currentMemberId.HasValue)
+        {
+            await NotificationService.ShowErrorAsync("Unable to determine current member. Please ensure you have a member profile.");
+            Navigation.NavigateTo("/member");
+            return;
+        }
+        
         await LoadAvailableFacilities();
         ParseQueryParameters();
         
         // Set default values
-        _model.MemberId = _currentMemberId;
         _model.ParticipantCount = 1;
         
         UpdateDateTime();
+        
+        // If a facility was pre-selected from query parameters, update the UI
+        if (_model.FacilityId != Guid.Empty)
+        {
+            await OnFacilityChanged();
+            StateHasChanged(); // Force UI refresh to update dropdown display
+        }
     }
 
     private void ParseQueryParameters()
@@ -389,7 +406,6 @@
                     {
                         case "facilityId" when Guid.TryParse(value, out var facilityId):
                             _model.FacilityId = facilityId;
-                            OnFacilityChanged();
                             break;
                         case "date" when DateTime.TryParse(value, out var date):
                             _bookingDate = date;
@@ -410,10 +426,13 @@
 
     private async Task LoadAvailableFacilities()
     {
+        if (!_currentMemberId.HasValue)
+            return;
+            
         try
         {
             // Use member-specific endpoint
-            var response = await FacilityService.GetAvailableFacilitiesForMemberAsync(_currentMemberId);
+            var response = await FacilityService.GetAvailableFacilitiesForMemberAsync(_currentMemberId.Value);
             if (response.Success)
             {
                 _availableFacilities = response.Data?.Where(f => f.Status == FacilityStatus.Available).ToList();
@@ -423,6 +442,12 @@
         {
             await NotificationService.ShowErrorAsync($"Failed to load available facilities: {ex.Message}");
         }
+    }
+
+    private async Task OnFacilitySelectionChanged(Guid facilityId)
+    {
+        _model.FacilityId = facilityId;
+        await OnFacilityChanged();
     }
 
     private async Task OnFacilityChanged()
@@ -492,9 +517,12 @@
     {
         if (_selectedFacility == null) return;
 
+        if (!_currentMemberId.HasValue)
+            return;
+            
         try
         {
-            var response = await FacilityService.CheckMemberAccessAsync(_selectedFacility.Id, _currentMemberId);
+            var response = await FacilityService.CheckMemberAccessAsync(_selectedFacility.Id, _currentMemberId.Value);
             if (response.Success)
             {
                 _memberAccess = response.Data;
@@ -601,6 +629,20 @@
     private int GetMaxCapacity()
     {
         return _selectedFacility?.Capacity ?? 50;
+    }
+
+    private string GetConflictTimeRange(FacilityBookingConflictDto conflict)
+    {
+        return $"{conflict.StartDateTime:h:mm tt} - {conflict.EndDateTime:h:mm tt}";
+    }
+
+    private string GetFacilityDisplayName(Guid facilityId)
+    {
+        if (facilityId == Guid.Empty || _availableFacilities == null)
+            return string.Empty;
+            
+        var facility = _availableFacilities.FirstOrDefault(f => f.Id == facilityId);
+        return facility?.Name ?? string.Empty;
     }
 }
 

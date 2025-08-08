@@ -40,6 +40,7 @@
                       Label="Facility Type"
                       Variant="Variant.Outlined"
                       Clearable="true"
+                      T="Guid?"
                       OnSelectionChanged="OnFilterChanged">
                 @if (_facilityTypes != null)
                 {
@@ -54,6 +55,7 @@
                       Label="Status"
                       Variant="Variant.Outlined"
                       Clearable="true"
+                      T="FacilityStatus?"
                       OnSelectionChanged="OnFilterChanged">
                 <MudSelectItem T="FacilityStatus?" Value="FacilityStatus.Available">Available</MudSelectItem>
                 <MudSelectItem T="FacilityStatus?" Value="FacilityStatus.Occupied">Occupied</MudSelectItem>
@@ -200,7 +202,7 @@
                                              Title="Delete Facility" />
                             }
 
-                            @if (_permissions?.CanManageBookings == true)
+                            @if (_permissions?.CanViewAllBookings == true)
                             {
                                 <MudIconButton Icon="@Icons.Material.Filled.Schedule"
                                              Size="Size.Small"

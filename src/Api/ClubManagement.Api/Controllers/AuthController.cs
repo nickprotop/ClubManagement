@@ -80,6 +80,11 @@ public class AuthController : ControllerBase
         user.LastLoginAt = DateTime.UtcNow;
         await tenantContext.SaveChangesAsync();
 
+        // Get member ID if user has a member profile
+        var member = await tenantContext.Members
+            .Where(m => m.UserId == user.Id)
+            .FirstOrDefaultAsync();
+
         var userProfile = new UserProfileDto
         {
             Id = user.Id,
@@ -92,7 +97,8 @@ public class AuthController : ControllerBase
             ProfilePhotoUrl = user.ProfilePhotoUrl,
             LastLoginAt = user.LastLoginAt,
             EmailVerified = user.EmailVerified,
-            CustomFields = user.CustomFields
+            CustomFields = user.CustomFields,
+            MemberId = member?.Id
         };
 
         var loginResponse = new LoginResponse
@@ -152,6 +158,11 @@ public class AuthController : ControllerBase
         var ipAddress = GetIpAddress();
         var refreshTokenEntity = await _refreshTokenService.GenerateRefreshTokenAsync(tenantContext, user.Id, ipAddress);
 
+        // Get member ID if user has a member profile (likely null for new registrations)
+        var member = await tenantContext.Members
+            .Where(m => m.UserId == user.Id)
+            .FirstOrDefaultAsync();
+
         var userProfile = new UserProfileDto
         {
             Id = user.Id,
@@ -164,7 +175,8 @@ public class AuthController : ControllerBase
             ProfilePhotoUrl = user.ProfilePhotoUrl,
             LastLoginAt = user.LastLoginAt,
             EmailVerified = user.EmailVerified,
-            CustomFields = user.CustomFields
+            CustomFields = user.CustomFields,
+            MemberId = member?.Id
         };
 
         var loginResponse = new LoginResponse

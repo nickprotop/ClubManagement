@@ -48,7 +48,7 @@
                            Clearable="true">
                     @foreach (var type in _certificationTypes)
                     {
-                        <MudSelectItem Value="@type">@type</MudSelectItem>
+                        <MudSelectItem T="string" Value="@type">@type</MudSelectItem>
                     }
                 </MudSelect>
             </MudItem>
@@ -56,8 +56,8 @@
                 <MudSelect @bind-Value="_filter.IsActive"
                            Label="Status"
                            Clearable="true">
-                    <MudSelectItem Value="@(true)">Active</MudSelectItem>
-                    <MudSelectItem Value="@(false)">Inactive</MudSelectItem>
+                    <MudSelectItem T="bool?" Value="@(true)">Active</MudSelectItem>
+                    <MudSelectItem T="bool?" Value="@(false)">Inactive</MudSelectItem>
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="6" md="2">
@@ -86,7 +86,6 @@
 
 <!-- Certifications Data Grid -->
 <MudDataGrid T="FacilityCertificationDto" 
-             Items="_certifications" 
              Loading="_loading" 
              ServerData="LoadServerData"
              @ref="_dataGrid">
@@ -199,7 +198,7 @@
                                RequiredError="Please select a member">
                         @foreach (var member in _members)
                         {
-                            <MudSelectItem Value="@member.Id">@member.Name (@member.Email)</MudSelectItem>
+                            <MudSelectItem T="Guid" Value="@member.Id">@member.FullName (@member.Email)</MudSelectItem>
                         }
                     </MudSelect>
                 </MudItem>
@@ -288,7 +287,7 @@
     private MudDataGrid<FacilityCertificationDto>? _dataGrid;
     private List<FacilityCertificationDto> _certifications = new();
     private List<string> _certificationTypes = new();
-    private List<MemberSummaryDto> _members = new();
+    private List<MemberListDto> _members = new();
     private FacilityPermissions? _permissions;
     
     private bool _loading = true;
@@ -350,9 +349,9 @@
     {
         try
         {
-            var response = await MemberService.GetMemberSummariesAsync();
+            var response = await MemberService.GetMembersAsync(new MemberSearchRequest());
             if (response.Success && response.Data != null)
-                _members = response.Data;
+                _members = response.Data.Items;
         }
         catch (Exception ex)
         {
@@ -397,13 +396,13 @@
             else
             {
                 Snackbar.Add(response.Message ?? "Failed to load certifications", Severity.Error);
-                return new GridData<FacilityCertificationDto> { Items = new(), TotalItems = 0 };
+                return new GridData<FacilityCertificationDto> { Items = new List<FacilityCertificationDto>(), TotalItems = 0 };
             }
         }
         catch (Exception ex)
         {
             Snackbar.Add($"Error loading certifications: {ex.Message}", Severity.Error);
-            return new GridData<FacilityCertificationDto> { Items = new(), TotalItems = 0 };
+            return new GridData<FacilityCertificationDto> { Items = new List<FacilityCertificationDto>(), TotalItems = 0 };
         }
         finally
         {

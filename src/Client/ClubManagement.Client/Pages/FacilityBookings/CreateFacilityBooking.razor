@@ -70,7 +70,7 @@
                                 <MudSelectItem Value="member.Id">
                                     <div>
                                         <MudText Typo="Typo.body2">@member.FullName</MudText>
-                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@member.Email - @member.MembershipTier</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@member.Email - @member.Tier</MudText>
                                     </div>
                                 </MudSelectItem>
                             }
@@ -130,7 +130,7 @@
                                 Booking conflicts detected:
                                 @foreach (var conflict in _conflictCheckResult)
                                 {
-                                    <br />- @conflict.MemberName (@conflict.StartDateTime.ToString(@"h\:mm tt") - @conflict.EndDateTime.ToString(@"h\:mm tt"))
+                                    <div>- @conflict.MemberName (@GetConflictTimeRange(conflict))</div>
                                 }
                             </MudAlert>
                         }
@@ -316,10 +316,17 @@
     {
         try
         {
-            var response = await MemberService.GetMembersAsync();
-            if (response.Success)
+            var response = await MemberService.GetMembersAsync(new MemberSearchRequest());
+            if (response.Success && response.Data != null)
             {
-                _members = response.Data;
+                _members = response.Data.Items.Select(m => new MemberDto 
+                { 
+                    Id = m.Id, 
+                    FirstName = m.FirstName,
+                    LastName = m.LastName,
+                    Email = m.Email,
+                    Tier = m.Tier
+                }).ToList();
             }
         }
         catch (Exception ex)
@@ -366,8 +373,8 @@
             var hours = (decimal)duration.TotalHours;
             
             // Use member rate if member is selected and facility has member rates
-            var hourlyRate = _selectedMember != null && _selectedFacility.MemberHourlyRate.HasValue
-                ? _selectedFacility.MemberHourlyRate.Value
+            var hourlyRate = _selectedMember != null && _selectedFacility.MemberHourlyRate > 0
+                ? _selectedFacility.MemberHourlyRate
                 : _selectedFacility.HourlyRate ?? 0;
             
             _calculatedCost = hours * hourlyRate;
@@ -477,10 +484,15 @@
     {
         if (_selectedFacility == null) return "N/A";
         
-        var rate = _selectedMember != null && _selectedFacility.MemberHourlyRate.HasValue
-            ? _selectedFacility.MemberHourlyRate.Value
+        var rate = _selectedMember != null && _selectedFacility.MemberHourlyRate > 0
+            ? _selectedFacility.MemberHourlyRate
             : _selectedFacility.HourlyRate ?? 0;
             
         return rate > 0 ? rate.ToString("C") + "/hour" : "Free";
+    }
+
+    private string GetConflictTimeRange(FacilityBookingConflictDto conflict)
+    {
+        return $"{conflict.StartDateTime:h:mm tt} - {conflict.EndDateTime:h:mm tt}";
     }
 }

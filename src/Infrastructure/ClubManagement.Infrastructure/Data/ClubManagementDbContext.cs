@@ -230,11 +230,11 @@ public class ClubManagementDbContext : DbContext
             .HasIndex(m => new { m.MembershipNumber, m.TenantId })
             .IsUnique();
 
-        // Configure relationships
+        // Configure relationships - User-Member one-to-one relationship
         modelBuilder.Entity<Member>()
             .HasOne(m => m.User)
-            .WithMany()
-            .HasForeignKey(m => m.UserId)
+            .WithOne(u => u.Member)
+            .HasForeignKey<Member>(m => m.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<Facility>()

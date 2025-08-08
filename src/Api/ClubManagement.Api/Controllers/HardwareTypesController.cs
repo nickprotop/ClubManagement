@@ -45,7 +45,7 @@ public class HardwareTypesController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewHardwareAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to view hardware types");
+                return Forbid();
 
             var hardwareTypes = await tenantContext.HardwareTypes
                 .Where(ht => ht.IsActive)
@@ -126,7 +126,7 @@ public class HardwareTypesController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewHardwareAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to view hardware type");
+                return Forbid();
 
             var hardwareType = await tenantContext.HardwareTypes
                 .FirstOrDefaultAsync(ht => ht.Id == id);

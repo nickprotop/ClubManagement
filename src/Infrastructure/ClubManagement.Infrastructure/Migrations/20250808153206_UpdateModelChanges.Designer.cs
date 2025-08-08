@@ -3,6 +3,7 @@ using System;
 using ClubManagement.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ClubManagement.Infrastructure.Migrations
 {
     [DbContext(typeof(ClubManagementDbContext))]
-    partial class ClubManagementDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250808153206_UpdateModelChanges")]
+    partial class UpdateModelChanges
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1184,9 +1187,14 @@ namespace ClubManagement.Infrastructure.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("UserId1")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId")
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId1")
                         .IsUnique();
 
                     b.HasIndex("MembershipNumber", "TenantId")
@@ -1964,10 +1972,14 @@ namespace ClubManagement.Infrastructure.Migrations
             modelBuilder.Entity("ClubManagement.Shared.Models.Member", b =>
                 {
                     b.HasOne("ClubManagement.Shared.Models.User", "User")
-                        .WithOne("Member")
-                        .HasForeignKey("ClubManagement.Shared.Models.Member", "UserId")
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("ClubManagement.Shared.Models.User", null)
+                        .WithOne("Member")
+                        .HasForeignKey("ClubManagement.Shared.Models.Member", "UserId1");
 
                     b.Navigation("User");
                 });

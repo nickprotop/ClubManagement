@@ -74,7 +74,7 @@
                                    Clearable="true">
                             @foreach (MembershipTier tier in Enum.GetValues<MembershipTier>())
                             {
-                                <MudSelectItem Value="@((MembershipTier?)tier)">@tier</MudSelectItem>
+                                <MudSelectItem T="MembershipTier?" Value="@((MembershipTier?)tier)">@tier</MudSelectItem>
                             }
                         </MudSelect>
                     </MudItem>
@@ -85,7 +85,7 @@
                                    Clearable="true">
                             @foreach (MembershipStatus status in Enum.GetValues<MembershipStatus>())
                             {
-                                <MudSelectItem Value="@((MembershipStatus?)status)">@status</MudSelectItem>
+                                <MudSelectItem T="MembershipStatus?" Value="@((MembershipStatus?)status)">@status</MudSelectItem>
                             }
                         </MudSelect>
                     </MudItem>

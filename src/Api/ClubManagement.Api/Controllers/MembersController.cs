@@ -85,6 +85,34 @@ public class MembersController : ControllerBase
         }
     }
 
+    [HttpGet("current-member-id")]
+    public async Task<ActionResult<ApiResponse<Guid?>>> GetCurrentMemberId()
+    {
+        try
+        {
+            var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+            
+            // Get tenant and create tenant-specific database context
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<Guid?>.ErrorResult("Invalid tenant"));
+                
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
+            
+            // Look up the Member record for the current user (if it exists)
+            var member = await tenantContext.Members
+                .Where(m => m.UserId == userId)
+                .FirstOrDefaultAsync();
+                
+            return Ok(ApiResponse<Guid?>.SuccessResult(member?.Id));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<Guid?>.ErrorResult($"Error retrieving member ID: {ex.Message}"));
+        }
+    }
+
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PagedResult<MemberListDto>>>> GetMembers([FromQuery] MemberSearchRequest request)
     {

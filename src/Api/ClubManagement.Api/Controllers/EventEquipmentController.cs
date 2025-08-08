@@ -48,7 +48,7 @@ public class EventEquipmentController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _eventAuthService.CanPerformActionAsync(userId, EventAction.View, tenantContext, eventId))
-                return Forbid("Insufficient permissions to view event equipment requirements");
+                return Forbid();
 
             // Verify event exists
             var eventExists = await tenantContext.Events.AnyAsync(e => e.Id == eventId);
@@ -116,7 +116,7 @@ public class EventEquipmentController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _eventAuthService.CanPerformActionAsync(userId, EventAction.View, tenantContext, eventId))
-                return Forbid("Insufficient permissions to view event equipment requirement");
+                return Forbid();
 
             var requirement = await tenantContext.EventEquipmentRequirements
                 .Include(r => r.HardwareType)
@@ -542,7 +542,7 @@ public class EventEquipmentController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _hardwareAuthService.CanViewHardwareAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to view hardware availability");
+                return Forbid();
 
             var query = tenantContext.Hardware
                 .Include(h => h.HardwareType)

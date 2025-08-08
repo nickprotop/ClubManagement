@@ -5,6 +5,8 @@
 @using ClubManagement.Shared.Models.Authorization
 @using Microsoft.AspNetCore.Authorization
 @inject IFacilityService FacilityService
+@inject IMemberBookingService MemberBookingService
+@inject IAuthService AuthService
 @inject INotificationService NotificationService
 @inject NavigationManager Navigation
 @attribute [Authorize]
@@ -144,7 +146,7 @@ else
                                             @string.Join(", ", _facility.OperatingDays.Select(d => d.ToString()))
                                             @if (_facility.OperatingHoursStart.HasValue && _facility.OperatingHoursEnd.HasValue)
                                             {
-                                                <br />@_facility.OperatingHoursStart.Value.ToString(@"h\:mm") - @_facility.OperatingHoursEnd.Value.ToString(@"h\:mm")
+                                                <br />@($"{_facility.OperatingHoursStart.Value:hh\\:mm} - {_facility.OperatingHoursEnd.Value:hh\\:mm}")
                                             }
                                         </MudText>
                                     </div>
@@ -153,23 +155,23 @@ else
                         }
 
                         <!-- Pricing -->
-                        @if (_facility.MemberHourlyRate.HasValue || _facility.MemberDailyRate.HasValue)
+                        @if (_facility.MemberHourlyRate >= 0)
                         {
                             <MudItem xs="12">
                                 <div class="d-flex align-start gap-2 mb-3">
                                     <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Color="Color.Success" />
                                     <div>
                                         <MudText Typo="Typo.subtitle2">Member Pricing</MudText>
-                                        @if (_facility.MemberHourlyRate.HasValue)
+                                        @if (_facility.MemberHourlyRate >= 0)
                                         {
                                             <MudText Typo="Typo.body2">
-                                                @(_facility.MemberHourlyRate.Value > 0 ? _facility.MemberHourlyRate.Value.ToString("C") + "/hour" : "Free per hour")
+                                                @(_facility.MemberHourlyRate > 0 ? _facility.MemberHourlyRate.ToString("C") + "/hour" : "Free per hour")
                                             </MudText>
                                         }
-                                        @if (_facility.MemberDailyRate.HasValue)
+                                        @if (_facility.MemberHourlyRate >= 0)
                                         {
                                             <MudText Typo="Typo.body2">
-                                                @(_facility.MemberDailyRate.Value > 0 ? _facility.MemberDailyRate.Value.ToString("C") + "/day" : "Free per day")
+                                                @(_facility.MemberHourlyRate > 0 ? _facility.MemberHourlyRate.ToString("C") + "/day" : "Free per day")
                                             </MudText>
                                         }
                                     </div>
@@ -314,7 +316,7 @@ else
             </MudCard>
 
             <!-- Safety Information -->
-            @if (_facility.RequiredCertifications?.Count > 0 || _facility.RequiresSupervision)
+            @if (_facility.RequiredCertifications?.Count > 0 || _facility.RequiresMemberSupervision)
             {
                 <MudCard Class="mb-4">
                     <MudCardHeader>
@@ -340,7 +342,7 @@ else
                             </div>
                         }
                         
-                        @if (_facility.RequiresSupervision)
+                        @if (_facility.RequiresMemberSupervision)
                         {
                             <MudAlert Severity="Severity.Info" Dense="true">
                                 <MudIcon Icon="@Icons.Material.Filled.SupervisorAccount" Class="mr-2" />
@@ -354,12 +356,158 @@ else
     </MudGrid>
 }
 
+<!-- Check Availability Dialog -->
+<MudDialog @bind-Visible="_showAvailabilityDialog" Options="@_dialogOptions">
+    <DialogContent>
+        <div class="d-flex flex-column gap-4">
+            <MudText Typo="Typo.h6">Check Availability - @_facility?.Name</MudText>
+            
+            <MudDatePicker @bind-Date="_selectedDate" 
+                          Label="Date"
+                          MinDate="DateTime.Today"
+                          MaxDate="DateTime.Today.AddDays(30)"
+                          Required="true" />
+            
+            <div class="d-flex gap-2">
+                <MudTimePicker @bind-Time="_startTime" 
+                              Label="Start Time"
+                              Required="true"
+                              Editable="true" />
+                
+                <MudTimePicker @bind-Time="_endTime" 
+                              Label="End Time"
+                              Required="true"
+                              Editable="true" />
+            </div>
+            
+            <MudButton Variant="Variant.Filled" 
+                      Color="Color.Primary"
+                      OnClick="@PerformAvailabilityCheck"
+                      Disabled="@(_checkingAvailability || !IsValidTimeRange())"
+                      StartIcon="@Icons.Material.Filled.Search">
+                @if (_checkingAvailability)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    <span>Checking...</span>
+                }
+                else
+                {
+                    <span>Check Availability</span>
+                }
+            </MudButton>
+            
+            @if (_availabilityResult != null)
+            {
+                <MudDivider />
+                
+                <div class="availability-results">
+                    @if (_availabilityResult.IsAvailable)
+                    {
+                        <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3">
+                            <div class="d-flex align-center gap-2">
+                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" />
+                                <div>
+                                    <MudText Typo="Typo.subtitle2">Available!</MudText>
+                                    <MudText Typo="Typo.body2">
+                                        The facility is available for booking at your selected time.
+                                    </MudText>
+                                </div>
+                            </div>
+                        </MudAlert>
+                        
+                        @if (_availabilityResult.EstimatedCost.HasValue)
+                        {
+                            <div class="d-flex align-center gap-2 mb-3">
+                                <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Color="Color.Success" />
+                                <MudText Typo="Typo.body1">
+                                    Estimated cost: <strong>@_availabilityResult.EstimatedCost.Value.ToString("C")</strong>
+                                </MudText>
+                            </div>
+                        }
+                        
+                        <MudButton Variant="Variant.Filled" 
+                                  Color="Color.Primary"
+                                  OnClick="@BookFromAvailabilityCheck"
+                                  StartIcon="@Icons.Material.Filled.Schedule">
+                            Book This Time Slot
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
+                            <div class="d-flex align-center gap-2">
+                                <MudIcon Icon="@Icons.Material.Filled.Block" />
+                                <div>
+                                    <MudText Typo="Typo.subtitle2">Not Available</MudText>
+                                    <MudText Typo="Typo.body2">
+                                        This time slot is not available for booking.
+                                    </MudText>
+                                </div>
+                            </div>
+                        </MudAlert>
+                        
+                        @if (_availabilityResult.BlockingReasons?.Count > 0)
+                        {
+                            <div class="mb-3">
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">Reasons:</MudText>
+                                @foreach (var reason in _availabilityResult.BlockingReasons)
+                                {
+                                    <div class="d-flex align-center gap-2 mb-1">
+                                        <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Warning" />
+                                        <MudText Typo="Typo.body2">@reason</MudText>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        
+                        @if (_availabilityResult.Alternatives?.Count > 0)
+                        {
+                            <div>
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">Alternative Times:</MudText>
+                                @foreach (var alt in _availabilityResult.Alternatives.Take(3))
+                                {
+                                    <MudButton Variant="Variant.Outlined" 
+                                              Color="Color.Info"
+                                              Size="Size.Small"
+                                              Class="ma-1"
+                                              OnClick="@(() => SelectAlternativeTime(alt))">
+                                        @alt.StartTime.ToString("MMM dd, HH:mm") - @alt.EndTime.ToString("HH:mm")
+                                    </MudButton>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+    </DialogContent>
+    
+    <DialogActions>
+        <MudButton OnClick="@(() => _showAvailabilityDialog = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
     [Parameter] public Guid Id { get; set; }
     
     private FacilityDto? _facility;
     private MemberFacilityAccessDto? _memberAccess;
     private bool _loading = true;
+
+    // Availability checking
+    private bool _showAvailabilityDialog = false;
+    private bool _checkingAvailability = false;
+    private DateTime? _selectedDate = DateTime.Today.AddDays(1);
+    private TimeSpan? _startTime = new TimeSpan(9, 0, 0);
+    private TimeSpan? _endTime = new TimeSpan(10, 0, 0);
+    private BookingAvailabilityResult? _availabilityResult = null;
+    
+    private DialogOptions _dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true,
+        CloseButton = true
+    };
 
     // Simulated current member info (in real app, this would come from auth context)
     private MembershipTier _currentMemberTier = MembershipTier.Premium;
@@ -401,12 +549,32 @@ else
 
         try
         {
-            // This would use current member ID from auth context
-            // For now, using a placeholder member ID
-            var memberResponse = await FacilityService.CheckMemberAccessAsync(Id, Guid.NewGuid());
-            if (memberResponse.Success)
+            var memberId = await AuthService.GetCurrentMemberIdAsync();
+            if (memberId.HasValue)
             {
-                _memberAccess = memberResponse.Data;
+                var memberResponse = await FacilityService.CheckMemberAccessAsync(Id, memberId.Value);
+                if (memberResponse.Success)
+                {
+                    _memberAccess = memberResponse.Data;
+                }
+                else
+                {
+                    // Access check failed - assume no access
+                    _memberAccess = new MemberFacilityAccessDto
+                    {
+                        CanAccess = false,
+                        ReasonsDenied = new[] { memberResponse.Message ?? "Unable to verify access" }
+                    };
+                }
+            }
+            else
+            {
+                // No member ID available - assume no access
+                _memberAccess = new MemberFacilityAccessDto
+                {
+                    CanAccess = false,
+                    ReasonsDenied = new[] { "Unable to determine member identity" }
+                };
             }
         }
         catch (Exception ex)
@@ -427,8 +595,76 @@ else
 
     private async Task CheckAvailability()
     {
-        // TODO: Navigate to availability checker or open dialog
-        await NotificationService.ShowInfoAsync("Availability checker coming soon...");
+        // Reset previous results
+        _availabilityResult = null;
+        _selectedDate = DateTime.Today.AddDays(1);
+        _startTime = new TimeSpan(9, 0, 0);
+        _endTime = new TimeSpan(10, 0, 0);
+        
+        _showAvailabilityDialog = true;
+    }
+
+    private async Task PerformAvailabilityCheck()
+    {
+        if (_facility == null || _selectedDate == null || _startTime == null || _endTime == null)
+            return;
+
+        var memberId = await AuthService.GetCurrentMemberIdAsync();
+        if (memberId == null)
+        {
+            await NotificationService.ShowErrorAsync("Unable to determine member ID");
+            return;
+        }
+
+        try
+        {
+            _checkingAvailability = true;
+            
+            var startDateTime = _selectedDate.Value.Date.Add(_startTime.Value);
+            var endDateTime = _selectedDate.Value.Date.Add(_endTime.Value);
+            
+            var response = await MemberBookingService.CheckBookingAvailabilityAsync(
+                memberId.Value, _facility.Id, startDateTime, endDateTime);
+                
+            if (response?.Success == true && response.Data != null)
+            {
+                _availabilityResult = response.Data;
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response?.Message ?? "Failed to check availability");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error checking availability: {ex.Message}");
+        }
+        finally
+        {
+            _checkingAvailability = false;
+        }
+    }
+
+    private bool IsValidTimeRange()
+    {
+        return _selectedDate.HasValue && _startTime.HasValue && _endTime.HasValue && _startTime.Value < _endTime.Value;
+    }
+
+    private void SelectAlternativeTime(AlternativeBookingSlot alternative)
+    {
+        _selectedDate = alternative.StartTime.Date;
+        _startTime = alternative.StartTime.TimeOfDay;
+        _endTime = alternative.EndTime.TimeOfDay;
+        _availabilityResult = null; // Clear previous result so user can check again
+    }
+
+    private void BookFromAvailabilityCheck()
+    {
+        if (_availabilityResult?.IsAvailable == true && _selectedDate.HasValue && _startTime.HasValue && _endTime.HasValue)
+        {
+            // Navigate to booking page with pre-filled data
+            Navigation.NavigateTo($"/member/facilities/book?facilityId={Id}&date={_selectedDate.Value:yyyy-MM-dd}&startTime={_startTime.Value:hh\\:mm}&endTime={_endTime.Value:hh\\:mm}");
+        }
     }
 
     private Color GetStatusColor(FacilityStatus status)

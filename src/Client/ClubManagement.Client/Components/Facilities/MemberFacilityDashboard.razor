@@ -2,7 +2,7 @@
 @using ClubManagement.Shared.Models
 @using ClubManagement.Client.Services
 @inject IMemberBookingService MemberBookingService
-@inject AuthService AuthService
+@inject IAuthService AuthService
 @inject ISnackbar Snackbar
 
 <MudGrid>
@@ -408,7 +408,7 @@
 
     private async Task NavigateToBookFacility()
     {
-        await OnNavigate.InvokeAsync("/facilities/book");
+        await OnNavigate.InvokeAsync("/member/facilities/book");
     }
 
     private async Task NavigateToMyBookings()

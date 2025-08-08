@@ -45,7 +45,7 @@ public class FacilityTypesController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewFacilitiesAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to view facility types");
+                return Forbid();
 
             var facilityTypes = await tenantContext.FacilityTypes
                 .Where(ft => ft.IsActive)
@@ -126,7 +126,7 @@ public class FacilityTypesController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewFacilitiesAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to view facility type");
+                return Forbid();
 
             var facilityType = await tenantContext.FacilityTypes
                 .FirstOrDefaultAsync(ft => ft.Id == id);

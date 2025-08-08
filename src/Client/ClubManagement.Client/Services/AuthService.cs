@@ -299,16 +299,7 @@ public class AuthService : IAuthService
     public async Task<Guid?> GetCurrentMemberIdAsync()
     {
         var user = await GetCurrentUserAsync();
-        
-        // For members, the user ID is also their member ID
-        if (user != null && user.Role == UserRole.Member)
-        {
-            return user.Id;
-        }
-        
-        // For other roles, we would need to look up their member record if they have one
-        // For now, return null for non-members
-        return null;
+        return user?.MemberId;
     }
 
     public async Task SetTokenAsync(string token)

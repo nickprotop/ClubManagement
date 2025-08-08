@@ -626,8 +626,9 @@ else
         {
             BookingSource.MemberPortal => Color.Primary,
             BookingSource.StaffBooking => Color.Secondary,
-            BookingSource.StaffBooking => Color.Info,
             BookingSource.EventBooking => Color.Success,
+            BookingSource.RecurringBooking => Color.Info,
+            BookingSource.WalkIn => Color.Warning,
             _ => Color.Default
         };
     }

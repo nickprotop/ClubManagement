@@ -80,16 +80,6 @@
                                    Variant="Variant.Outlined" />
                 </MudItem>
 
-                <MudItem xs="12" sm="6">
-                    <MudSelect @bind-Value="_model.Status"
-                              Label="Status"
-                              Variant="Variant.Outlined">
-                        <MudSelectItem Value="FacilityStatus.Available">Available</MudSelectItem>
-                        <MudSelectItem Value="FacilityStatus.Occupied">Occupied</MudSelectItem>
-                        <MudSelectItem Value="FacilityStatus.Maintenance">Maintenance</MudSelectItem>
-                        <MudSelectItem Value="FacilityStatus.OutOfOrder">Out of Order</MudSelectItem>
-                    </MudSelect>
-                </MudItem>
 
                 <!-- Operating Hours -->
                 <MudItem xs="12">
@@ -148,25 +138,7 @@
                                    AdornmentText="$" />
                 </MudItem>
 
-                <MudItem xs="12" sm="6">
-                    <MudNumericField @bind-Value="_model.DailyRate"
-                                   Label="Daily Rate"
-                                   Min="0"
-                                   Format="C"
-                                   Variant="Variant.Outlined"
-                                   Adornment="Adornment.Start"
-                                   AdornmentText="$" />
-                </MudItem>
 
-                <MudItem xs="12" sm="6">
-                    <MudNumericField @bind-Value="_model.MemberDailyRate"
-                                   Label="Member Daily Rate"
-                                   Min="0"
-                                   Format="C"
-                                   Variant="Variant.Outlined"
-                                   Adornment="Adornment.Start"
-                                   AdornmentText="$" />
-                </MudItem>
 
                 <!-- Member Access -->
                 <MudItem xs="12">
@@ -187,7 +159,7 @@
 
                 <MudItem xs="12" sm="6">
                     <div class="d-flex align-center gap-2">
-                        <MudCheckBox @bind-Value="_model.RequiresSupervision" 
+                        <MudCheckBox @bind-Value="_model.RequiresMemberSupervision" 
                                     Label="Requires Supervision" />
                         <MudTooltip Text="Check if this facility requires staff supervision during use">
                             <MudIcon Icon="@Icons.Material.Filled.Help" Size="Size.Small" />
@@ -208,24 +180,7 @@
                     <MudText Typo="Typo.h6" Class="mb-4">Maintenance Information</MudText>
                 </MudItem>
 
-                <MudItem xs="12" sm="6">
-                    <MudDatePicker @bind-Date="_model.LastMaintenanceDate"
-                                  Label="Last Maintenance Date"
-                                  Variant="Variant.Outlined" />
-                </MudItem>
 
-                <MudItem xs="12" sm="6">
-                    <MudDatePicker @bind-Date="_model.NextMaintenanceDate"
-                                  Label="Next Maintenance Date"
-                                  Variant="Variant.Outlined" />
-                </MudItem>
-
-                <MudItem xs="12">
-                    <MudTextField @bind-Value="_model.MaintenanceNotes"
-                                 Label="Maintenance Notes"
-                                 Lines="2"
-                                 Variant="Variant.Outlined" />
-                </MudItem>
             </MudGrid>
         </MudCardContent>
 
@@ -279,7 +234,6 @@
         await LoadFacilityTypes();
         
         // Set default values
-        _model.Status = FacilityStatus.Available;
         _model.Icon = "meeting_room";
         _selectedTiers = new[] { MembershipTier.Basic, MembershipTier.Premium, MembershipTier.VIP };
     }
@@ -327,8 +281,8 @@
             _model.OperatingDays = operatingDays;
             
             // Map operating times
-            _model.OpeningTime = _openingTime?.ToString(@"hh\:mm");
-            _model.ClosingTime = _closingTime?.ToString(@"hh\:mm");
+            _model.OperatingHoursStart = _openingTime;
+            _model.OperatingHoursEnd = _closingTime;
             
             // Map membership tiers
             _model.AllowedMembershipTiers = _selectedTiers.ToList();

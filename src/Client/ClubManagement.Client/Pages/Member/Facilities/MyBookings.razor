@@ -1,5 +1,5 @@
-@page "/member/bookings"
-@page "/member/bookings/{BookingId:guid}"
+@page "/member/facility-bookings"
+@page "/member/facility-bookings/{BookingId:guid}"
 @using ClubManagement.Client.Services
 @using ClubManagement.Shared.DTOs
 @using ClubManagement.Shared.Models
@@ -99,12 +99,13 @@
                       Label="Status"
                       Variant="Variant.Outlined"
                       Clearable="true"
+                      T="BookingStatus?"
                       OnSelectionChanged="OnFilterChanged">
-                <MudSelectItem Value="BookingStatus.Confirmed">Upcoming</MudSelectItem>
-                <MudSelectItem Value="BookingStatus.CheckedIn">Checked In</MudSelectItem>
-                <MudSelectItem Value="BookingStatus.CheckedOut">Completed</MudSelectItem>
-                <MudSelectItem Value="BookingStatus.Cancelled">Cancelled</MudSelectItem>
-                <MudSelectItem Value="BookingStatus.NoShow">No Show</MudSelectItem>
+                <MudSelectItem T="BookingStatus?" Value="BookingStatus.Confirmed">Upcoming</MudSelectItem>
+                <MudSelectItem T="BookingStatus?" Value="BookingStatus.CheckedIn">Checked In</MudSelectItem>
+                <MudSelectItem T="BookingStatus?" Value="BookingStatus.CheckedOut">Completed</MudSelectItem>
+                <MudSelectItem T="BookingStatus?" Value="BookingStatus.Cancelled">Cancelled</MudSelectItem>
+                <MudSelectItem T="BookingStatus?" Value="BookingStatus.NoShow">No Show</MudSelectItem>
             </MudSelect>
 
             <MudButton Variant="Variant.Text"

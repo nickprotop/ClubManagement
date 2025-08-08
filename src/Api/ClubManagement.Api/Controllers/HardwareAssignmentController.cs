@@ -45,7 +45,7 @@ public class HardwareAssignmentController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewHardwareAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to view hardware assignments");
+                return Forbid();
 
             var query = tenantContext.HardwareAssignments
                 .Include(a => a.Hardware)
@@ -175,7 +175,7 @@ public class HardwareAssignmentController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewHardwareAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to view hardware assignment");
+                return Forbid();
 
             var assignment = await tenantContext.HardwareAssignments
                 .Include(a => a.Hardware)
@@ -445,7 +445,7 @@ public class HardwareAssignmentController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewHardwareAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to view assignment dashboard");
+                return Forbid();
 
             var totalAssignments = await tenantContext.HardwareAssignments.CountAsync();
             var activeAssignments = await tenantContext.HardwareAssignments.CountAsync(a => a.Status == AssignmentStatus.Active);

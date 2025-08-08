@@ -267,7 +267,7 @@ else
     <DialogContent>
         <MudText Typo="Typo.h6" Class="mb-4">Process Hardware Return</MudText>
         <MudStack Spacing="3">
-            <MudSelect @bind-Value="_returnStatus" Label="Return Status" Variant="Variant.Outlined" Required="true">
+            <MudSelect @bind-Value="_returnStatus" Label="Return Status" Variant="Variant.Outlined" Required="true" T="AssignmentStatus">
                 <MudSelectItem T="AssignmentStatus" Value="AssignmentStatus.Returned">Returned (Good Condition)</MudSelectItem>
                 <MudSelectItem T="AssignmentStatus" Value="AssignmentStatus.Damaged">Returned (Damaged/Needs Maintenance)</MudSelectItem>
                 <MudSelectItem T="AssignmentStatus" Value="AssignmentStatus.Lost">Lost</MudSelectItem>

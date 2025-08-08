@@ -8,20 +8,18 @@ namespace ClubManagement.Infrastructure.Services;
 
 public class MemberBookingService : IMemberBookingService
 {
-    private readonly ClubManagementDbContext _context;
+    // NOTE: Service should NOT inject shared DbContext - controllers must pass tenant context
+    // This service now receives tenant context as parameter to maintain multi-tenant isolation
     private readonly IMemberFacilityService _memberFacilityService;
 
-    public MemberBookingService(
-        ClubManagementDbContext context,
-        IMemberFacilityService memberFacilityService)
+    public MemberBookingService(IMemberFacilityService memberFacilityService)
     {
-        _context = context;
         _memberFacilityService = memberFacilityService;
     }
 
-    public async Task<PagedResult<FacilityBookingDto>> GetMemberBookingsAsync(Guid memberId, MemberBookingFilter filter)
+    public async Task<PagedResult<FacilityBookingDto>> GetMemberBookingsAsync(ClubManagementDbContext tenantContext, Guid memberId, MemberBookingFilter filter)
     {
-        var query = _context.FacilityBookings
+        var query = tenantContext.FacilityBookings
             .Where(b => b.MemberId == memberId)
             .Include(b => b.Facility)
                 .ThenInclude(f => f.FacilityType)
@@ -107,11 +105,11 @@ public class MemberBookingService : IMemberBookingService
         };
     }
 
-    public async Task<List<FacilityBookingDto>> GetMemberUpcomingBookingsAsync(Guid memberId, int daysAhead = 7)
+    public async Task<List<FacilityBookingDto>> GetMemberUpcomingBookingsAsync(ClubManagementDbContext tenantContext, Guid memberId, int daysAhead = 7)
     {
         var cutoffDate = DateTime.UtcNow.AddDays(daysAhead);
 
-        return await _context.FacilityBookings
+        return await tenantContext.FacilityBookings
             .Where(b => b.MemberId == memberId)
             .Where(b => b.StartDateTime >= DateTime.UtcNow && b.StartDateTime <= cutoffDate)
             .Where(b => b.Status == BookingStatus.Confirmed)
@@ -135,9 +133,9 @@ public class MemberBookingService : IMemberBookingService
             .ToListAsync();
     }
 
-    public async Task<MemberBookingHistoryDto> GetMemberBookingHistoryAsync(Guid memberId, DateTime? startDate = null, DateTime? endDate = null)
+    public async Task<MemberBookingHistoryDto> GetMemberBookingHistoryAsync(ClubManagementDbContext tenantContext, Guid memberId, DateTime? startDate = null, DateTime? endDate = null)
     {
-        var member = await _context.Members
+        var member = await tenantContext.Members
             .Include(m => m.User)
             .FirstOrDefaultAsync(m => m.Id == memberId);
 
@@ -147,7 +145,7 @@ public class MemberBookingService : IMemberBookingService
         var periodStart = startDate ?? DateTime.UtcNow.AddMonths(-6);
         var periodEnd = endDate ?? DateTime.UtcNow;
 
-        var bookings = await _context.FacilityBookings
+        var bookings = await tenantContext.FacilityBookings
             .Where(b => b.MemberId == memberId)
             .Where(b => b.StartDateTime >= periodStart && b.StartDateTime <= periodEnd)
             .Include(b => b.Facility)
@@ -218,10 +216,10 @@ public class MemberBookingService : IMemberBookingService
         };
     }
 
-    public async Task<FacilityBookingDto> CreateMemberBookingAsync(Guid memberId, CreateMemberBookingRequest request)
+    public async Task<FacilityBookingDto> CreateMemberBookingAsync(ClubManagementDbContext tenantContext, Guid memberId, CreateMemberBookingRequest request)
     {
         // Validate member access
-        var accessResult = await _memberFacilityService.CheckMemberAccessAsync(request.FacilityId, memberId);
+        var accessResult = await _memberFacilityService.CheckMemberAccessAsync(tenantContext, request.FacilityId, memberId);
         if (!accessResult.CanAccess)
         {
             throw new InvalidOperationException($"Member access denied: {string.Join(", ", accessResult.ReasonsDenied)}");
@@ -229,7 +227,7 @@ public class MemberBookingService : IMemberBookingService
 
         // Validate booking limits
         var limitsResult = await _memberFacilityService.ValidateBookingLimitsAsync(
-            memberId, request.FacilityId, request.StartDateTime, request.EndDateTime);
+            tenantContext, memberId, request.FacilityId, request.StartDateTime, request.EndDateTime);
         
         if (!limitsResult.IsValid)
         {
@@ -237,7 +235,7 @@ public class MemberBookingService : IMemberBookingService
         }
 
         // Check facility availability
-        var conflictingBookings = await _context.FacilityBookings
+        var conflictingBookings = await tenantContext.FacilityBookings
             .Where(b => b.FacilityId == request.FacilityId)
             .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn)
             .Where(b => b.StartDateTime < request.EndDateTime && b.EndDateTime > request.StartDateTime)
@@ -249,8 +247,8 @@ public class MemberBookingService : IMemberBookingService
         }
 
         // Calculate cost
-        var facility = await _context.Facilities.FirstOrDefaultAsync(f => f.Id == request.FacilityId);
-        var member = await _context.Members.FirstOrDefaultAsync(m => m.Id == memberId);
+        var facility = await tenantContext.Facilities.FirstOrDefaultAsync(f => f.Id == request.FacilityId);
+        var member = await tenantContext.Members.FirstOrDefaultAsync(m => m.Id == memberId);
         var duration = (request.EndDateTime - request.StartDateTime).TotalHours;
         var cost = CalculateBookingCost(facility, member, duration);
 
@@ -272,8 +270,8 @@ public class MemberBookingService : IMemberBookingService
             CreatedBy = "Member" // This should come from current user context
         };
 
-        _context.FacilityBookings.Add(booking);
-        await _context.SaveChangesAsync();
+        tenantContext.FacilityBookings.Add(booking);
+        await tenantContext.SaveChangesAsync();
 
         // Return DTO
         return new FacilityBookingDto
@@ -294,9 +292,9 @@ public class MemberBookingService : IMemberBookingService
         };
     }
 
-    public async Task<BookingCancellationResult> CancelMemberBookingAsync(Guid memberId, Guid bookingId, string? reason = null)
+    public async Task<BookingCancellationResult> CancelMemberBookingAsync(ClubManagementDbContext tenantContext, Guid memberId, Guid bookingId, string? reason = null)
     {
-        var booking = await _context.FacilityBookings
+        var booking = await tenantContext.FacilityBookings
             .Include(b => b.Member)
             .FirstOrDefaultAsync(b => b.Id == bookingId && b.MemberId == memberId);
 
@@ -328,8 +326,8 @@ public class MemberBookingService : IMemberBookingService
         }
 
         var hoursBeforeStart = (int)(booking.StartDateTime - DateTime.UtcNow).TotalHours;
-        var memberLimits = await _memberFacilityService.GetMemberBookingLimitsAsync(memberId);
-        var applicableLimit = memberLimits.FirstOrDefault() ?? await _memberFacilityService.GetDefaultTierLimitsAsync(booking.Member.Tier);
+        var memberLimits = await _memberFacilityService.GetMemberBookingLimitsAsync(tenantContext, memberId);
+        var applicableLimit = memberLimits.FirstOrDefault() ?? await _memberFacilityService.GetDefaultTierLimitsAsync(tenantContext, booking.Member.Tier);
 
         // Calculate penalty
         decimal penaltyAmount = 0;
@@ -348,7 +346,7 @@ public class MemberBookingService : IMemberBookingService
         booking.CancelledAt = DateTime.UtcNow;
         booking.UpdatedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        await tenantContext.SaveChangesAsync();
 
         return new BookingCancellationResult
         {
@@ -362,9 +360,9 @@ public class MemberBookingService : IMemberBookingService
         };
     }
 
-    public async Task<FacilityBookingDto> ModifyMemberBookingAsync(Guid memberId, Guid bookingId, ModifyBookingRequest request)
+    public async Task<FacilityBookingDto> ModifyMemberBookingAsync(ClubManagementDbContext tenantContext, Guid memberId, Guid bookingId, ModifyBookingRequest request)
     {
-        var booking = await _context.FacilityBookings
+        var booking = await tenantContext.FacilityBookings
             .Include(b => b.Facility)
             .FirstOrDefaultAsync(b => b.Id == bookingId && b.MemberId == memberId);
 
@@ -388,7 +386,7 @@ public class MemberBookingService : IMemberBookingService
         if (request.NewFacilityId.HasValue)
         {
             // Validate access to new facility
-            var accessResult = await _memberFacilityService.CheckMemberAccessAsync(request.NewFacilityId.Value, memberId);
+            var accessResult = await _memberFacilityService.CheckMemberAccessAsync(tenantContext, request.NewFacilityId.Value, memberId);
             if (!accessResult.CanAccess)
                 throw new InvalidOperationException("No access to the requested facility");
 
@@ -408,12 +406,12 @@ public class MemberBookingService : IMemberBookingService
         booking.UpdatedAt = DateTime.UtcNow;
 
         // Recalculate cost if needed
-        var facility = await _context.Facilities.FirstOrDefaultAsync(f => f.Id == booking.FacilityId);
-        var member = await _context.Members.FirstOrDefaultAsync(m => m.Id == memberId);
+        var facility = await tenantContext.Facilities.FirstOrDefaultAsync(f => f.Id == booking.FacilityId);
+        var member = await tenantContext.Members.FirstOrDefaultAsync(m => m.Id == memberId);
         var duration = (booking.EndDateTime - booking.StartDateTime).TotalHours;
         booking.Cost = CalculateBookingCost(facility, member, duration);
 
-        await _context.SaveChangesAsync();
+        await tenantContext.SaveChangesAsync();
 
         return new FacilityBookingDto
         {
@@ -430,20 +428,20 @@ public class MemberBookingService : IMemberBookingService
         };
     }
 
-    public async Task<List<RecommendedBookingSlot>> GetRecommendedBookingSlotsAsync(Guid memberId, Guid facilityId, DateTime? preferredDate = null)
+    public async Task<List<RecommendedBookingSlot>> GetRecommendedBookingSlotsAsync(ClubManagementDbContext tenantContext, Guid memberId, Guid facilityId, DateTime? preferredDate = null)
     {
         var targetDate = preferredDate ?? DateTime.Today.AddDays(1);
-        var member = await _context.Members.FirstOrDefaultAsync(m => m.Id == memberId);
+        var member = await tenantContext.Members.FirstOrDefaultAsync(m => m.Id == memberId);
         
         if (member == null)
             return new List<RecommendedBookingSlot>();
 
         // Get member's booking history for this facility type
-        var historicalBookings = await _context.FacilityBookings
+        var historicalBookings = await tenantContext.FacilityBookings
             .Where(b => b.MemberId == memberId)
             .Include(b => b.Facility)
             .Where(b => b.Facility.FacilityTypeId == (
-                _context.Facilities.Where(f => f.Id == facilityId).Select(f => f.FacilityTypeId).FirstOrDefault()
+                tenantContext.Facilities.Where(f => f.Id == facilityId).Select(f => f.FacilityTypeId).FirstOrDefault()
             ))
             .OrderByDescending(b => b.StartDateTime)
             .Take(20)
@@ -465,7 +463,7 @@ public class MemberBookingService : IMemberBookingService
             var endTime = startTime.AddHours(1); // Default 1 hour
 
             // Check availability
-            var isAvailable = await IsFacilityAvailableAsync(facilityId, startTime, endTime);
+            var isAvailable = await IsFacilityAvailableAsync(tenantContext, facilityId, startTime, endTime);
 
             recommendations.Add(new RecommendedBookingSlot
             {
@@ -474,7 +472,7 @@ public class MemberBookingService : IMemberBookingService
                 RecommendationReason = $"You frequently book at {hour}:00",
                 ConfidenceScore = Math.Min(0.9, timeGroup.Count() / 10.0),
                 IsAvailable = isAvailable,
-                EstimatedCost = await EstimateBookingCostAsync(facilityId, member.Tier, 1)
+                EstimatedCost = await EstimateBookingCostAsync(tenantContext, facilityId, member.Tier, 1)
             });
         }
 
@@ -488,7 +486,7 @@ public class MemberBookingService : IMemberBookingService
                 {
                     var startTime = targetDate.AddHours(hour);
                     var endTime = startTime.AddHours(1);
-                    var isAvailable = await IsFacilityAvailableAsync(facilityId, startTime, endTime);
+                    var isAvailable = await IsFacilityAvailableAsync(tenantContext, facilityId, startTime, endTime);
 
                     recommendations.Add(new RecommendedBookingSlot
                     {
@@ -497,7 +495,7 @@ public class MemberBookingService : IMemberBookingService
                         RecommendationReason = "Popular booking time",
                         ConfidenceScore = 0.5,
                         IsAvailable = isAvailable,
-                        EstimatedCost = await EstimateBookingCostAsync(facilityId, member.Tier, 1)
+                        EstimatedCost = await EstimateBookingCostAsync(tenantContext, facilityId, member.Tier, 1)
                     });
                 }
             }
@@ -506,7 +504,7 @@ public class MemberBookingService : IMemberBookingService
         return recommendations.OrderByDescending(r => r.ConfidenceScore).ToList();
     }
 
-    public async Task<MemberFacilityPreferencesDto> GetMemberPreferencesAsync(Guid memberId)
+    public async Task<MemberFacilityPreferencesDto> GetMemberPreferencesAsync(ClubManagementDbContext tenantContext, Guid memberId)
     {
         // For now, return default preferences - in a full implementation, 
         // this would be stored in a MemberPreferences table
@@ -531,18 +529,18 @@ public class MemberBookingService : IMemberBookingService
         };
     }
 
-    public async Task<MemberFacilityPreferencesDto> UpdateMemberPreferencesAsync(Guid memberId, UpdateMemberPreferencesRequest request)
+    public async Task<MemberFacilityPreferencesDto> UpdateMemberPreferencesAsync(ClubManagementDbContext tenantContext, Guid memberId, UpdateMemberPreferencesRequest request)
     {
         // In a full implementation, this would update the MemberPreferences table
         // For now, return the updated preferences
         await Task.CompletedTask;
         
-        return await GetMemberPreferencesAsync(memberId);
+        return await GetMemberPreferencesAsync(tenantContext, memberId);
     }
 
-    public async Task<MemberAccessStatusDto> GetMemberAccessStatusAsync(Guid memberId)
+    public async Task<MemberAccessStatusDto> GetMemberAccessStatusAsync(ClubManagementDbContext tenantContext, Guid memberId)
     {
-        var member = await _context.Members
+        var member = await tenantContext.Members
             .Include(m => m.User)
             .FirstOrDefaultAsync(m => m.Id == memberId);
 
@@ -550,7 +548,7 @@ public class MemberBookingService : IMemberBookingService
             throw new InvalidOperationException("Member not found");
 
         // Get certifications
-        var certifications = await _context.MemberFacilityCertifications
+        var certifications = await tenantContext.MemberFacilityCertifications
             .Where(c => c.MemberId == memberId && c.IsActive)
             .ToListAsync();
 
@@ -570,12 +568,12 @@ public class MemberBookingService : IMemberBookingService
             .ToList();
 
         // Count accessible facilities
-        var accessibleFacilities = await _memberFacilityService.GetAccessibleFacilitiesAsync(memberId);
-        var restrictedFacilities = await _memberFacilityService.GetRestrictedFacilitiesAsync(memberId);
+        var accessibleFacilities = await _memberFacilityService.GetAccessibleFacilitiesAsync(tenantContext, memberId);
+        var restrictedFacilities = await _memberFacilityService.GetRestrictedFacilitiesAsync(tenantContext, memberId);
 
         // Get current limits and usage
-        var limits = await _memberFacilityService.GetMemberBookingLimitsAsync(memberId);
-        var usage = await _memberFacilityService.GetMemberBookingUsageAsync(memberId);
+        var limits = await _memberFacilityService.GetMemberBookingLimitsAsync(tenantContext, memberId);
+        var usage = await _memberFacilityService.GetMemberBookingUsageAsync(tenantContext, memberId);
 
         var warnings = new List<string>();
         if (member.MembershipExpiresAt.HasValue && member.MembershipExpiresAt.Value <= DateTime.UtcNow.AddDays(30))
@@ -602,13 +600,13 @@ public class MemberBookingService : IMemberBookingService
         };
     }
 
-    public async Task<BookingAvailabilityResult> CheckBookingAvailabilityAsync(Guid memberId, Guid facilityId, DateTime startTime, DateTime endTime)
+    public async Task<BookingAvailabilityResult> CheckBookingAvailabilityAsync(ClubManagementDbContext tenantContext, Guid memberId, Guid facilityId, DateTime startTime, DateTime endTime)
     {
         var result = new BookingAvailabilityResult();
         var blockingReasons = new List<string>();
 
         // Check member access
-        var accessResult = await _memberFacilityService.CheckMemberAccessAsync(facilityId, memberId);
+        var accessResult = await _memberFacilityService.CheckMemberAccessAsync(tenantContext, facilityId, memberId);
         result.HasFacilityAccess = accessResult.CanAccess;
         result.HasCertifications = accessResult.CertificationsMet;
 
@@ -618,7 +616,7 @@ public class MemberBookingService : IMemberBookingService
         }
 
         // Check booking limits
-        var limitsResult = await _memberFacilityService.ValidateBookingLimitsAsync(memberId, facilityId, startTime, endTime);
+        var limitsResult = await _memberFacilityService.ValidateBookingLimitsAsync(tenantContext, memberId, facilityId, startTime, endTime);
         result.MeetsLimits = limitsResult.IsValid;
 
         if (!limitsResult.IsValid)
@@ -627,7 +625,7 @@ public class MemberBookingService : IMemberBookingService
         }
 
         // Check facility availability
-        var conflictingBookings = await _context.FacilityBookings
+        var conflictingBookings = await tenantContext.FacilityBookings
             .Where(b => b.FacilityId == facilityId)
             .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn)
             .Where(b => b.StartDateTime < endTime && b.EndDateTime > startTime)
@@ -642,8 +640,8 @@ public class MemberBookingService : IMemberBookingService
         result.BlockingReasons = blockingReasons;
 
         // Calculate estimated cost
-        var facility = await _context.Facilities.FirstOrDefaultAsync(f => f.Id == facilityId);
-        var member = await _context.Members.FirstOrDefaultAsync(m => m.Id == memberId);
+        var facility = await tenantContext.Facilities.FirstOrDefaultAsync(f => f.Id == facilityId);
+        var member = await tenantContext.Members.FirstOrDefaultAsync(m => m.Id == memberId);
         if (facility != null && member != null)
         {
             var duration = (endTime - startTime).TotalHours;
@@ -653,15 +651,15 @@ public class MemberBookingService : IMemberBookingService
         // Generate alternatives if not available
         if (!result.IsAvailable)
         {
-            result.Alternatives = await GenerateAlternativeBookingSlotsAsync(facilityId, startTime, endTime);
+            result.Alternatives = await GenerateAlternativeBookingSlotsAsync(tenantContext, facilityId, startTime, endTime);
         }
 
         return result;
     }
 
-    public async Task<List<FacilityDto>> GetMemberFavoriteFacilitiesAsync(Guid memberId)
+    public async Task<List<FacilityDto>> GetMemberFavoriteFacilitiesAsync(ClubManagementDbContext tenantContext, Guid memberId)
     {
-        var favoriteIds = await _context.FacilityBookings
+        var favoriteIds = await tenantContext.FacilityBookings
             .Where(b => b.MemberId == memberId && b.Status == BookingStatus.Completed)
             .GroupBy(b => b.FacilityId)
             .OrderByDescending(g => g.Count())
@@ -669,7 +667,7 @@ public class MemberBookingService : IMemberBookingService
             .Select(g => g.Key)
             .ToListAsync();
 
-        return await _context.Facilities
+        return await tenantContext.Facilities
             .Where(f => favoriteIds.Contains(f.Id))
             .Include(f => f.FacilityType)
             .Select(f => new FacilityDto
@@ -688,22 +686,237 @@ public class MemberBookingService : IMemberBookingService
     }
 
     // Stub implementations for recurring bookings - would be fully implemented in production
-    public async Task<RecurringBookingResult> CreateRecurringBookingAsync(Guid memberId, CreateRecurringBookingRequest request)
+    public async Task<RecurringBookingResult> CreateRecurringBookingAsync(ClubManagementDbContext tenantContext, Guid memberId, CreateRecurringBookingRequest request)
     {
-        await Task.CompletedTask;
-        throw new NotImplementedException("Recurring booking creation would be implemented in full system");
+        var member = await tenantContext.Members.FirstOrDefaultAsync(m => m.Id == memberId);
+        if (member == null)
+        {
+            return new RecurringBookingResult
+            {
+                Success = false,
+                Message = "Member not found"
+            };
+        }
+
+        // Validate member access to facility
+        var accessResult = await _memberFacilityService.CheckMemberAccessAsync(tenantContext, request.FacilityId, memberId);
+        if (!accessResult.CanAccess)
+        {
+            return new RecurringBookingResult
+            {
+                Success = false,
+                Message = $"Member access denied: {string.Join(", ", accessResult.ReasonsDenied)}"
+            };
+        }
+
+        var recurringGroupId = Guid.NewGuid();
+        var createdBookings = new List<FacilityBookingDto>();
+        var errors = new List<string>();
+        var bookingsCreated = 0;
+        var bookingsFailed = 0;
+
+        // Generate booking dates based on recurrence pattern
+        var bookingDates = GenerateRecurringDates(request.FirstBookingStart, request.Pattern, request.EndDate, request.MaxOccurrences);
+        var duration = request.FirstBookingEnd - request.FirstBookingStart;
+
+        foreach (var startTime in bookingDates)
+        {
+            var endTime = startTime.Add(duration);
+            
+            try
+            {
+                // Check availability for this specific date
+                var availabilityResult = await CheckBookingAvailabilityAsync(tenantContext, memberId, request.FacilityId, startTime, endTime);
+                
+                if (!availabilityResult.IsAvailable)
+                {
+                    errors.Add($"Slot {startTime:yyyy-MM-dd HH:mm} unavailable: {string.Join(", ", availabilityResult.BlockingReasons)}");
+                    bookingsFailed++;
+                    continue;
+                }
+
+                // Create the booking
+                var booking = new FacilityBooking
+                {
+                    Id = Guid.NewGuid(),
+                    FacilityId = request.FacilityId,
+                    MemberId = memberId,
+                    StartDateTime = startTime,
+                    EndDateTime = endTime,
+                    Status = request.AutoConfirm ? BookingStatus.Confirmed : BookingStatus.Pending,
+                    BookingSource = BookingSource.MemberPortal,
+                    Purpose = request.Purpose,
+                    ParticipantCount = request.ParticipantCount,
+                    MemberNotes = request.Notes,
+                    IsRecurring = true,
+                    RecurrenceGroupId = recurringGroupId,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = "Member"
+                };
+
+                // Calculate cost
+                var facility = await tenantContext.Facilities.FirstOrDefaultAsync(f => f.Id == request.FacilityId);
+                if (facility != null)
+                {
+                    var bookingDuration = (endTime - startTime).TotalHours;
+                    booking.Cost = CalculateBookingCost(facility, member, bookingDuration);
+                }
+
+                tenantContext.FacilityBookings.Add(booking);
+                await tenantContext.SaveChangesAsync();
+
+                createdBookings.Add(new FacilityBookingDto
+                {
+                    Id = booking.Id,
+                    FacilityId = booking.FacilityId,
+                    FacilityName = facility?.Name ?? "Unknown",
+                    MemberId = booking.MemberId,
+                    StartDateTime = booking.StartDateTime,
+                    EndDateTime = booking.EndDateTime,
+                    Status = booking.Status,
+                    BookingSource = booking.BookingSource,
+                    Cost = booking.Cost,
+                    Purpose = booking.Purpose,
+                    ParticipantCount = booking.ParticipantCount,
+                    MemberNotes = booking.MemberNotes,
+                    IsRecurring = booking.IsRecurring,
+                    RecurrenceGroupId = booking.RecurrenceGroupId,
+                    CreatedAt = booking.CreatedAt
+                });
+
+                bookingsCreated++;
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"Failed to create booking for {startTime:yyyy-MM-dd HH:mm}: {ex.Message}");
+                bookingsFailed++;
+            }
+        }
+
+        return new RecurringBookingResult
+        {
+            Success = bookingsCreated > 0,
+            RecurringGroupId = bookingsCreated > 0 ? recurringGroupId : null,
+            Message = bookingsCreated > 0 
+                ? $"Successfully created {bookingsCreated} recurring bookings" 
+                : "No bookings could be created",
+            BookingsCreated = bookingsCreated,
+            BookingsFailed = bookingsFailed,
+            CreatedBookings = createdBookings,
+            Errors = errors
+        };
     }
 
-    public async Task<RecurringBookingResult> ModifyRecurringBookingAsync(Guid memberId, Guid recurringGroupId, ModifyRecurringBookingRequest request)
+    public async Task<RecurringBookingResult> ModifyRecurringBookingAsync(ClubManagementDbContext tenantContext, Guid memberId, Guid recurringGroupId, ModifyRecurringBookingRequest request)
     {
-        await Task.CompletedTask;
-        throw new NotImplementedException("Recurring booking modification would be implemented in full system");
+        var bookings = await tenantContext.FacilityBookings
+            .Where(b => b.RecurrenceGroupId == recurringGroupId && b.MemberId == memberId)
+            .OrderBy(b => b.StartDateTime)
+            .ToListAsync();
+
+        if (!bookings.Any())
+        {
+            return new RecurringBookingResult
+            {
+                Success = false,
+                Message = "No recurring bookings found for this group"
+            };
+        }
+
+        var updatedBookings = new List<FacilityBookingDto>();
+        var errors = new List<string>();
+        var bookingsModified = 0;
+
+        switch (request.UpdateType)
+        {
+            case RecurrenceUpdateType.ThisOccurrence:
+                // Find the specific occurrence to modify (would need additional context)
+                errors.Add("This occurrence modification requires specific booking ID");
+                break;
+
+            case RecurrenceUpdateType.ThisAndFuture:
+                var futureBookings = bookings.Where(b => b.StartDateTime >= DateTime.UtcNow).ToList();
+                foreach (var booking in futureBookings)
+                {
+                    if (await ModifySingleBooking(tenantContext, booking, request))
+                    {
+                        bookingsModified++;
+                        updatedBookings.Add(MapToBookingDto(booking));
+                    }
+                    else
+                    {
+                        errors.Add($"Failed to modify booking on {booking.StartDateTime:yyyy-MM-dd HH:mm}");
+                    }
+                }
+                break;
+
+            case RecurrenceUpdateType.AllOccurrences:
+                foreach (var booking in bookings.Where(b => b.Status != BookingStatus.Completed))
+                {
+                    if (await ModifySingleBooking(tenantContext, booking, request))
+                    {
+                        bookingsModified++;
+                        updatedBookings.Add(MapToBookingDto(booking));
+                    }
+                    else
+                    {
+                        errors.Add($"Failed to modify booking on {booking.StartDateTime:yyyy-MM-dd HH:mm}");
+                    }
+                }
+                break;
+        }
+
+        if (bookingsModified > 0)
+        {
+            await tenantContext.SaveChangesAsync();
+        }
+
+        return new RecurringBookingResult
+        {
+            Success = bookingsModified > 0,
+            RecurringGroupId = recurringGroupId,
+            Message = $"Modified {bookingsModified} recurring bookings",
+            BookingsCreated = 0,
+            BookingsFailed = bookings.Count - bookingsModified,
+            CreatedBookings = updatedBookings,
+            Errors = errors
+        };
     }
 
-    public async Task<List<RecurringBookingSummaryDto>> GetMemberRecurringBookingsAsync(Guid memberId)
+    public async Task<List<RecurringBookingSummaryDto>> GetMemberRecurringBookingsAsync(ClubManagementDbContext tenantContext, Guid memberId)
     {
-        await Task.CompletedTask;
-        return new List<RecurringBookingSummaryDto>();
+        var recurringGroups = await tenantContext.FacilityBookings
+            .Where(b => b.MemberId == memberId && b.RecurrenceGroupId.HasValue)
+            .GroupBy(b => b.RecurrenceGroupId!.Value)
+            .Select(g => new
+            {
+                RecurringGroupId = g.Key,
+                FacilityId = g.First().FacilityId,
+                FacilityName = g.First().Facility!.Name,
+                FirstBooking = g.Min(b => b.StartDateTime),
+                LastBooking = g.Max(b => b.StartDateTime),
+                TotalOccurrences = g.Count(),
+                CompletedOccurrences = g.Count(b => b.Status == BookingStatus.Completed),
+                UpcomingOccurrences = g.Count(b => b.StartDateTime > DateTime.UtcNow && (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.Pending)),
+                IsActive = g.Any(b => b.StartDateTime > DateTime.UtcNow && b.Status != BookingStatus.Cancelled),
+                CreatedAt = g.Min(b => b.CreatedAt)
+            })
+            .ToListAsync();
+
+        return recurringGroups.Select(g => new RecurringBookingSummaryDto
+        {
+            RecurringGroupId = g.RecurringGroupId,
+            FacilityId = g.FacilityId,
+            FacilityName = g.FacilityName,
+            Pattern = new RecurrencePattern { Type = RecurrenceType.Weekly }, // Simplified - would need to store pattern
+            FirstBooking = g.FirstBooking,
+            LastBooking = g.LastBooking,
+            TotalOccurrences = g.TotalOccurrences,
+            CompletedOccurrences = g.CompletedOccurrences,
+            UpcomingOccurrences = g.UpcomingOccurrences,
+            IsActive = g.IsActive,
+            CreatedAt = g.CreatedAt
+        }).ToList();
     }
 
     // Helper methods
@@ -734,9 +947,9 @@ public class MemberBookingService : IMemberBookingService
         return bookings.Sum(b => (b.Cost ?? 0) * discount / (1 - discount));
     }
 
-    private async Task<bool> IsFacilityAvailableAsync(Guid facilityId, DateTime startTime, DateTime endTime)
+    private async Task<bool> IsFacilityAvailableAsync(ClubManagementDbContext tenantContext, Guid facilityId, DateTime startTime, DateTime endTime)
     {
-        var conflicts = await _context.FacilityBookings
+        var conflicts = await tenantContext.FacilityBookings
             .Where(b => b.FacilityId == facilityId)
             .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn)
             .Where(b => b.StartDateTime < endTime && b.EndDateTime > startTime)
@@ -745,9 +958,9 @@ public class MemberBookingService : IMemberBookingService
         return conflicts == 0;
     }
 
-    private async Task<decimal?> EstimateBookingCostAsync(Guid facilityId, MembershipTier tier, double hours)
+    private async Task<decimal?> EstimateBookingCostAsync(ClubManagementDbContext tenantContext, Guid facilityId, MembershipTier tier, double hours)
     {
-        var facility = await _context.Facilities.FirstOrDefaultAsync(f => f.Id == facilityId);
+        var facility = await tenantContext.Facilities.FirstOrDefaultAsync(f => f.Id == facilityId);
         if (facility == null) return null;
 
         var memberDiscount = tier switch
@@ -760,7 +973,7 @@ public class MemberBookingService : IMemberBookingService
         return (decimal)hours * facility.MemberHourlyRate * memberDiscount;
     }
 
-    private async Task<List<AlternativeBookingSlot>> GenerateAlternativeBookingSlotsAsync(Guid facilityId, DateTime startTime, DateTime endTime)
+    private async Task<List<AlternativeBookingSlot>> GenerateAlternativeBookingSlotsAsync(ClubManagementDbContext tenantContext, Guid facilityId, DateTime startTime, DateTime endTime)
     {
         var duration = endTime - startTime;
         var alternatives = new List<AlternativeBookingSlot>();
@@ -772,7 +985,7 @@ public class MemberBookingService : IMemberBookingService
             var altStart = sameDay.AddHours(hour);
             var altEnd = altStart.Add(duration);
             
-            if (altStart != startTime && await IsFacilityAvailableAsync(facilityId, altStart, altEnd))
+            if (altStart != startTime && await IsFacilityAvailableAsync(tenantContext, facilityId, altStart, altEnd))
             {
                 alternatives.Add(new AlternativeBookingSlot
                 {
@@ -786,5 +999,96 @@ public class MemberBookingService : IMemberBookingService
         }
 
         return alternatives;
+    }
+
+    // Helper methods for recurring bookings
+    private List<DateTime> GenerateRecurringDates(DateTime startDate, RecurrencePattern pattern, DateTime? endDate, int? maxOccurrences)
+    {
+        var dates = new List<DateTime>();
+        var currentDate = startDate;
+        var count = 0;
+        var maxDate = endDate ?? DateTime.UtcNow.AddYears(1); // Default 1 year limit
+        var maxCount = maxOccurrences ?? 52; // Default 52 occurrences limit
+
+        while (currentDate <= maxDate && count < maxCount)
+        {
+            dates.Add(currentDate);
+            count++;
+
+            currentDate = pattern.Type switch
+            {
+                RecurrenceType.Daily => currentDate.AddDays(pattern.Interval),
+                RecurrenceType.Weekly => currentDate.AddDays(pattern.Interval * 7),
+                RecurrenceType.Monthly => currentDate.AddMonths(pattern.Interval),
+                RecurrenceType.Yearly => currentDate.AddYears(pattern.Interval),
+                _ => currentDate.AddDays(7) // Default weekly
+            };
+
+            // For weekly recurrence, respect DaysOfWeek if specified
+            if (pattern.Type == RecurrenceType.Weekly && pattern.DaysOfWeek.Any())
+            {
+                while (!pattern.DaysOfWeek.Contains(currentDate.DayOfWeek) && currentDate <= maxDate)
+                {
+                    currentDate = currentDate.AddDays(1);
+                }
+            }
+        }
+
+        return dates;
+    }
+
+    private async Task<bool> ModifySingleBooking(ClubManagementDbContext tenantContext, FacilityBooking booking, ModifyRecurringBookingRequest request)
+    {
+        try
+        {
+            if (request.NewStartTime.HasValue)
+            {
+                var duration = booking.EndDateTime - booking.StartDateTime;
+                booking.StartDateTime = request.NewStartTime.Value;
+                booking.EndDateTime = request.NewStartTime.Value.Add(duration);
+            }
+
+            if (request.NewEndTime.HasValue && request.NewStartTime.HasValue)
+            {
+                booking.EndDateTime = request.NewEndTime.Value;
+            }
+
+            booking.UpdatedAt = DateTime.UtcNow;
+            booking.UpdatedBy = "Member";
+
+            if (!string.IsNullOrEmpty(request.Reason))
+            {
+                var modificationNote = $"[MODIFIED {DateTime.UtcNow:yyyy-MM-dd HH:mm}]: {request.Reason}";
+                booking.Notes = string.IsNullOrEmpty(booking.Notes) ? modificationNote : $"{booking.Notes}\n{modificationNote}";
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private FacilityBookingDto MapToBookingDto(FacilityBooking booking)
+    {
+        return new FacilityBookingDto
+        {
+            Id = booking.Id,
+            FacilityId = booking.FacilityId,
+            MemberId = booking.MemberId,
+            StartDateTime = booking.StartDateTime,
+            EndDateTime = booking.EndDateTime,
+            Status = booking.Status,
+            BookingSource = booking.BookingSource,
+            Cost = booking.Cost,
+            Purpose = booking.Purpose,
+            ParticipantCount = booking.ParticipantCount,
+            MemberNotes = booking.MemberNotes,
+            Notes = booking.Notes,
+            IsRecurring = booking.IsRecurring,
+            RecurrenceGroupId = booking.RecurrenceGroupId,
+            CreatedAt = booking.CreatedAt
+        };
     }
 }

@@ -162,25 +162,6 @@ else
                                        AdornmentText="$" />
                     </MudItem>
 
-                    <MudItem xs="12" sm="6">
-                        <MudNumericField @bind-Value="_model.DailyRate"
-                                       Label="Daily Rate"
-                                       Min="0"
-                                       Format="C"
-                                       Variant="Variant.Outlined"
-                                       Adornment="Adornment.Start"
-                                       AdornmentText="$" />
-                    </MudItem>
-
-                    <MudItem xs="12" sm="6">
-                        <MudNumericField @bind-Value="_model.MemberDailyRate"
-                                       Label="Member Daily Rate"
-                                       Min="0"
-                                       Format="C"
-                                       Variant="Variant.Outlined"
-                                       Adornment="Adornment.Start"
-                                       AdornmentText="$" />
-                    </MudItem>
 
                     <!-- Member Access -->
                     <MudItem xs="12">
@@ -201,7 +182,7 @@ else
 
                     <MudItem xs="12" sm="6">
                         <div class="d-flex align-center gap-2">
-                            <MudCheckBox @bind-Value="_model.RequiresSupervision" 
+                            <MudCheckBox @bind-Value="_model.RequiresMemberSupervision" 
                                         Label="Requires Supervision" />
                             <MudTooltip Text="Check if this facility requires staff supervision during use">
                                 <MudIcon Icon="@Icons.Material.Filled.Help" Size="Size.Small" />
@@ -222,24 +203,6 @@ else
                         <MudText Typo="Typo.h6" Class="mb-4">Maintenance Information</MudText>
                     </MudItem>
 
-                    <MudItem xs="12" sm="6">
-                        <MudDatePicker @bind-Date="_model.LastMaintenanceDate"
-                                      Label="Last Maintenance Date"
-                                      Variant="Variant.Outlined" />
-                    </MudItem>
-
-                    <MudItem xs="12" sm="6">
-                        <MudDatePicker @bind-Date="_model.NextMaintenanceDate"
-                                      Label="Next Maintenance Date"
-                                      Variant="Variant.Outlined" />
-                    </MudItem>
-
-                    <MudItem xs="12">
-                        <MudTextField @bind-Value="_model.MaintenanceNotes"
-                                     Label="Maintenance Notes"
-                                     Lines="2"
-                                     Variant="Variant.Outlined" />
-                    </MudItem>
                 </MudGrid>
             </MudCardContent>
 
@@ -356,12 +319,8 @@ else
             Status = _facility.Status,
             HourlyRate = _facility.HourlyRate,
             MemberHourlyRate = _facility.MemberHourlyRate,
-            DailyRate = _facility.DailyRate,
-            MemberDailyRate = _facility.MemberDailyRate,
-            RequiresSupervision = _facility.RequiresSupervision,
-            LastMaintenanceDate = _facility.LastMaintenanceDate,
-            NextMaintenanceDate = _facility.NextMaintenanceDate,
-            MaintenanceNotes = _facility.MaintenanceNotes
+            NonMemberHourlyRate = _facility.NonMemberHourlyRate,
+            RequiresMemberSupervision = _facility.RequiresMemberSupervision
         };
 
         // Map operating days

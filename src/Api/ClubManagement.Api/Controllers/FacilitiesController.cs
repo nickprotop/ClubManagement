@@ -45,7 +45,7 @@ public class FacilitiesController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewFacilitiesAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to view facilities");
+                return Forbid();
 
             var query = tenantContext.Facilities
                 .Include(f => f.FacilityType)
@@ -207,7 +207,7 @@ public class FacilitiesController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewFacilitiesAsync(userId, tenantContext, id))
-                return Forbid("Insufficient permissions to view this facility");
+                return Forbid();
 
             var facility = await tenantContext.Facilities
                 .Include(f => f.FacilityType)
@@ -636,7 +636,7 @@ public class FacilitiesController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewFacilitiesAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to view facilities");
+                return Forbid();
 
             var query = tenantContext.Facilities
                 .Include(f => f.FacilityType)
@@ -697,6 +697,70 @@ public class FacilitiesController : ControllerBase
         }
     }
 
+    [HttpGet("type/{facilityTypeId}")]
+    public async Task<ActionResult<ApiResponse<List<FacilityDto>>>> GetFacilitiesByType(Guid facilityTypeId)
+    {
+        try
+        {
+            var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<List<FacilityDto>>.ErrorResult("Invalid tenant"));
+
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
+
+            if (!await _authService.CanViewFacilitiesAsync(userId, tenantContext))
+                return Forbid();
+
+            var facilities = await tenantContext.Facilities
+                .Where(f => f.FacilityTypeId == facilityTypeId)
+                .Include(f => f.FacilityType)
+                .Select(f => new FacilityDto
+                {
+                    Id = f.Id,
+                    Name = f.Name,
+                    Description = f.Description,
+                    Status = f.Status,
+                    FacilityTypeId = f.FacilityTypeId,
+                    FacilityTypeName = f.FacilityType.Name,
+                    FacilityTypeIcon = f.FacilityType.Icon,
+                    Properties = f.Properties,
+                    Icon = f.Icon,
+                    Location = f.Location,
+                    Capacity = f.Capacity,
+                    HourlyRate = f.HourlyRate,
+                    RequiresBooking = f.RequiresBooking,
+                    MaxBookingDaysInAdvance = f.MaxBookingDaysInAdvance,
+                    MinBookingDurationMinutes = f.MinBookingDurationMinutes,
+                    MaxBookingDurationMinutes = f.MaxBookingDurationMinutes,
+                    OperatingHoursStart = f.OperatingHoursStart,
+                    OperatingHoursEnd = f.OperatingHoursEnd,
+                    OperatingDays = f.OperatingDays,
+                    AllowedMembershipTiers = f.AllowedMembershipTiers,
+                    RequiredCertifications = f.RequiredCertifications,
+                    MemberConcurrentBookingLimit = f.MemberConcurrentBookingLimit,
+                    RequiresMemberSupervision = f.RequiresMemberSupervision,
+                    MemberHourlyRate = f.MemberHourlyRate,
+                    NonMemberHourlyRate = f.NonMemberHourlyRate,
+                    CreatedAt = f.CreatedAt,
+                    UpdatedAt = f.UpdatedAt ?? DateTime.MinValue
+                })
+                .ToListAsync();
+
+            return Ok(ApiResponse<List<FacilityDto>>.SuccessResult(facilities));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(ApiResponse<List<FacilityDto>>.ErrorResult($"Unauthorized: {ex.Message}"));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<List<FacilityDto>>.ErrorResult($"Error retrieving facilities by type: {ex.Message}"));
+        }
+    }
+
     [HttpGet("dashboard")]
     public async Task<ActionResult<ApiResponse<FacilityDashboardDto>>> GetDashboard()
     {
@@ -712,7 +776,7 @@ public class FacilitiesController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewFacilitiesAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to view facility dashboard");
+                return Forbid();
 
             var totalFacilities = await tenantContext.Facilities.CountAsync();
             var availableFacilities = await tenantContext.Facilities.CountAsync(f => f.Status == FacilityStatus.Available);
@@ -797,7 +861,7 @@ public class FacilitiesController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanAccessMemberPortalAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to access member portal");
+                return Forbid();
 
             var user = await tenantContext.Users.Include(u => u.Member).FirstOrDefaultAsync(u => u.Id == userId);
             if (user?.Member == null)
@@ -870,8 +934,103 @@ public class FacilitiesController : ControllerBase
         }
     }
 
+    [HttpGet("available-for-member/{memberId}")]
+    public async Task<ActionResult<ApiResponse<List<FacilityDto>>>> GetAvailableFacilitiesForMemberById(
+        Guid memberId, 
+        [FromQuery] DateTime? startDateTime = null, 
+        [FromQuery] DateTime? endDateTime = null)
+    {
+        try
+        {
+            var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<List<FacilityDto>>.ErrorResult("Invalid tenant"));
+
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
+
+            // Get the specified member
+            var member = await tenantContext.Members
+                .Include(m => m.User)
+                .FirstOrDefaultAsync(m => m.Id == memberId);
+            
+            if (member == null)
+                return BadRequest(ApiResponse<List<FacilityDto>>.ErrorResult("Member not found"));
+
+            // Check if current user can access this member's data (self or staff)
+            var currentUser = await tenantContext.Users.Include(u => u.Member).FirstOrDefaultAsync(u => u.Id == userId);
+            if (currentUser?.Member?.Id != memberId && !await _authService.CanViewFacilitiesAsync(userId, tenantContext))
+                return Forbid();
+
+            var query = tenantContext.Facilities
+                .Include(f => f.FacilityType)
+                .Where(f => f.Status == FacilityStatus.Available);
+
+            // Check for time conflicts if dates are provided
+            if (startDateTime.HasValue && endDateTime.HasValue)
+            {
+                query = query.Where(f => !f.Bookings.Any(b => 
+                    (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn) &&
+                    ((startDateTime.Value >= b.StartDateTime && startDateTime.Value < b.EndDateTime) ||
+                     (endDateTime.Value > b.StartDateTime && endDateTime.Value <= b.EndDateTime) ||
+                     (startDateTime.Value <= b.StartDateTime && endDateTime.Value >= b.EndDateTime))));
+            }
+
+            var allFacilities = await query
+                .OrderBy(f => f.Name)
+                .Select(f => new FacilityDto
+                {
+                    Id = f.Id,
+                    Name = f.Name,
+                    Description = f.Description,
+                    FacilityTypeId = f.FacilityTypeId,
+                    FacilityTypeName = f.FacilityType.Name,
+                    FacilityTypeIcon = f.FacilityType.Icon,
+                    Icon = f.Icon,
+                    Status = f.Status,
+                    Capacity = f.Capacity,
+                    HourlyRate = f.HourlyRate,
+                    RequiresBooking = f.RequiresBooking,
+                    MaxBookingDaysInAdvance = f.MaxBookingDaysInAdvance,
+                    MinBookingDurationMinutes = f.MinBookingDurationMinutes,
+                    MaxBookingDurationMinutes = f.MaxBookingDurationMinutes,
+                    OperatingHoursStart = f.OperatingHoursStart,
+                    OperatingHoursEnd = f.OperatingHoursEnd,
+                    OperatingDays = f.OperatingDays,
+                    AllowedMembershipTiers = f.AllowedMembershipTiers,
+                    RequiredCertifications = f.RequiredCertifications,
+                    MemberConcurrentBookingLimit = f.MemberConcurrentBookingLimit,
+                    RequiresMemberSupervision = f.RequiresMemberSupervision,
+                    MemberHourlyRate = f.MemberHourlyRate,
+                    NonMemberHourlyRate = f.NonMemberHourlyRate,
+                    Location = f.Location,
+                    Properties = f.Properties,
+                    CreatedAt = f.CreatedAt,
+                    UpdatedAt = f.UpdatedAt ?? DateTime.MinValue
+                })
+                .ToListAsync();
+
+            // Filter by membership tier access (client-side evaluation)
+            var facilities = allFacilities
+                .Where(f => !f.AllowedMembershipTiers.Any() || f.AllowedMembershipTiers.Contains(member.Tier))
+                .ToList();
+
+            return Ok(ApiResponse<List<FacilityDto>>.SuccessResult(facilities));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(ApiResponse<List<FacilityDto>>.ErrorResult($"Unauthorized: {ex.Message}"));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<List<FacilityDto>>.ErrorResult($"Error retrieving facilities for member: {ex.Message}"));
+        }
+    }
+
     [HttpPost("{id}/check-member-access")]
-    public async Task<ActionResult<ApiResponse<FacilityAccessResult>>> CheckMemberAccess(
+    public async Task<ActionResult<ApiResponse<MemberFacilityAccessDto>>> CheckMemberAccess(
         Guid id, [FromBody] CheckMemberAccessRequest request)
     {
         try
@@ -881,20 +1040,20 @@ public class FacilitiesController : ControllerBase
 
             var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
             if (tenant == null)
-                return BadRequest(ApiResponse<FacilityAccessResult>.ErrorResult("Invalid tenant"));
+                return BadRequest(ApiResponse<MemberFacilityAccessDto>.ErrorResult("Invalid tenant"));
 
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             var facility = await tenantContext.Facilities.FindAsync(id);
             if (facility == null)
-                return NotFound(ApiResponse<FacilityAccessResult>.ErrorResult("Facility not found"));
+                return NotFound(ApiResponse<MemberFacilityAccessDto>.ErrorResult("Facility not found"));
 
             var member = await tenantContext.Members
                 .Include(m => m.User)
                 .FirstOrDefaultAsync(m => m.Id == request.MemberId);
 
             if (member == null)
-                return BadRequest(ApiResponse<FacilityAccessResult>.ErrorResult("Member not found"));
+                return BadRequest(ApiResponse<MemberFacilityAccessDto>.ErrorResult("Member not found"));
 
             var canAccess = await _authService.CanMemberAccessFacilityAsync(member.UserId, id, tenantContext);
             var missingCertifications = new List<string>();
@@ -922,23 +1081,26 @@ public class FacilitiesController : ControllerBase
                 }
             }
 
-            var result = new FacilityAccessResult
+            var result = new MemberFacilityAccessDto
             {
                 CanAccess = canAccess,
                 MissingCertifications = missingCertifications,
                 RequiredTier = requiredTier,
-                Restrictions = restrictions.ToArray()
+                ReasonsDenied = restrictions.ToArray(),
+                RequiredCertifications = facility.RequiredCertifications?.ToArray() ?? Array.Empty<string>(),
+                MembershipTierAllowed = !facility.AllowedMembershipTiers.Any() || facility.AllowedMembershipTiers.Contains(member.Tier),
+                CertificationsMet = !missingCertifications.Any()
             };
 
-            return Ok(ApiResponse<FacilityAccessResult>.SuccessResult(result));
+            return Ok(ApiResponse<MemberFacilityAccessDto>.SuccessResult(result));
         }
         catch (UnauthorizedAccessException ex)
         {
-            return Unauthorized(ApiResponse<FacilityAccessResult>.ErrorResult($"Unauthorized: {ex.Message}"));
+            return Unauthorized(ApiResponse<MemberFacilityAccessDto>.ErrorResult($"Unauthorized: {ex.Message}"));
         }
         catch (Exception ex)
         {
-            return StatusCode(500, ApiResponse<FacilityAccessResult>.ErrorResult($"Error checking member access: {ex.Message}"));
+            return StatusCode(500, ApiResponse<MemberFacilityAccessDto>.ErrorResult($"Error checking member access: {ex.Message}"));
         }
     }
 

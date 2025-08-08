@@ -33,13 +33,14 @@
                       Label="Facility Type"
                       Variant="Variant.Outlined"
                       Clearable="true"
+                      T="Guid?"
                       OnSelectionChanged="OnFilterChanged"
                       Style="min-width: 200px;">
                 @if (_facilityTypes != null)
                 {
                     @foreach (var type in _facilityTypes)
                     {
-                        <MudSelectItem Value="type.Id">
+                        <MudSelectItem T="Guid?" Value="type.Id">
                             <div class="d-flex align-center gap-2">
                                 <MudIcon Icon="@type.Icon" Size="Size.Small" />
                                 @type.Name
@@ -152,13 +153,13 @@ else if (_facilities?.Any() == true)
                                 </MudChip>
                             }
                             
-                            @if (facility.MemberHourlyRate.HasValue && facility.MemberHourlyRate > 0)
+                            @if (facility.MemberHourlyRate > 0)
                             {
                                 <MudChip T="string" Size="Size.Small" 
                                         Color="Color.Success" 
                                         Variant="Variant.Text"
                                         Icon="@Icons.Material.Filled.AttachMoney">
-                                    @facility.MemberHourlyRate.Value.ToString("C")/hr
+                                    @facility.MemberHourlyRate.ToString("C")/hr
                                 </MudChip>
                             }
                             else if (facility.MemberHourlyRate == 0)
@@ -228,7 +229,8 @@ else if (_facilities?.Any() == true)
                             Details
                         </MudButton>
                         
-                        @if (accessInfo.canAccess && facility.Status == FacilityStatus.Available)
+                        @{ var accessForBooking = GetMemberAccessInfo(facility); }
+                        @if (accessForBooking.canAccess && facility.Status == FacilityStatus.Available)
                         {
                             <MudButton Variant="Variant.Filled" 
                                       Color="Color.Primary"
@@ -426,7 +428,7 @@ else if (!_loading)
         }
         
         // Check supervision requirement
-        if (facility.RequiresSupervision)
+        if (facility.RequiresMemberSupervision)
         {
             reasons.Add("supervision");
             // Supervision doesn't prevent booking, just indicates requirement

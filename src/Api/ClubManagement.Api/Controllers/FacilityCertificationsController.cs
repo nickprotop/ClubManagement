@@ -217,7 +217,7 @@ public class FacilityCertificationsController : ControllerBase
                     return Forbid(string.Join(", ", authResult.Reasons));
             }
 
-            var certifications = await _memberFacilityService.GetMemberCertificationsAsync(memberId);
+            var certifications = await _memberFacilityService.GetMemberCertificationsAsync(tenantContext, memberId);
 
             return Ok(ApiResponse<List<FacilityCertificationDto>>.SuccessResult(certifications));
         }
@@ -397,7 +397,7 @@ public class FacilityCertificationsController : ControllerBase
             if (!authResult.Succeeded)
                 return Forbid(string.Join(", ", authResult.Reasons));
 
-            var expiringCertifications = await _memberFacilityService.GetExpiringCertificationsAsync(daysAhead);
+            var expiringCertifications = await _memberFacilityService.GetExpiringCertificationsAsync(tenantContext, daysAhead);
 
             return Ok(ApiResponse<List<FacilityCertificationDto>>.SuccessResult(expiringCertifications));
         }
@@ -426,10 +426,13 @@ public class FacilityCertificationsController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             // Get certification types from facilities and existing certifications
-            var facilityRequiredCerts = await tenantContext.Facilities
-                .SelectMany(f => f.RequiredCertifications)
+            // Use ToListAsync() first to bring data to client side, then use LINQ to Objects
+            var facilities = await tenantContext.Facilities.ToListAsync();
+            var facilityRequiredCerts = facilities
+                .SelectMany(f => f.RequiredCertifications ?? new List<string>())
+                .Where(cert => !string.IsNullOrEmpty(cert))
                 .Distinct()
-                .ToListAsync();
+                .ToList();
 
             var existingCertTypes = await tenantContext.MemberFacilityCertifications
                 .Select(c => c.CertificationType)

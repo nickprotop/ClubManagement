@@ -16,6 +16,9 @@ public class UserProfileDto
     public bool EmailVerified { get; set; }
     public Dictionary<string, object> CustomFields { get; set; } = new();
     public string FullName => $"{FirstName} {LastName}".Trim();
+    
+    // Member information (if user has a member profile)
+    public Guid? MemberId { get; set; }
 }
 
 public class CreateUserRequest

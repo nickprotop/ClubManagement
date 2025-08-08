@@ -72,8 +72,12 @@ public class MemberBookingService : IMemberBookingService
 
     public async Task<ApiResponse<BookingCancellationResult>?> CancelMemberBookingAsync(Guid memberId, Guid bookingId, string? reason = null)
     {
-        var request = reason != null ? new { Reason = reason } : null;
-        return await _apiService.DeleteAsync<BookingCancellationResult>($"api/member-booking/{memberId}/bookings/{bookingId}", request);
+        var endpoint = $"api/member-booking/{memberId}/bookings/{bookingId}";
+        if (!string.IsNullOrEmpty(reason))
+        {
+            endpoint += $"?reason={Uri.EscapeDataString(reason)}";
+        }
+        return await _apiService.DeleteAsync<BookingCancellationResult>(endpoint);
     }
 
     public async Task<ApiResponse<FacilityBookingDto>?> ModifyMemberBookingAsync(Guid memberId, Guid bookingId, ModifyBookingRequest request)

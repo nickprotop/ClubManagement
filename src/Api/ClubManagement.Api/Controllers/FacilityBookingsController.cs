@@ -49,7 +49,7 @@ public class FacilityBookingsController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewBookingsAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to view bookings");
+                return Forbid();
 
             var query = tenantContext.FacilityBookings
                 .Include(b => b.Facility)
@@ -201,7 +201,7 @@ public class FacilityBookingsController : ControllerBase
             var canViewOwn = await _authService.CanViewBookingsAsync(userId, tenantContext, true);
 
             if (!canViewAll && (!canViewOwn || user?.Member?.Id != booking.MemberId))
-                return Forbid("Insufficient permissions to view this booking");
+                return Forbid();
 
             var dto = new FacilityBookingDto
             {
@@ -267,7 +267,7 @@ public class FacilityBookingsController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewBookingsAsync(userId, tenantContext, true))
-                return Forbid("Insufficient permissions to view your bookings");
+                return Forbid();
 
             var user = await tenantContext.Users.Include(u => u.Member).FirstOrDefaultAsync(u => u.Id == userId);
             if (user?.Member == null)
@@ -610,7 +610,7 @@ public class FacilityBookingsController : ControllerBase
             var canModifyOwn = await _authService.CanPerformActionAsync(userId, FacilityAction.ModifyOwnBooking, tenantContext);
 
             if (!canModifyAll && (!canModifyOwn || user?.Member?.Id != booking.MemberId))
-                return Forbid("Insufficient permissions to modify this booking");
+                return Forbid();
 
             // Check if booking can be modified (not too close to start time)
             if (booking.StartDateTime <= DateTime.UtcNow.AddHours(2))
@@ -719,7 +719,7 @@ public class FacilityBookingsController : ControllerBase
             var canCancelOwn = await _authService.CanPerformActionAsync(userId, FacilityAction.CancelOwnBooking, tenantContext);
 
             if (!canCancelAll && (!canCancelOwn || user?.Member?.Id != booking.MemberId))
-                return Forbid("Insufficient permissions to cancel this booking");
+                return Forbid();
 
             if (booking.Status == BookingStatus.Cancelled)
                 return BadRequest(ApiResponse<object>.ErrorResult("Booking is already cancelled"));
@@ -763,7 +763,7 @@ public class FacilityBookingsController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanCheckInMembersAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to check in members");
+                return Forbid();
 
             var booking = await tenantContext.FacilityBookings
                 .Include(b => b.Facility)
@@ -843,7 +843,7 @@ public class FacilityBookingsController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanCheckInMembersAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to check out members");
+                return Forbid();
 
             var booking = await tenantContext.FacilityBookings
                 .Include(b => b.Facility)
@@ -973,7 +973,7 @@ public class FacilityBookingsController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanAccessMemberPortalAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to check availability");
+                return Forbid();
 
             var result = await CheckBookingAvailabilityAsync(tenantContext, facilityId, startTime, endTime);
             
@@ -1190,5 +1190,96 @@ public class FacilityBookingsController : ControllerBase
         {
             return StatusCode(500, ApiResponse<MemberBookingUsageDto>.ErrorResult($"Error getting member usage: {ex.Message}"));
         }
+    }
+
+    [HttpPost("{facilityId}/check-conflicts")]
+    public async Task<ActionResult<ApiResponse<List<FacilityBookingConflictDto>>>> CheckBookingConflicts(
+        Guid facilityId,
+        [FromBody] CheckBookingConflictsRequest request)
+    {
+        try
+        {
+            // Convert to UTC for consistent database comparisons
+            var utcStartDateTime = request.StartDateTime.Kind == DateTimeKind.Unspecified 
+                ? DateTime.SpecifyKind(request.StartDateTime, DateTimeKind.Utc) 
+                : request.StartDateTime.ToUniversalTime();
+            
+            var utcEndDateTime = request.EndDateTime.Kind == DateTimeKind.Unspecified 
+                ? DateTime.SpecifyKind(request.EndDateTime, DateTimeKind.Utc) 
+                : request.EndDateTime.ToUniversalTime();
+
+            var userId = this.GetCurrentUserId();
+            var tenantId = this.GetCurrentTenantId();
+
+            var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+            if (tenant == null)
+                return BadRequest(ApiResponse<List<FacilityBookingConflictDto>>.ErrorResult("Invalid tenant"));
+
+            using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
+
+            // Check if user can view bookings for this facility
+            var authResult = await _authService.CheckAuthorizationAsync(userId, FacilityAction.View, tenantContext);
+            if (!authResult.Succeeded)
+                return Forbid(string.Join(", ", authResult.Reasons));
+
+            // Find conflicting bookings
+            var conflictingBookingsQuery = tenantContext.FacilityBookings
+                .Include(b => b.Member)
+                    .ThenInclude(m => m.User)
+                .Where(b => b.FacilityId == facilityId && 
+                           (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn) &&
+                           ((utcStartDateTime >= b.StartDateTime && utcStartDateTime < b.EndDateTime) ||
+                            (utcEndDateTime > b.StartDateTime && utcEndDateTime <= b.EndDateTime) ||
+                            (utcStartDateTime <= b.StartDateTime && utcEndDateTime >= b.EndDateTime)));
+
+            // Exclude specific booking if provided (useful for editing existing bookings)
+            if (request.ExcludeBookingId.HasValue)
+                conflictingBookingsQuery = conflictingBookingsQuery.Where(b => b.Id != request.ExcludeBookingId.Value);
+
+            var conflictingBookings = await conflictingBookingsQuery.ToListAsync();
+
+            var conflicts = conflictingBookings.Select(b => new FacilityBookingConflictDto
+            {
+                BookingId = b.Id,
+                MemberName = $"{b.Member.User.FirstName} {b.Member.User.LastName}",
+                StartDateTime = b.StartDateTime,
+                EndDateTime = b.EndDateTime,
+                Status = b.Status,
+                ConflictType = GetConflictType(utcStartDateTime, utcEndDateTime, b.StartDateTime, b.EndDateTime),
+                OverlapMinutes = CalculateOverlapMinutes(utcStartDateTime, utcEndDateTime, b.StartDateTime, b.EndDateTime)
+            }).ToList();
+
+            return Ok(ApiResponse<List<FacilityBookingConflictDto>>.SuccessResult(conflicts));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(ApiResponse<List<FacilityBookingConflictDto>>.ErrorResult($"Unauthorized: {ex.Message}"));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<List<FacilityBookingConflictDto>>.ErrorResult($"Error checking booking conflicts: {ex.Message}"));
+        }
+    }
+
+    private static string GetConflictType(DateTime start1, DateTime end1, DateTime start2, DateTime end2)
+    {
+        if (start1 <= start2 && end1 >= end2)
+            return "Complete Overlap";
+        if (start2 <= start1 && end2 >= end1)
+            return "Contained Within";
+        if (start1 < end2 && start2 < end1)
+            return "Partial Overlap";
+        return "Adjacent";
+    }
+
+    private static int CalculateOverlapMinutes(DateTime start1, DateTime end1, DateTime start2, DateTime end2)
+    {
+        var overlapStart = start1 > start2 ? start1 : start2;
+        var overlapEnd = end1 < end2 ? end1 : end2;
+        
+        if (overlapStart >= overlapEnd)
+            return 0;
+            
+        return (int)(overlapEnd - overlapStart).TotalMinutes;
     }
 }

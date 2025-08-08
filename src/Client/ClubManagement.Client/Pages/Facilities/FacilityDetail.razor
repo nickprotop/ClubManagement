@@ -302,7 +302,7 @@ else
                                 </div>
                             </div>
                         }
-                        @if (_facility.RequiresSupervision)
+                        @if (_facility.RequiresMemberSupervision)
                         {
                             <MudAlert Severity="Severity.Warning" Dense="true">
                                 <MudIcon Icon="@Icons.Material.Filled.SupervisorAccount" Class="mr-2" />
@@ -330,22 +330,6 @@ else
                             <MudText>Updated:</MudText>
                             <MudText>@_facility.UpdatedAt.ToString("MMM dd, yyyy")</MudText>
                         </div>
-                        @if (_facility.LastMaintenanceDate.HasValue)
-                        {
-                            <div class="d-flex justify-space-between">
-                                <MudText>Last Maintenance:</MudText>
-                                <MudText>@_facility.LastMaintenanceDate.Value.ToString("MMM dd, yyyy")</MudText>
-                            </div>
-                        }
-                        @if (_facility.NextMaintenanceDate.HasValue)
-                        {
-                            <div class="d-flex justify-space-between">
-                                <MudText>Next Maintenance:</MudText>
-                                <MudText Color="@GetMaintenanceColor(_facility.NextMaintenanceDate.Value)">
-                                    @_facility.NextMaintenanceDate.Value.ToString("MMM dd, yyyy")
-                                </MudText>
-                            </div>
-                        }
                     </div>
                 </MudCardContent>
             </MudCard>

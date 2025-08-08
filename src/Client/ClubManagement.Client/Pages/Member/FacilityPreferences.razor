@@ -3,7 +3,7 @@
 @using ClubManagement.Shared.Models
 @using ClubManagement.Client.Services
 @inject IMemberBookingService MemberBookingService
-@inject AuthService AuthService
+@inject IAuthService AuthService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 
@@ -116,12 +116,12 @@ else if (_preferences != null)
                                    Label="New facility announcements" 
                                    Color="Color.Primary" Class="mt-2" />
 
-                        <MudSelect @bind-Value="_preferences.Notifications.PreferredMethod" 
+                        <MudSelect T="string" @bind-Value="_preferences.Notifications.PreferredMethod" 
                                    Label="Preferred Notification Method" 
                                    Class="mt-3">
-                            <MudSelectItem Value="email">Email</MudSelectItem>
-                            <MudSelectItem Value="sms">SMS</MudSelectItem>
-                            <MudSelectItem Value="push">Push Notification</MudSelectItem>
+                            <MudSelectItem T="string" Value='"email"'>Email</MudSelectItem>
+                            <MudSelectItem T="string" Value='"sms"'>SMS</MudSelectItem>
+                            <MudSelectItem T="string" Value='"push"'>Push Notification</MudSelectItem>
                         </MudSelect>
                     </MudCardContent>
                 </MudCard>
@@ -162,10 +162,10 @@ else if (_preferences != null)
                                             </MudSelect>
                                         </MudItem>
                                         <MudItem xs="12" sm="3">
-                                            <MudTimePicker @bind-Time="slot.StartTime" Label="Start Time" />
+                                            <MudTimePicker @bind-Value="slot.StartTime" Label="Start Time" />
                                         </MudItem>
                                         <MudItem xs="12" sm="3">
-                                            <MudTimePicker @bind-Time="slot.EndTime" Label="End Time" />
+                                            <MudTimePicker @bind-Value="slot.EndTime" Label="End Time" />
                                         </MudItem>
                                         <MudItem xs="12" sm="2">
                                             <MudNumericField @bind-Value="slot.Priority" Label="Priority" 
@@ -284,7 +284,7 @@ else if (_preferences != null)
         try
         {
             var response = await MemberBookingService.GetMemberPreferencesAsync(_currentMemberId);
-            if (response?.IsSuccess == true && response.Data != null)
+            if (response?.Success == true && response.Data != null)
             {
                 _preferences = response.Data;
                 _preferredEquipmentText = string.Join("\n", _preferences.PreferredEquipment);
@@ -398,7 +398,7 @@ else if (_preferences != null)
             };
 
             var response = await MemberBookingService.UpdateMemberPreferencesAsync(_currentMemberId, request);
-            if (response?.IsSuccess == true)
+            if (response?.Success == true)
             {
                 Snackbar.Add("Preferences saved successfully", Severity.Success);
             }

@@ -652,6 +652,17 @@ public class FacilityBookingConflictDto
     public int OverlapMinutes { get; set; }
 }
 
+public class CheckBookingConflictsRequest
+{
+    [Required]
+    public DateTime StartDateTime { get; set; }
+    
+    [Required] 
+    public DateTime EndDateTime { get; set; }
+    
+    public Guid? ExcludeBookingId { get; set; }
+}
+
 // Statistics and Reporting DTOs
 public class FacilityBookingStatsDto
 {

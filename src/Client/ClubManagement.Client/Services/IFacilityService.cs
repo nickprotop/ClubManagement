@@ -29,7 +29,7 @@ public interface IFacilityService
     Task<ApiResponse<object>> DeactivateFacilityTypeAsync(Guid id);
 
     // Facility Bookings
-    Task<ApiResponse<List<FacilityBookingDto>>> GetFacilityBookingsAsync(Guid? facilityId = null, Guid? memberId = null, DateTime? startDate = null, DateTime? endDate = null, BookingStatus? status = null);
+    Task<ApiResponse<PagedResult<FacilityBookingDto>>> GetFacilityBookingsAsync(Guid? facilityId = null, Guid? memberId = null, DateTime? startDate = null, DateTime? endDate = null, BookingStatus? status = null);
     Task<ApiResponse<FacilityBookingDto>> GetFacilityBookingByIdAsync(Guid id);
     Task<ApiResponse<FacilityBookingDto>> CreateFacilityBookingAsync(CreateFacilityBookingRequest request);
     Task<ApiResponse<FacilityBookingDto>> UpdateFacilityBookingAsync(Guid id, UpdateFacilityBookingRequest request);

@@ -3,7 +3,7 @@
 @using ClubManagement.Client.Services
 @inject IMemberBookingService MemberBookingService
 @inject IFacilityService FacilityService
-@inject AuthService AuthService
+@inject IAuthService AuthService
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 
@@ -242,12 +242,12 @@
 
     private async Task QuickBookFacility(FacilityDto facility)
     {
-        await OnNavigate.InvokeAsync($"/facilities/book?facilityId={facility.Id}");
+        await OnNavigate.InvokeAsync($"/member/facilities/book?facilityId={facility.Id}");
     }
 
     private async Task BookNewFacility()
     {
-        await OnNavigate.InvokeAsync("/facilities/book");
+        await OnNavigate.InvokeAsync("/member/facilities/book");
     }
 
     private async Task CheckAvailability()

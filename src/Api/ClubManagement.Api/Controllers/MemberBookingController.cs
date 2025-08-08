@@ -58,7 +58,19 @@ public class MemberBookingController : ControllerBase
                     return Forbid(string.Join(", ", authResult.Reasons));
             }
 
-            var result = await _memberBookingService.GetMemberBookingsAsync(memberId, filter);
+            // Convert DateTime parameters to UTC to prevent PostgreSQL timezone issues
+            if (filter.StartDate.HasValue && filter.StartDate.Value.Kind == DateTimeKind.Unspecified)
+                filter.StartDate = DateTime.SpecifyKind(filter.StartDate.Value, DateTimeKind.Utc);
+            else if (filter.StartDate.HasValue)
+                filter.StartDate = filter.StartDate.Value.ToUniversalTime();
+                
+            if (filter.EndDate.HasValue && filter.EndDate.Value.Kind == DateTimeKind.Unspecified)
+                filter.EndDate = DateTime.SpecifyKind(filter.EndDate.Value, DateTimeKind.Utc);
+            else if (filter.EndDate.HasValue)
+                filter.EndDate = filter.EndDate.Value.ToUniversalTime();
+
+            // Use service with tenant-specific database context
+            var result = await _memberBookingService.GetMemberBookingsAsync(tenantContext, memberId, filter);
             return Ok(ApiResponse<PagedResult<FacilityBookingDto>>.SuccessResult(result));
         }
         catch (Exception ex)
@@ -91,7 +103,7 @@ public class MemberBookingController : ControllerBase
                     return Forbid(string.Join(", ", authResult.Reasons));
             }
 
-            var result = await _memberBookingService.GetMemberUpcomingBookingsAsync(memberId, daysAhead);
+            var result = await _memberBookingService.GetMemberUpcomingBookingsAsync(tenantContext, memberId, daysAhead);
             return Ok(ApiResponse<List<FacilityBookingDto>>.SuccessResult(result));
         }
         catch (Exception ex)
@@ -124,7 +136,16 @@ public class MemberBookingController : ControllerBase
                     return Forbid(string.Join(", ", authResult.Reasons));
             }
 
-            var result = await _memberBookingService.GetMemberBookingHistoryAsync(memberId, startDate, endDate);
+            // Convert DateTime parameters to UTC to prevent PostgreSQL timezone issues
+            var utcStartDate = startDate?.Kind == DateTimeKind.Unspecified 
+                ? DateTime.SpecifyKind(startDate.Value, DateTimeKind.Utc) 
+                : startDate?.ToUniversalTime();
+                
+            var utcEndDate = endDate?.Kind == DateTimeKind.Unspecified 
+                ? DateTime.SpecifyKind(endDate.Value, DateTimeKind.Utc) 
+                : endDate?.ToUniversalTime();
+
+            var result = await _memberBookingService.GetMemberBookingHistoryAsync(tenantContext, memberId, utcStartDate, utcEndDate);
             return Ok(ApiResponse<MemberBookingHistoryDto>.SuccessResult(result));
         }
         catch (Exception ex)
@@ -157,7 +178,7 @@ public class MemberBookingController : ControllerBase
                     return Forbid(string.Join(", ", authResult.Reasons));
             }
 
-            var result = await _memberBookingService.CreateMemberBookingAsync(memberId, request);
+            var result = await _memberBookingService.CreateMemberBookingAsync(tenantContext, memberId, request);
             return Ok(ApiResponse<FacilityBookingDto>.SuccessResult(result));
         }
         catch (InvalidOperationException ex)
@@ -194,7 +215,7 @@ public class MemberBookingController : ControllerBase
                     return Forbid(string.Join(", ", authResult.Reasons));
             }
 
-            var result = await _memberBookingService.CancelMemberBookingAsync(memberId, bookingId, request?.Reason);
+            var result = await _memberBookingService.CancelMemberBookingAsync(tenantContext, memberId, bookingId, request?.Reason);
             return Ok(ApiResponse<BookingCancellationResult>.SuccessResult(result));
         }
         catch (Exception ex)
@@ -227,7 +248,7 @@ public class MemberBookingController : ControllerBase
                     return Forbid(string.Join(", ", authResult.Reasons));
             }
 
-            var result = await _memberBookingService.ModifyMemberBookingAsync(memberId, bookingId, request);
+            var result = await _memberBookingService.ModifyMemberBookingAsync(tenantContext, memberId, bookingId, request);
             return Ok(ApiResponse<FacilityBookingDto>.SuccessResult(result));
         }
         catch (InvalidOperationException ex)
@@ -264,7 +285,12 @@ public class MemberBookingController : ControllerBase
                     return Forbid(string.Join(", ", authResult.Reasons));
             }
 
-            var result = await _memberBookingService.GetRecommendedBookingSlotsAsync(memberId, facilityId, preferredDate);
+            // Convert DateTime parameter to UTC to prevent PostgreSQL timezone issues
+            var utcPreferredDate = preferredDate?.Kind == DateTimeKind.Unspecified 
+                ? DateTime.SpecifyKind(preferredDate.Value, DateTimeKind.Utc) 
+                : preferredDate?.ToUniversalTime();
+
+            var result = await _memberBookingService.GetRecommendedBookingSlotsAsync(tenantContext, memberId, facilityId, utcPreferredDate);
             return Ok(ApiResponse<List<RecommendedBookingSlot>>.SuccessResult(result));
         }
         catch (Exception ex)
@@ -296,7 +322,7 @@ public class MemberBookingController : ControllerBase
                     return Forbid(string.Join(", ", authResult.Reasons));
             }
 
-            var result = await _memberBookingService.GetMemberPreferencesAsync(memberId);
+            var result = await _memberBookingService.GetMemberPreferencesAsync(tenantContext, memberId);
             return Ok(ApiResponse<MemberFacilityPreferencesDto>.SuccessResult(result));
         }
         catch (Exception ex)
@@ -329,7 +355,7 @@ public class MemberBookingController : ControllerBase
                     return Forbid(string.Join(", ", authResult.Reasons));
             }
 
-            var result = await _memberBookingService.UpdateMemberPreferencesAsync(memberId, request);
+            var result = await _memberBookingService.UpdateMemberPreferencesAsync(tenantContext, memberId, request);
             return Ok(ApiResponse<MemberFacilityPreferencesDto>.SuccessResult(result));
         }
         catch (Exception ex)
@@ -361,7 +387,7 @@ public class MemberBookingController : ControllerBase
                     return Forbid(string.Join(", ", authResult.Reasons));
             }
 
-            var result = await _memberBookingService.GetMemberAccessStatusAsync(memberId);
+            var result = await _memberBookingService.GetMemberAccessStatusAsync(tenantContext, memberId);
             return Ok(ApiResponse<MemberAccessStatusDto>.SuccessResult(result));
         }
         catch (Exception ex)
@@ -394,8 +420,17 @@ public class MemberBookingController : ControllerBase
                     return Forbid(string.Join(", ", authResult.Reasons));
             }
 
+            // Convert DateTime parameters to UTC to prevent PostgreSQL timezone issues
+            var utcStartTime = request.StartTime.Kind == DateTimeKind.Unspecified 
+                ? DateTime.SpecifyKind(request.StartTime, DateTimeKind.Utc) 
+                : request.StartTime.ToUniversalTime();
+                
+            var utcEndTime = request.EndTime.Kind == DateTimeKind.Unspecified 
+                ? DateTime.SpecifyKind(request.EndTime, DateTimeKind.Utc) 
+                : request.EndTime.ToUniversalTime();
+
             var result = await _memberBookingService.CheckBookingAvailabilityAsync(
-                memberId, request.FacilityId, request.StartTime, request.EndTime);
+                tenantContext, memberId, request.FacilityId, utcStartTime, utcEndTime);
             
             return Ok(ApiResponse<BookingAvailabilityResult>.SuccessResult(result));
         }
@@ -428,7 +463,7 @@ public class MemberBookingController : ControllerBase
                     return Forbid(string.Join(", ", authResult.Reasons));
             }
 
-            var result = await _memberBookingService.GetMemberFavoriteFacilitiesAsync(memberId);
+            var result = await _memberBookingService.GetMemberFavoriteFacilitiesAsync(tenantContext, memberId);
             return Ok(ApiResponse<List<FacilityDto>>.SuccessResult(result));
         }
         catch (Exception ex)

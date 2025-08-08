@@ -45,7 +45,7 @@ public class HardwareController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewHardwareAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to view hardware");
+                return Forbid();
 
             var query = tenantContext.Hardware
                 .Include(h => h.HardwareType)
@@ -175,7 +175,7 @@ public class HardwareController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewHardwareAsync(userId, tenantContext, id))
-                return Forbid("Insufficient permissions to view this hardware");
+                return Forbid();
 
             var hardware = await tenantContext.Hardware
                 .Include(h => h.HardwareType)
@@ -529,7 +529,7 @@ public class HardwareController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewHardwareAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to view hardware");
+                return Forbid();
 
             var query = tenantContext.Hardware
                 .Include(h => h.HardwareType)
@@ -618,7 +618,7 @@ public class HardwareController : ControllerBase
             using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
 
             if (!await _authService.CanViewHardwareAsync(userId, tenantContext))
-                return Forbid("Insufficient permissions to view hardware dashboard");
+                return Forbid();
 
             var totalHardware = await tenantContext.Hardware.CountAsync();
             var availableHardware = await tenantContext.Hardware.CountAsync(h => h.Status == HardwareStatus.Available);

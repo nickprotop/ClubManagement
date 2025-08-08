@@ -149,6 +149,7 @@ builder.Services.AddScoped<ClubManagement.Infrastructure.Services.IMemberAuditSe
 
 // Member-Facility Integration Services
 builder.Services.AddScoped<ClubManagement.Infrastructure.Services.Interfaces.IMemberFacilityService, ClubManagement.Infrastructure.Services.MemberFacilityService>();
+builder.Services.AddScoped<ClubManagement.Infrastructure.Services.Interfaces.IMemberBookingService, ClubManagement.Infrastructure.Services.MemberBookingService>();
 builder.Services.AddScoped<ClubManagement.Infrastructure.Services.Interfaces.IEventFacilityService, ClubManagement.Infrastructure.Services.EventFacilityService>();
 
 var app = builder.Build();

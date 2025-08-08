@@ -55,6 +55,6 @@ public class MemberBookingUsage
     public int BookingsThisWeek { get; set; }
     public int BookingsThisMonth { get; set; }
     public int ConcurrentBookings { get; set; }
-    public decimal TotalHoursBooked { get; set; }
+    public decimal TotalHoursBooked { get; set; } = 0;
     public DateTime LastCalculated { get; set; }
 }

@@ -53,12 +53,13 @@
                           Label="Facility"
                           Variant="Variant.Outlined"
                           Clearable="true"
+                          T="Guid?"
                           OnSelectionChanged="OnFilterChanged">
                     @if (_facilities != null)
                     {
                         @foreach (var facility in _facilities)
                         {
-                            <MudSelectItem Value="facility.Id">@facility.Name</MudSelectItem>
+                            <MudSelectItem T="Guid?" Value="facility.Id">@facility.Name</MudSelectItem>
                         }
                     }
                 </MudSelect>
@@ -68,12 +69,13 @@
                       Label="Member"
                       Variant="Variant.Outlined"
                       Clearable="true"
+                      T="Guid?"
                       OnSelectionChanged="OnFilterChanged">
                 @if (_members != null)
                 {
                     @foreach (var member in _members)
                     {
-                        <MudSelectItem Value="member.Id">@member.FullName</MudSelectItem>
+                        <MudSelectItem T="Guid?" Value="member.Id">@member.FullName</MudSelectItem>
                     }
                 }
             </MudSelect>
@@ -92,12 +94,13 @@
                       Label="Status"
                       Variant="Variant.Outlined"
                       Clearable="true"
+                      T="BookingStatus?"
                       OnSelectionChanged="OnFilterChanged">
-                <MudSelectItem Value="BookingStatus.Confirmed">Confirmed</MudSelectItem>
-                <MudSelectItem Value="BookingStatus.CheckedIn">Checked In</MudSelectItem>
-                <MudSelectItem Value="BookingStatus.CheckedOut">Checked Out</MudSelectItem>
-                <MudSelectItem Value="BookingStatus.Cancelled">Cancelled</MudSelectItem>
-                <MudSelectItem Value="BookingStatus.NoShow">No Show</MudSelectItem>
+                <MudSelectItem T="BookingStatus?" Value="BookingStatus.Confirmed">Confirmed</MudSelectItem>
+                <MudSelectItem T="BookingStatus?" Value="BookingStatus.CheckedIn">Checked In</MudSelectItem>
+                <MudSelectItem T="BookingStatus?" Value="BookingStatus.CheckedOut">Checked Out</MudSelectItem>
+                <MudSelectItem T="BookingStatus?" Value="BookingStatus.Cancelled">Cancelled</MudSelectItem>
+                <MudSelectItem T="BookingStatus?" Value="BookingStatus.NoShow">No Show</MudSelectItem>
             </MudSelect>
         </div>
 
@@ -260,32 +263,14 @@
     </MudCardContent>
 </MudCard>
 
-<!-- Create Booking Dialog -->
-<MudDialog @bind-IsVisible="_createBookingDialogVisible" Options="_dialogOptions">
-    <TitleContent>
-        <MudText Typo="Typo.h6">
-            <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-3" />
-            New Facility Booking
-        </MudText>
-    </TitleContent>
-    <DialogContent>
-        <!-- Create booking form will go here -->
-        <MudAlert Severity="Severity.Info">
-            Booking creation form coming soon...
-        </MudAlert>
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="@(() => _createBookingDialogVisible = false)">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled">Create Booking</MudButton>
-    </DialogActions>
-</MudDialog>
 
 @code {
     [Parameter] public Guid? FacilityId { get; set; }
     
+    private PagedResult<FacilityBookingDto>? _bookingsResult;
     private List<FacilityBookingDto>? _bookings;
     private List<FacilityDto>? _facilities;
-    private List<MemberDto>? _members;
+    private List<MemberListDto>? _members;
     private FacilityDto? _facility;
     private FacilityPermissions? _permissions;
     private bool _loading = true;
@@ -296,10 +281,6 @@
     private DateTime? _startDate;
     private DateTime? _endDate;
     private BookingStatus? _selectedStatus;
-    
-    // Dialog
-    private bool _createBookingDialogVisible;
-    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
 
     protected override async Task OnInitializedAsync()
     {
@@ -373,7 +354,7 @@
             var response = await MemberService.GetMembersAsync(new MemberSearchRequest());
             if (response.Success)
             {
-                _members = response.Data;
+                _members = response.Data?.Items;
             }
         }
         catch (Exception ex)
@@ -396,7 +377,8 @@
                 
             if (response.Success)
             {
-                _bookings = response.Data;
+                _bookingsResult = response.Data;
+                _bookings = _bookingsResult?.Items;
             }
             else
             {
@@ -420,7 +402,8 @@
 
     private void OpenCreateBookingDialog()
     {
-        _createBookingDialogVisible = true;
+        // Navigate to the member booking page instead of showing empty dialog
+        Navigation.NavigateTo("/member/facilities/book");
     }
 
     private async Task ViewBookingDetails(FacilityBookingDto booking)
@@ -531,7 +514,6 @@
         {
             BookingSource.MemberPortal => Color.Primary,
             BookingSource.StaffBooking => Color.Secondary,
-            BookingSource.StaffBooking => Color.Info,
             BookingSource.EventBooking => Color.Success,
             _ => Color.Default
         };

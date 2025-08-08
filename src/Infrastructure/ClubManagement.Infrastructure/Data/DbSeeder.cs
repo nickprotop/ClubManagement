@@ -151,6 +151,41 @@ public class DbSeeder
         tenantContext.Users.Add(memberUser);
         await tenantContext.SaveChangesAsync(); // Save users to get IDs
 
+        // Create member profile for the demo admin user (admins are also members!)
+        var demoAdminMember = new Member
+        {
+            Id = Guid.NewGuid(),
+            UserId = adminUser.Id,
+            MembershipNumber = $"MB{DateTime.UtcNow.Year}000000", // Admin gets first number
+            Tier = MembershipTier.VIP, // Admin gets VIP membership
+            Status = MembershipStatus.Active,
+            JoinedAt = DateTime.UtcNow.AddYears(-2), // Admin has been here longest
+            MembershipExpiresAt = DateTime.UtcNow.AddYears(10), // Long-term membership
+            Balance = 0,
+            EmergencyContact = new EmergencyContact
+            {
+                Name = "Admin Emergency Contact",
+                PhoneNumber = "+1-555-0000",
+                Relationship = "Family"
+            },
+            MedicalInfo = new MedicalInfo
+            {
+                Allergies = string.Empty,
+                MedicalConditions = string.Empty,
+                Medications = string.Empty
+            },
+            CustomFields = new Dictionary<string, object>
+            {
+                { "admin_member", true },
+                { "all_access", true }
+            },
+            TenantId = demoTenant.Id,
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = "System"
+        };
+
+        tenantContext.Members.Add(demoAdminMember);
+
         // Create member profile for the demo member user
         var demoMember = new Member
         {

@@ -306,8 +306,8 @@ else
             .Select(p => new PropertyDefinition
             {
                 Label = p.Label,
-                PropertyType = p.PropertyType,
-                IsRequired = p.IsRequired,
+                Type = p.Type,
+                Required = p.Required,
                 DefaultValue = p.DefaultValue,
                 Options = p.Options?.ToList() ?? new List<string>()
             }).ToList();
@@ -323,8 +323,8 @@ else
         _properties.Add(new PropertyDefinition
         {
             Label = "",
-            PropertyType = PropertyType.Text,
-            IsRequired = false,
+            Type = PropertyType.Text,
+            Required = false,
             Options = new List<string>()
         });
         _propertyOptions.Add("");

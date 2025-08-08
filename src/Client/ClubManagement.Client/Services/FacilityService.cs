@@ -99,7 +99,8 @@ public class FacilityService : IFacilityService
 
     public async Task<ApiResponse<MemberFacilityAccessDto>> CheckMemberAccessAsync(Guid facilityId, Guid memberId)
     {
-        return await _apiService.GetAsync<MemberFacilityAccessDto>($"api/facilities/{facilityId}/check-member-access/{memberId}");
+        var request = new CheckMemberAccessRequest { MemberId = memberId };
+        return await _apiService.PostAsync<MemberFacilityAccessDto>($"api/facilities/{facilityId}/check-member-access", request);
     }
 
     // Facility Types
@@ -143,7 +144,7 @@ public class FacilityService : IFacilityService
     }
 
     // Facility Bookings
-    public async Task<ApiResponse<List<FacilityBookingDto>>> GetFacilityBookingsAsync(Guid? facilityId = null, Guid? memberId = null, DateTime? startDate = null, DateTime? endDate = null, BookingStatus? status = null)
+    public async Task<ApiResponse<PagedResult<FacilityBookingDto>>> GetFacilityBookingsAsync(Guid? facilityId = null, Guid? memberId = null, DateTime? startDate = null, DateTime? endDate = null, BookingStatus? status = null)
     {
         var queryParams = new List<string>();
         
@@ -162,8 +163,12 @@ public class FacilityService : IFacilityService
         if (status.HasValue)
             queryParams.Add($"status={status}");
 
+        // Add pagination parameters (defaults from BookingListFilter)
+        queryParams.Add("page=1");
+        queryParams.Add("pageSize=50"); // Increase page size to get more results
+
         var queryString = queryParams.Any() ? "?" + string.Join("&", queryParams) : "";
-        return await _apiService.GetAsync<List<FacilityBookingDto>>($"api/facility-bookings{queryString}");
+        return await _apiService.GetAsync<PagedResult<FacilityBookingDto>>($"api/facility-bookings{queryString}");
     }
 
     public async Task<ApiResponse<FacilityBookingDto>> GetFacilityBookingByIdAsync(Guid id)
@@ -212,17 +217,14 @@ public class FacilityService : IFacilityService
 
     public async Task<ApiResponse<List<FacilityBookingConflictDto>>> CheckBookingConflictsAsync(Guid facilityId, DateTime startDateTime, DateTime endDateTime, Guid? excludeBookingId = null)
     {
-        var queryParams = new List<string>
+        var request = new CheckBookingConflictsRequest
         {
-            $"startDateTime={startDateTime:O}",
-            $"endDateTime={endDateTime:O}"
+            StartDateTime = startDateTime,
+            EndDateTime = endDateTime,
+            ExcludeBookingId = excludeBookingId
         };
-        
-        if (excludeBookingId.HasValue)
-            queryParams.Add($"excludeBookingId={excludeBookingId}");
 
-        var queryString = string.Join("&", queryParams);
-        return await _apiService.GetAsync<List<FacilityBookingConflictDto>>($"api/facility-bookings/{facilityId}/check-conflicts?{queryString}");
+        return await _apiService.PostAsync<List<FacilityBookingConflictDto>>($"api/facility-bookings/{facilityId}/check-conflicts", request);
     }
 
     public async Task<ApiResponse<List<FacilityBookingDto>>> GetMemberBookingsAsync(Guid memberId, DateTime? startDate = null, DateTime? endDate = null, BookingStatus? status = null)
