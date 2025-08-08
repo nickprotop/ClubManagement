@@ -50,7 +50,7 @@
                                         <MudText>@registration.MemberName</MudText>
                                         @if (registration.IsWaitlisted && registration.WaitlistPosition.HasValue)
                                         {
-                                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">
+                                            <MudChip T="string" T="string" Size="Size.Small" Color="Color.Warning">
                                                 Waitlist #@registration.WaitlistPosition
                                             </MudChip>
                                         }

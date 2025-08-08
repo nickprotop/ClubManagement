@@ -143,8 +143,13 @@ builder.Services.AddHostedService<RecurrenceMaintenanceService>();
 builder.Services.AddScoped<ClubManagement.Infrastructure.Authorization.IEventAuthorizationService, ClubManagement.Infrastructure.Authorization.EventAuthorizationService>();
 builder.Services.AddScoped<ClubManagement.Infrastructure.Authorization.IMemberAuthorizationService, ClubManagement.Infrastructure.Authorization.MemberAuthorizationService>();
 builder.Services.AddScoped<ClubManagement.Infrastructure.Authorization.IHardwareAuthorizationService, ClubManagement.Infrastructure.Authorization.HardwareAuthorizationService>();
+builder.Services.AddScoped<ClubManagement.Infrastructure.Authorization.IFacilityAuthorizationService, ClubManagement.Infrastructure.Authorization.FacilityAuthorizationService>();
 builder.Services.AddScoped<ClubManagement.Infrastructure.Services.IImpersonationService, ClubManagement.Infrastructure.Services.ImpersonationService>();
 builder.Services.AddScoped<ClubManagement.Infrastructure.Services.IMemberAuditService, ClubManagement.Infrastructure.Services.MemberAuditService>();
+
+// Member-Facility Integration Services
+builder.Services.AddScoped<ClubManagement.Infrastructure.Services.Interfaces.IMemberFacilityService, ClubManagement.Infrastructure.Services.MemberFacilityService>();
+builder.Services.AddScoped<ClubManagement.Infrastructure.Services.Interfaces.IEventFacilityService, ClubManagement.Infrastructure.Services.EventFacilityService>();
 
 var app = builder.Build();
 

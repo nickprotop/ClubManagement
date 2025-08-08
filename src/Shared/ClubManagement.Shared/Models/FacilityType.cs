@@ -8,4 +8,12 @@ public class FacilityType : BaseEntity
     public PropertySchema PropertySchema { get; set; } = new();
     public bool IsActive { get; set; } = true;
     public int SortOrder { get; set; } = 0;
+    
+    // Member Integration Properties
+    public List<MembershipTier> AllowedMembershipTiers { get; set; } = new();
+    public List<string> RequiredCertifications { get; set; } = new();
+    public bool RequiresSupervision { get; set; } = false;
+    
+    // Navigation properties
+    public List<Facility> Facilities { get; set; } = new();
 }

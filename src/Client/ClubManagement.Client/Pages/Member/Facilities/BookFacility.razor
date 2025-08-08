@@ -1,0 +1,612 @@
+@page "/member/facilities/book"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IFacilityService FacilityService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>Book Facility</PageTitle>
+
+<div class="d-flex align-center gap-3 mb-4">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
+                 Color="Color.Default"
+                 OnClick="@(() => Navigation.NavigateTo("/member/facilities"))"
+                 Title="Back to Browse Facilities" />
+    <MudText Typo="Typo.h4">Book a Facility</MudText>
+</div>
+
+<MudForm @ref="_form" @bind-IsValid="_isFormValid">
+    <MudGrid>
+        <!-- Booking Form -->
+        <MudItem xs="12" md="8">
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.Schedule" Class="mr-2" />
+                            Booking Details
+                        </MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid>
+                        <!-- Facility Selection -->
+                        <MudItem xs="12">
+                            <MudSelect @bind-Value="_model.FacilityId"
+                                      Label="Select Facility"
+                                      Required="true"
+                                      RequiredError="Please select a facility"
+                                      Variant="Variant.Outlined"
+                                      OnSelectionChanged="OnFacilityChanged">
+                                @if (_availableFacilities != null)
+                                {
+                                    @foreach (var facility in _availableFacilities)
+                                    {
+                                        <MudSelectItem Value="facility.Id">
+                                            <div class="d-flex align-center justify-space-between">
+                                                <div class="d-flex align-center gap-2">
+                                                    <MudIcon Icon="@facility.Icon" Size="Size.Small" />
+                                                    <div>
+                                                        <MudText Typo="Typo.body2">@facility.Name</MudText>
+                                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                            @facility.FacilityTypeName
+                                                            @if (!string.IsNullOrEmpty(facility.Location))
+                                                            {
+                                                                <text> • @facility.Location</text>
+                                                            }
+                                                        </MudText>
+                                                    </div>
+                                                </div>
+                                                @if (facility.MemberHourlyRate.HasValue)
+                                                {
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">
+                                                        @(facility.MemberHourlyRate.Value > 0 ? facility.MemberHourlyRate.Value.ToString("C") + "/hr" : "Free")
+                                                    </MudChip>
+                                                }
+                                            </div>
+                                        </MudSelectItem>
+                                    }
+                                }
+                            </MudSelect>
+                        </MudItem>
+
+                        <!-- Date and Time -->
+                        <MudItem xs="12" sm="4">
+                            <MudDatePicker @bind-Date="_bookingDate"
+                                          Label="Booking Date"
+                                          Required="true"
+                                          RequiredError="Please select a date"
+                                          MinDate="DateTime.Today"
+                                          MaxDate="DateTime.Today.AddDays(GetMaxBookingDays())"
+                                          Variant="Variant.Outlined"
+                                          OnDateChanged="OnDateTimeChanged" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="4">
+                            <MudTimePicker @bind-Time="_startTime"
+                                          Label="Start Time"
+                                          Required="true"
+                                          RequiredError="Please select start time"
+                                          Variant="Variant.Outlined"
+                                          OnTimeChanged="OnDateTimeChanged" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="4">
+                            <MudTimePicker @bind-Time="_endTime"
+                                          Label="End Time"
+                                          Required="true"
+                                          RequiredError="Please select end time"
+                                          Variant="Variant.Outlined"
+                                          OnTimeChanged="OnDateTimeChanged" />
+                        </MudItem>
+
+                        <!-- Booking Duration Info -->
+                        @if (_startTime.HasValue && _endTime.HasValue)
+                        {
+                            <MudItem xs="12">
+                                <MudAlert Severity="@(_isValidDuration ? Severity.Success : Severity.Warning)" Dense="true">
+                                    <div class="d-flex align-center gap-2">
+                                        <MudIcon Icon="@Icons.Material.Filled.Timer" Size="Size.Small" />
+                                        <MudText Typo="Typo.body2">
+                                            Duration: @GetDurationText()
+                                            @if (!_isValidDuration)
+                                            {
+                                                <text> - @_durationValidationMessage</text>
+                                            }
+                                        </MudText>
+                                    </div>
+                                </MudAlert>
+                            </MudItem>
+                        }
+
+                        <!-- Conflict Check Display -->
+                        @if (_conflictCheckResult != null)
+                        {
+                            <MudItem xs="12">
+                                @if (_conflictCheckResult.Count == 0)
+                                {
+                                    <MudAlert Severity="Severity.Success" Dense="true">
+                                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Class="mr-2" />
+                                        Great! This time slot is available for booking.
+                                    </MudAlert>
+                                }
+                                else
+                                {
+                                    <MudAlert Severity="Severity.Error" Dense="true">
+                                        <MudIcon Icon="@Icons.Material.Filled.Error" Class="mr-2" />
+                                        This time slot conflicts with existing bookings:
+                                        @foreach (var conflict in _conflictCheckResult)
+                                        {
+                                            <br />- @conflict.MemberName (@conflict.StartDateTime.ToString(@"h\:mm tt") - @conflict.EndDateTime.ToString(@"h\:mm tt"))
+                                        }
+                                    </MudAlert>
+                                }
+                            </MudItem>
+                        }
+
+                        <!-- Additional Details -->
+                        <MudItem xs="12">
+                            <MudDivider Class="my-4" />
+                            <MudText Typo="Typo.h6" Class="mb-4">Additional Information</MudText>
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <MudTextField @bind-Value="_model.Purpose"
+                                         Label="Purpose (Optional)"
+                                         Placeholder="e.g., Training, Meeting, Recreation"
+                                         Variant="Variant.Outlined" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <MudNumericField @bind-Value="_model.ParticipantCount"
+                                           Label="Number of Participants"
+                                           Min="1"
+                                           Max="GetMaxCapacity()"
+                                           Variant="Variant.Outlined" />
+                        </MudItem>
+
+                        <MudItem xs="12">
+                            <MudTextField @bind-Value="_model.MemberNotes"
+                                         Label="Special Notes or Requests"
+                                         Lines="3"
+                                         Variant="Variant.Outlined"
+                                         Placeholder="Any special requirements or additional information..." />
+                        </MudItem>
+                    </MudGrid>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- Booking Summary -->
+        <MudItem xs="12" md="4">
+            <MudCard Class="sticky-top">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.Receipt" Class="mr-2" />
+                            Booking Summary
+                        </MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (_selectedFacility != null)
+                    {
+                        <!-- Facility Info -->
+                        <div class="mb-4">
+                            <div class="d-flex align-center gap-2 mb-2">
+                                <MudIcon Icon="@_selectedFacility.Icon" Color="Color.Primary" />
+                                <MudText Typo="Typo.h6">@_selectedFacility.Name</MudText>
+                            </div>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                @_selectedFacility.FacilityTypeName
+                                @if (!string.IsNullOrEmpty(_selectedFacility.Location))
+                                {
+                                    <text> • @_selectedFacility.Location</text>
+                                }
+                            </MudText>
+                        </div>
+
+                        <!-- Booking Details -->
+                        @if (_bookingDate.HasValue && _startTime.HasValue && _endTime.HasValue)
+                        {
+                            <MudList T="string" Dense="true" Class="pa-0">
+                                <MudListItem T="string" Icon="@Icons.Material.Filled.CalendarToday">
+                                    <div>
+                                        <MudText Typo="Typo.body2">@_bookingDate.Value.ToString("dddd, MMMM dd, yyyy")</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @_startTime.Value.ToString(@"h\:mm") - @_endTime.Value.ToString(@"h\:mm")
+                                        </MudText>
+                                    </div>
+                                </MudListItem>
+                                
+                                @if (_model.ParticipantCount.HasValue && _model.ParticipantCount > 0)
+                                {
+                                    <MudListItem T="string" Icon="@Icons.Material.Filled.Person">
+                                        <MudText Typo="Typo.body2">@_model.ParticipantCount participant(s)</MudText>
+                                    </MudListItem>
+                                }
+
+                                @if (!string.IsNullOrEmpty(_model.Purpose))
+                                {
+                                    <MudListItem T="string" Icon="@Icons.Material.Filled.Info">
+                                        <MudText Typo="Typo.body2">@_model.Purpose</MudText>
+                                    </MudListItem>
+                                }
+                            </MudList>
+                        }
+
+                        <!-- Cost Breakdown -->
+                        @if (_calculatedCost.HasValue)
+                        {
+                            <MudDivider Class="my-3" />
+                            <div class="d-flex justify-space-between mb-2">
+                                <MudText Typo="Typo.body2">Duration:</MudText>
+                                <MudText Typo="Typo.body2">@GetDurationText()</MudText>
+                            </div>
+                            <div class="d-flex justify-space-between mb-2">
+                                <MudText Typo="Typo.body2">Rate:</MudText>
+                                <MudText Typo="Typo.body2">@GetHourlyRateText()</MudText>
+                            </div>
+                            <MudDivider Class="my-2" />
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.h6" Color="Color.Primary">Total:</MudText>
+                                <MudText Typo="Typo.h6" Color="Color.Primary">
+                                    @(_calculatedCost.Value > 0 ? _calculatedCost.Value.ToString("C") : "Free")
+                                </MudText>
+                            </div>
+                        }
+
+                        <!-- Access Requirements -->
+                        @if (_memberAccess != null && (_memberAccess.RequiredCertifications?.Count > 0 || _selectedFacility.RequiresSupervision))
+                        {
+                            <MudDivider Class="my-3" />
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">Requirements:</MudText>
+                            
+                            @if (_selectedFacility.RequiresSupervision)
+                            {
+                                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                                    <MudIcon Icon="@Icons.Material.Filled.SupervisorAccount" Size="Size.Small" Class="mr-1" />
+                                    <MudText Typo="Typo.caption">Staff supervision required</MudText>
+                                </MudAlert>
+                            }
+
+                            @if (_memberAccess.RequiredCertifications?.Count > 0)
+                            {
+                                <div class="d-flex flex-wrap gap-1">
+                                    @foreach (var cert in _memberAccess.RequiredCertifications)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" 
+                                                Color="Color.Success" 
+                                                Variant="Variant.Text"
+                                                Icon="@Icons.Material.Filled.Security">
+                                            @cert
+                                        </MudChip>
+                                    }
+                                </div>
+                            }
+                        }
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center pa-4">
+                            Select a facility to see booking details
+                        </MudText>
+                    }
+                </MudCardContent>
+
+                <!-- Action Buttons -->
+                <MudCardActions>
+                    <div class="d-flex flex-column gap-2 w-100">
+                        <MudButton Color="Color.Primary" 
+                                  Variant="Variant.Filled"
+                                  FullWidth="true"
+                                  Size="Size.Large"
+                                  OnClick="SubmitBooking"
+                                  Disabled="_isSubmitting || !_isFormValid || (_conflictCheckResult?.Count > 0) || !_isValidDuration"
+                                  StartIcon="@Icons.Material.Filled.Schedule">
+                            @if (_isSubmitting)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                <text>Creating Booking...</text>
+                            }
+                            else
+                            {
+                                <text>Confirm Booking</text>
+                            }
+                        </MudButton>
+                        
+                        <MudButton Color="Color.Default" 
+                                  Variant="Variant.Text"
+                                  FullWidth="true"
+                                  OnClick="@(() => Navigation.NavigateTo("/member/facilities"))">
+                            Cancel
+                        </MudButton>
+                    </div>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</MudForm>
+
+@code {
+    private MudForm _form = null!;
+    private bool _isFormValid;
+    private bool _isSubmitting;
+
+    private CreateMemberFacilityBookingRequest _model = new();
+    private List<FacilityDto>? _availableFacilities;
+    private FacilityDto? _selectedFacility;
+    private MemberFacilityAccessDto? _memberAccess;
+    
+    // Date/Time fields
+    private DateTime? _bookingDate = DateTime.Today.AddDays(1);
+    private TimeSpan? _startTime = new TimeSpan(9, 0, 0);
+    private TimeSpan? _endTime = new TimeSpan(10, 0, 0);
+    
+    // Validation
+    private List<FacilityBookingConflictDto>? _conflictCheckResult;
+    private decimal? _calculatedCost;
+    private bool _isValidDuration = true;
+    private string _durationValidationMessage = string.Empty;
+
+    // Simulated current member info
+    private Guid _currentMemberId = Guid.NewGuid();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAvailableFacilities();
+        ParseQueryParameters();
+        
+        // Set default values
+        _model.MemberId = _currentMemberId;
+        _model.ParticipantCount = 1;
+        
+        UpdateDateTime();
+    }
+
+    private void ParseQueryParameters()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var queryString = uri.Query;
+        
+        // Parse query string manually
+        if (!string.IsNullOrEmpty(queryString) && queryString.StartsWith('?'))
+        {
+            var parameters = queryString.Substring(1).Split('&');
+            foreach (var param in parameters)
+            {
+                var keyValue = param.Split('=');
+                if (keyValue.Length == 2)
+                {
+                    var key = Uri.UnescapeDataString(keyValue[0]);
+                    var value = Uri.UnescapeDataString(keyValue[1]);
+                    
+                    switch (key)
+                    {
+                        case "facilityId" when Guid.TryParse(value, out var facilityId):
+                            _model.FacilityId = facilityId;
+                            OnFacilityChanged();
+                            break;
+                        case "date" when DateTime.TryParse(value, out var date):
+                            _bookingDate = date;
+                            break;
+                        case "startTime" when TimeSpan.TryParse(value, out var startTime):
+                            _startTime = startTime;
+                            break;
+                        case "endTime" when TimeSpan.TryParse(value, out var endTime):
+                            _endTime = endTime;
+                            break;
+                    }
+                }
+            }
+        }
+        
+        UpdateDateTime();
+    }
+
+    private async Task LoadAvailableFacilities()
+    {
+        try
+        {
+            // Use member-specific endpoint
+            var response = await FacilityService.GetAvailableFacilitiesForMemberAsync(_currentMemberId);
+            if (response.Success)
+            {
+                _availableFacilities = response.Data?.Where(f => f.Status == FacilityStatus.Available).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load available facilities: {ex.Message}");
+        }
+    }
+
+    private async Task OnFacilityChanged()
+    {
+        _selectedFacility = _availableFacilities?.FirstOrDefault(f => f.Id == _model.FacilityId);
+        await CheckMemberAccess();
+        await ValidateBooking();
+        CalculateCost();
+    }
+
+    private async Task OnDateTimeChanged()
+    {
+        UpdateDateTime();
+        ValidateDuration();
+        await ValidateBooking();
+        CalculateCost();
+    }
+
+    private void UpdateDateTime()
+    {
+        if (_bookingDate.HasValue && _startTime.HasValue && _endTime.HasValue)
+        {
+            _model.StartDateTime = _bookingDate.Value.Date.Add(_startTime.Value);
+            _model.EndDateTime = _bookingDate.Value.Date.Add(_endTime.Value);
+        }
+    }
+
+    private void ValidateDuration()
+    {
+        if (!_startTime.HasValue || !_endTime.HasValue)
+        {
+            _isValidDuration = true;
+            return;
+        }
+
+        var duration = _endTime.Value - _startTime.Value;
+        
+        if (duration.TotalMinutes <= 0)
+        {
+            _isValidDuration = false;
+            _durationValidationMessage = "End time must be after start time";
+            return;
+        }
+
+        if (_selectedFacility != null)
+        {
+            if (duration.TotalMinutes < _selectedFacility.MinBookingDurationMinutes)
+            {
+                _isValidDuration = false;
+                _durationValidationMessage = $"Minimum booking duration is {_selectedFacility.MinBookingDurationMinutes} minutes";
+                return;
+            }
+
+            if (duration.TotalMinutes > _selectedFacility.MaxBookingDurationMinutes)
+            {
+                _isValidDuration = false;
+                _durationValidationMessage = $"Maximum booking duration is {_selectedFacility.MaxBookingDurationMinutes} minutes";
+                return;
+            }
+        }
+
+        _isValidDuration = true;
+        _durationValidationMessage = string.Empty;
+    }
+
+    private async Task CheckMemberAccess()
+    {
+        if (_selectedFacility == null) return;
+
+        try
+        {
+            var response = await FacilityService.CheckMemberAccessAsync(_selectedFacility.Id, _currentMemberId);
+            if (response.Success)
+            {
+                _memberAccess = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            _memberAccess = new MemberFacilityAccessDto { CanAccess = false, ReasonsDenied = new[] { "Access check failed" } };
+        }
+    }
+
+    private async Task ValidateBooking()
+    {
+        _conflictCheckResult = null;
+        
+        if (_selectedFacility != null && _model.StartDateTime != default && _model.EndDateTime != default)
+        {
+            try
+            {
+                var response = await FacilityService.CheckBookingConflictsAsync(
+                    _selectedFacility.Id, _model.StartDateTime, _model.EndDateTime);
+                if (response.Success)
+                {
+                    _conflictCheckResult = response.Data;
+                }
+            }
+            catch (Exception ex)
+            {
+                await NotificationService.ShowErrorAsync($"Failed to check availability: {ex.Message}");
+            }
+        }
+    }
+
+    private void CalculateCost()
+    {
+        if (_selectedFacility != null && _model.StartDateTime != default && _model.EndDateTime != default)
+        {
+            var duration = _model.EndDateTime - _model.StartDateTime;
+            var hours = (decimal)duration.TotalHours;
+            
+            var hourlyRate = _selectedFacility.MemberHourlyRate;
+            _calculatedCost = hours * hourlyRate;
+            
+            // Note: Cost is calculated server-side
+        }
+    }
+
+    private async Task SubmitBooking()
+    {
+        if (_form == null) return;
+        
+        await _form.Validate();
+        if (!_isFormValid) return;
+
+        _isSubmitting = true;
+        try
+        {
+            var response = await FacilityService.CreateMemberBookingAsync(_model);
+            if (response.Success && response.Data != null)
+            {
+                await NotificationService.ShowSuccessAsync("Your facility booking has been confirmed!");
+                Navigation.NavigateTo($"/member/bookings/{response.Data.Id}");
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to create booking");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to create booking: {ex.Message}");
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private string GetDurationText()
+    {
+        if (!_startTime.HasValue || !_endTime.HasValue) return "0 hours";
+        
+        var duration = _endTime.Value - _startTime.Value;
+        if (duration.TotalHours < 1)
+        {
+            return $"{duration.TotalMinutes:F0} minutes";
+        }
+        return $"{duration.TotalHours:F1} hours";
+    }
+
+    private string GetHourlyRateText()
+    {
+        if (_selectedFacility?.MemberHourlyRate == null) return "N/A";
+        
+        var rate = _selectedFacility.MemberHourlyRate;
+        return rate > 0 ? rate.ToString("C") + "/hour" : "Free";
+    }
+
+    private int GetMaxBookingDays()
+    {
+        return _selectedFacility?.MaxBookingDaysInAdvance ?? 30;
+    }
+
+    private int GetMaxCapacity()
+    {
+        return _selectedFacility?.Capacity ?? 50;
+    }
+}
+
+<style>
+.sticky-top {
+    position: sticky;
+    top: 1rem;
+}
+</style>

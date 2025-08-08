@@ -1,0 +1,320 @@
+@page "/member/booking-history"
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Client.Services
+@inject IMemberBookingService MemberBookingService
+@inject AuthService AuthService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Booking History & Statistics</PageTitle>
+
+<div class="d-flex align-center justify-space-between mb-4">
+    <div>
+        <MudText Typo="Typo.h4">Booking History & Statistics</MudText>
+        <MudText Typo="Typo.subtitle1" Color="Color.Dark">Your facility usage analytics and insights</MudText>
+    </div>
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" 
+               StartIcon="@Icons.Material.Filled.ArrowBack"
+               OnClick="@(() => Navigation.NavigateTo("/member/bookings"))">
+        Back to Bookings
+    </MudButton>
+</div>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudGrid>
+        <MudItem xs="12" sm="6">
+            <MudDatePicker @bind-Date="_startDate" Label="From Date" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudDatePicker @bind-Date="_endDate" Label="To Date" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="LoadHistory">
+                Update Statistics
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_loading)
+{
+    <div class="d-flex justify-center pa-8">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+    </div>
+}
+else if (_history != null)
+{
+    <!-- Summary Statistics -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 text-center" Elevation="3">
+                <MudIcon Icon="@Icons.Material.Filled.EventNote" Color="Color.Primary" Size="Size.Large" />
+                <MudText Typo="Typo.h4" Color="Color.Primary">@_history.TotalBookings</MudText>
+                <MudText Typo="Typo.subtitle2">Total Bookings</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 text-center" Elevation="3">
+                <MudIcon Icon="@Icons.Material.Filled.AccessTime" Color="Color.Info" Size="Size.Large" />
+                <MudText Typo="Typo.h4" Color="Color.Info">@_history.TotalHoursBooked.ToString("N0")h</MudText>
+                <MudText Typo="Typo.subtitle2">Hours Booked</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 text-center" Elevation="3">
+                <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Color="Color.Success" Size="Size.Large" />
+                <MudText Typo="Typo.h4" Color="Color.Success">$@_history.TotalCost.ToString("N0")</MudText>
+                <MudText Typo="Typo.subtitle2">Total Spent</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 text-center" Elevation="3">
+                <MudIcon Icon="@Icons.Material.Filled.Savings" Color="Color.Tertiary" Size="Size.Large" />
+                <MudText Typo="Typo.h4" Color="Color.Tertiary">$@_history.TotalSavings.ToString("N0")</MudText>
+                <MudText Typo="Typo.subtitle2">Member Savings</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Additional Stats -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4 text-center" Elevation="2">
+                <div class="d-flex align-center justify-center">
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2" />
+                    <div>
+                        <MudText Typo="Typo.h6">@_history.CompletedBookings</MudText>
+                        <MudText Typo="Typo.caption">Completed</MudText>
+                    </div>
+                </div>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4 text-center" Elevation="2">
+                <div class="d-flex align-center justify-center">
+                    <MudIcon Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Class="mr-2" />
+                    <div>
+                        <MudText Typo="Typo.h6">@_history.CancelledBookings</MudText>
+                        <MudText Typo="Typo.caption">Cancelled</MudText>
+                    </div>
+                </div>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4 text-center" Elevation="2">
+                <div class="d-flex align-center justify-center">
+                    <MudIcon Icon="@Icons.Material.Filled.EventBusy" Color="Color.Warning" Class="mr-2" />
+                    <div>
+                        <MudText Typo="Typo.h6">@_history.NoShowBookings</MudText>
+                        <MudText Typo="Typo.caption">No Shows</MudText>
+                    </div>
+                </div>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Facility Usage Statistics -->
+    <MudCard Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">Top Facilities</MudText>
+                <MudText Typo="Typo.caption">Your most frequently used facilities</MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            @if (_history.FacilityUsage.Any())
+            {
+                <MudDataGrid T="FacilityUsageStatsDto" Items="_history.FacilityUsage" Elevation="0" 
+                             Height="300px" FixedHeader="true">
+                    <Columns>
+                        <PropertyColumn Property="x => x.Rank" Title="#" />
+                        <PropertyColumn Property="x => x.FacilityName" Title="Facility" />
+                        <PropertyColumn Property="x => x.FacilityTypeName" Title="Type" />
+                        <PropertyColumn Property="x => x.BookingCount" Title="Bookings" />
+                        <PropertyColumn Property="x => x.TotalHours" Title="Hours" Format="N1" />
+                        <PropertyColumn Property="x => x.TotalCost" Title="Cost" Format="C" />
+                    </Columns>
+                </MudDataGrid>
+            }
+            else
+            {
+                <div class="text-center pa-4">
+                    <MudText Typo="Typo.body2" Color="Color.Dark">No facility usage data available</MudText>
+                </div>
+            }
+        </MudCardContent>
+    </MudCard>
+
+    <!-- Booking Patterns -->
+    <MudCard Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">Booking Patterns</MudText>
+                <MudText Typo="Typo.caption">Your most common booking times and days</MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            @if (_history.BookingPatterns.Any())
+            {
+                <MudGrid>
+                    @foreach (var pattern in _history.BookingPatterns.Take(6))
+                    {
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudPaper Class="pa-3" Elevation="1" Style="background-color: var(--mud-palette-surface);">
+                                <div class="d-flex align-center justify-space-between">
+                                    <div>
+                                        <MudText Typo="Typo.body2"><strong>@pattern.DayOfWeek</strong></MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Dark">
+                                            @pattern.HourOfDay:00 - @pattern.FacilityTypeName
+                                        </MudText>
+                                    </div>
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Primary">
+                                        @pattern.BookingCount bookings
+                                    </MudChip>
+                                </div>
+                            </MudPaper>
+                        </MudItem>
+                    }
+                </MudGrid>
+            }
+            else
+            {
+                <div class="text-center pa-4">
+                    <MudText Typo="Typo.body2" Color="Color.Dark">Not enough data to show booking patterns</MudText>
+                </div>
+            }
+        </MudCardContent>
+    </MudCard>
+
+    <!-- Recent Bookings -->
+    <MudCard>
+        <MudCardHeader>
+            <CardHeaderContent>
+                <div class="d-flex align-center justify-space-between">
+                    <div>
+                        <MudText Typo="Typo.h6">Recent Activity</MudText>
+                        <MudText Typo="Typo.caption">Your last 10 bookings</MudText>
+                    </div>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" 
+                               StartIcon="@Icons.Material.Filled.List"
+                               OnClick="@(() => Navigation.NavigateTo("/member/bookings"))">
+                        View All
+                    </MudButton>
+                </div>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            @if (_history.RecentBookings.Any())
+            {
+                @foreach (var booking in _history.RecentBookings)
+                {
+                    <div class="d-flex align-center pa-2 mb-2" style="border-radius: 8px; background-color: var(--mud-palette-surface);">
+                        <div class="mr-3" style="width: 40px; height: 40px; border-radius: 50%; background-color: var(--mud-palette-primary); display: flex; align-items: center; justify-content: center;">
+                            <MudIcon Icon="@Icons.Material.Filled.Place" Color="Color.Surface" Size="Size.Medium" />
+                        </div>
+                        <div class="flex-grow-1">
+                            <MudText Typo="Typo.body2"><strong>@booking.FacilityName</strong></MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Dark">
+                                @booking.StartDateTime.ToString("MMM dd, h:mm tt") - @booking.EndDateTime.ToString("h:mm tt")
+                            </MudText>
+                            @if (!string.IsNullOrEmpty(booking.Purpose))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Dark">@booking.Purpose</MudText>
+                            }
+                        </div>
+                        <div class="text-right">
+                            <MudChip T="string" Size="Size.Small" Color="GetBookingStatusColor(booking.Status)">
+                                @booking.Status
+                            </MudChip>
+                            @if (booking.Cost.HasValue)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Dark">$@booking.Cost.Value.ToString("N2")</MudText>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="text-center pa-4">
+                    <MudText Typo="Typo.body2" Color="Color.Dark">No recent bookings available</MudText>
+                </div>
+            }
+        </MudCardContent>
+    </MudCard>
+
+    <!-- Period Information -->
+    <MudAlert Severity="Severity.Info" Class="mt-4">
+        <strong>Statistics Period:</strong> @_history.PeriodStart.ToString("MMMM dd, yyyy") to @_history.PeriodEnd.ToString("MMMM dd, yyyy")
+        <br />
+        <strong>Average Booking Duration:</strong> @_history.AverageBookingDuration.ToString("N1") hours
+    </MudAlert>
+}
+
+@code {
+    private bool _loading = true;
+    private MemberBookingHistoryDto? _history;
+    private DateTime? _startDate;
+    private DateTime? _endDate;
+    private Guid _currentMemberId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var memberId = await AuthService.GetCurrentMemberIdAsync();
+        if (memberId.HasValue)
+        {
+            _currentMemberId = memberId.Value;
+            
+            // Default to last 6 months
+            _startDate = DateTime.Today.AddMonths(-6);
+            _endDate = DateTime.Today;
+            
+            await LoadHistory();
+        }
+        else
+        {
+            Navigation.NavigateTo("/login");
+        }
+    }
+
+    private async Task LoadHistory()
+    {
+        _loading = true;
+        try
+        {
+            var response = await MemberBookingService.GetMemberBookingHistoryAsync(_currentMemberId, _startDate, _endDate);
+            if (response?.Success == true && response.Data != null)
+            {
+                _history = response.Data;
+            }
+            else
+            {
+                Snackbar.Add("Failed to load booking history", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading booking history: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private Color GetBookingStatusColor(BookingStatus status)
+    {
+        return status switch
+        {
+            BookingStatus.Confirmed => Color.Success,
+            BookingStatus.CheckedIn => Color.Info,
+            BookingStatus.Completed => Color.Primary,
+            BookingStatus.Cancelled => Color.Error,
+            BookingStatus.NoShow => Color.Warning,
+            _ => Color.Dark
+        };
+    }
+}

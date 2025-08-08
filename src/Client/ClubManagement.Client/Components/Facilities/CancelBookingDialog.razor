@@ -1,0 +1,105 @@
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@inject IDialogService DialogService
+
+<MudDialog>
+    <DialogContent>
+        <div class="pa-4">
+            <div class="d-flex align-center mb-4">
+                <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Large" Class="mr-3" />
+                <div>
+                    <MudText Typo="Typo.h6">Cancel Booking</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Dark">This action cannot be undone</MudText>
+                </div>
+            </div>
+
+            <MudPaper Class="pa-3 mb-4" Elevation="1" Style="background-color: var(--mud-palette-surface);">
+                <MudText Typo="Typo.subtitle1"><strong>@Booking.FacilityName</strong></MudText>
+                <MudText Typo="Typo.body2" Color="Color.Dark">
+                    @Booking.StartDateTime.ToString("MMMM dd, yyyy") from @Booking.StartDateTime.ToString("h:mm tt") to @Booking.EndDateTime.ToString("h:mm tt")
+                </MudText>
+                @if (!string.IsNullOrEmpty(Booking.Purpose))
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Dark">Purpose: @Booking.Purpose</MudText>
+                }
+                @if (Booking.Cost.HasValue)
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Dark">Cost: $@Booking.Cost.Value.ToString("N2")</MudText>
+                }
+            </MudPaper>
+
+            @{
+                var hoursUntilStart = (Booking.StartDateTime - DateTime.UtcNow).TotalHours;
+                var showPenaltyWarning = hoursUntilStart < 24; // Assuming 24-hour cancellation policy
+            }
+
+            @if (showPenaltyWarning)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mb-4">
+                    <strong>Cancellation Policy Notice:</strong>
+                    <br />
+                    Cancelling less than 24 hours before your booking may result in cancellation fees.
+                    @if (Booking.Cost.HasValue)
+                    {
+                        <br />
+                        <text>A 50% cancellation fee (~$@GetCancellationFee()) may apply.</text>
+                    }
+                </MudAlert>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info" Class="mb-4">
+                    You are cancelling more than 24 hours in advance. No cancellation fees will apply.
+                </MudAlert>
+            }
+
+            <MudTextField @bind-Value="_cancellationReason" 
+                          Label="Reason for Cancellation (Optional)" 
+                          Variant="Variant.Outlined" 
+                          Lines="3" 
+                          Placeholder="Please provide a reason for cancelling this booking..."
+                          Class="mb-4" />
+
+            <MudCheckBox @bind-Value="_confirmCancellation" Color="Color.Primary">
+                I understand that this action cannot be undone and agree to any applicable cancellation fees.
+            </MudCheckBox>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Keep Booking</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" 
+                   OnClick="ConfirmCancellation" 
+                   Disabled="!_confirmCancellation"
+                   StartIcon="@Icons.Material.Filled.Cancel">
+            Cancel Booking
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public FacilityBookingDto Booking { get; set; } = null!;
+    [Parameter] public EventCallback<string?> OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private string _cancellationReason = string.Empty;
+    private bool _confirmCancellation = false;
+
+    private async Task Cancel()
+    {
+        await OnCancel.InvokeAsync();
+    }
+
+    private async Task ConfirmCancellation()
+    {
+        await OnConfirm.InvokeAsync(_cancellationReason);
+    }
+
+    private string GetCancellationFee()
+    {
+        if (Booking.Cost.HasValue)
+        {
+            return (Booking.Cost.Value * 0.5m).ToString("N2");
+        }
+        return "0.00";
+    }
+}

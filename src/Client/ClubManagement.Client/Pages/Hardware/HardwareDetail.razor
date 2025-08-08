@@ -66,7 +66,7 @@ else if (_hardware != null)
                         {
                             @if (_hardware.IsCurrentlyAssigned && _hardware.CurrentAssignment != null)
                             {
-                                <MudChip T="string" Color="Color.Info" 
+                                <MudChip T="string" T="string" Color="Color.Info" 
                                         Size="Size.Medium" 
                                         Variant="Variant.Filled">
                                     <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Class="mr-1" />
@@ -75,7 +75,7 @@ else if (_hardware != null)
                             }
                             else
                             {
-                                <MudChip T="string" Color="Color.Success" 
+                                <MudChip T="string" T="string" Color="Color.Success" 
                                         Size="Size.Medium" 
                                         Variant="Variant.Filled">
                                     <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Class="mr-1" />
@@ -85,7 +85,7 @@ else if (_hardware != null)
                         }
                         else
                         {
-                            <MudChip T="string" Color="@GetStatusColor(_hardware.Status)" 
+                            <MudChip T="string" T="string" Color="@GetStatusColor(_hardware.Status)" 
                                     Size="Size.Medium" 
                                     Variant="Variant.Filled">
                                 <MudIcon Icon="@GetStatusIcon(_hardware.Status)" Size="Size.Small" Class="mr-1" />
@@ -323,7 +323,7 @@ else if (_hardware != null)
                                     <td>@assignment.AssignedAt.ToString("MMM dd, yyyy")</td>
                                     <td>@(assignment.ReturnedAt?.ToString("MMM dd, yyyy") ?? "-")</td>
                                     <td>
-                                        <MudChip T="string" Size="Size.Small" Color="@GetAssignmentStatusColor(assignment.Status)">
+                                        <MudChip T="string" T="string" Size="Size.Small" Color="@GetAssignmentStatusColor(assignment.Status)">
                                             @assignment.Status
                                         </MudChip>
                                     </td>

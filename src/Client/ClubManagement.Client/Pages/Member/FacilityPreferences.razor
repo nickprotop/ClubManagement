@@ -1,0 +1,419 @@
+@page "/member/facility-preferences"
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Client.Services
+@inject IMemberBookingService MemberBookingService
+@inject AuthService AuthService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Facility Preferences</PageTitle>
+
+<div class="d-flex align-center justify-space-between mb-4">
+    <div>
+        <MudText Typo="Typo.h4">Facility Preferences</MudText>
+        <MudText Typo="Typo.subtitle1" Color="Color.Dark">Customize your booking experience</MudText>
+    </div>
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" 
+               StartIcon="@Icons.Material.Filled.ArrowBack"
+               OnClick="@(() => Navigation.NavigateTo("/member/bookings"))">
+        Back to Bookings
+    </MudButton>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-center pa-8">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+    </div>
+}
+else if (_preferences != null)
+{
+    <MudForm @ref="_form">
+        <MudGrid>
+            <!-- Booking Preferences -->
+            <MudItem xs="12" md="6">
+                <MudCard Class="mb-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Booking Preferences</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudNumericField @bind-Value="_preferences.DefaultBookingDuration" 
+                                         Label="Default Booking Duration (minutes)" 
+                                         Min="15" Max="480" Step="15" 
+                                         Adornment="Adornment.End" AdornmentText="min"
+                                         HelperText="Default duration for new bookings" />
+                        
+                        <MudSwitch @bind-Value="_preferences.AutoSelectBestTimes" 
+                                   Label="Auto-select optimal time slots" 
+                                   Color="Color.Primary" Class="mt-3"
+                                   HelperText="Automatically suggest the best available times" />
+                        
+                        <MudSwitch @bind-Value="_preferences.AllowWaitlist" 
+                                   Label="Join waitlists when facilities are fully booked" 
+                                   Color="Color.Primary" Class="mt-2"
+                                   HelperText="Be notified when spots become available" />
+                        
+                        <MudSwitch @bind-Value="_preferences.ShareBookingsWithFriends" 
+                                   Label="Allow friends to see my public bookings" 
+                                   Color="Color.Primary" Class="mt-2"
+                                   HelperText="Share non-private bookings with club friends" />
+
+                        <MudTextField @bind-Value="_preferences.DefaultPurpose" 
+                                      Label="Default Purpose" 
+                                      Class="mt-3"
+                                      HelperText="Default text for booking purpose field" />
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <!-- Reminder Preferences -->
+            <MudItem xs="12" md="6">
+                <MudCard Class="mb-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Reminders & Notifications</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudSwitch @bind-Value="_preferences.SendBookingReminders" 
+                                   Label="Send booking reminders" 
+                                   Color="Color.Primary"
+                                   HelperText="Get reminders before your bookings" />
+                        
+                        @if (_preferences.SendBookingReminders)
+                        {
+                            <MudNumericField @bind-Value="_preferences.ReminderMinutes" 
+                                             Label="Reminder Time (minutes before)" 
+                                             Min="5" Max="1440" Step="5" 
+                                             Adornment="Adornment.End" AdornmentText="min"
+                                             Class="mt-3" />
+                        }
+
+                        <MudDivider Class="my-4" />
+
+                        <MudText Typo="Typo.subtitle2" Class="mb-3">Notification Types</MudText>
+                        
+                        <MudSwitch @bind-Value="_preferences.Notifications.BookingConfirmation" 
+                                   Label="Booking confirmations" 
+                                   Color="Color.Primary" Class="mt-2" />
+                        
+                        <MudSwitch @bind-Value="_preferences.Notifications.BookingReminders" 
+                                   Label="Booking reminders" 
+                                   Color="Color.Primary" Class="mt-2" />
+                        
+                        <MudSwitch @bind-Value="_preferences.Notifications.FacilityAvailability" 
+                                   Label="Facility availability alerts" 
+                                   Color="Color.Primary" Class="mt-2" />
+                        
+                        <MudSwitch @bind-Value="_preferences.Notifications.MaintenanceNotices" 
+                                   Label="Facility maintenance notices" 
+                                   Color="Color.Primary" Class="mt-2" />
+                        
+                        <MudSwitch @bind-Value="_preferences.Notifications.NewFacilities" 
+                                   Label="New facility announcements" 
+                                   Color="Color.Primary" Class="mt-2" />
+
+                        <MudSelect @bind-Value="_preferences.Notifications.PreferredMethod" 
+                                   Label="Preferred Notification Method" 
+                                   Class="mt-3">
+                            <MudSelectItem Value="email">Email</MudSelectItem>
+                            <MudSelectItem Value="sms">SMS</MudSelectItem>
+                            <MudSelectItem Value="push">Push Notification</MudSelectItem>
+                        </MudSelect>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <!-- Preferred Time Slots -->
+            <MudItem xs="12">
+                <MudCard Class="mb-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <div class="d-flex align-center justify-space-between">
+                                <div>
+                                    <MudText Typo="Typo.h6">Preferred Time Slots</MudText>
+                                    <MudText Typo="Typo.caption">Define your preferred booking times</MudText>
+                                </div>
+                                <MudButton Variant="Variant.Text" Color="Color.Primary" 
+                                           StartIcon="@Icons.Material.Filled.Add"
+                                           OnClick="AddTimeSlot">
+                                    Add Time Slot
+                                </MudButton>
+                            </div>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        @if (_preferences.PreferredTimeSlots.Any())
+                        {
+                            @foreach (var (slot, index) in _preferences.PreferredTimeSlots.Select((s, i) => (s, i)))
+                            {
+                                <MudPaper Class="pa-3 mb-3" Elevation="1" Style="background-color: var(--mud-palette-surface);">
+                                    <MudGrid AlignItems="Center">
+                                        <MudItem xs="12" sm="3">
+                                            <MudSelect @bind-Value="slot.DayOfWeek" Label="Day" T="DayOfWeek?">
+                                                <MudSelectItem Value="@((DayOfWeek?)null)">Any Day</MudSelectItem>
+                                                @foreach (DayOfWeek day in Enum.GetValues<DayOfWeek>())
+                                                {
+                                                    <MudSelectItem Value="@day">@day</MudSelectItem>
+                                                }
+                                            </MudSelect>
+                                        </MudItem>
+                                        <MudItem xs="12" sm="3">
+                                            <MudTimePicker @bind-Time="slot.StartTime" Label="Start Time" />
+                                        </MudItem>
+                                        <MudItem xs="12" sm="3">
+                                            <MudTimePicker @bind-Time="slot.EndTime" Label="End Time" />
+                                        </MudItem>
+                                        <MudItem xs="12" sm="2">
+                                            <MudNumericField @bind-Value="slot.Priority" Label="Priority" 
+                                                             Min="1" Max="10" HelperText="1 = highest" />
+                                        </MudItem>
+                                        <MudItem xs="12" sm="1">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                                           Color="Color.Error" Size="Size.Small"
+                                                           OnClick="() => RemoveTimeSlot(index)" />
+                                        </MudItem>
+                                    </MudGrid>
+                                </MudPaper>
+                            }
+                        }
+                        else
+                        {
+                            <div class="text-center pa-4">
+                                <MudIcon Icon="@Icons.Material.Filled.AccessTime" Size="Size.Large" Color="Color.Dark" />
+                                <MudText Typo="Typo.body2" Color="Color.Dark" Class="mt-2">No preferred time slots defined</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Dark">Add time slots to get better booking recommendations</MudText>
+                            </div>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <!-- Equipment Preferences -->
+            <MudItem xs="12" md="6">
+                <MudCard Class="mb-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Equipment Preferences</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudTextField @bind-Value="_preferredEquipmentText" 
+                                      Label="Preferred Equipment" 
+                                      Lines="3" Variant="Variant.Outlined"
+                                      HelperText="Enter equipment types you frequently use (one per line)"
+                                      OnBlur="UpdatePreferredEquipment" />
+                        
+                        @if (_preferences.PreferredEquipment.Any())
+                        {
+                            <div class="mt-3">
+                                <MudText Typo="Typo.caption" Class="mb-2">Current preferences:</MudText>
+                                <div class="d-flex flex-wrap gap-2">
+                                    @foreach (var equipment in _preferences.PreferredEquipment)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" OnClose="() => RemoveEquipment(equipment)">
+                                            @equipment
+                                        </MudChip>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <!-- Save Actions -->
+            <MudItem xs="12">
+                <div class="d-flex align-center justify-space-between">
+                    <MudAlert Severity="Severity.Info" Elevation="0">
+                        <strong>Note:</strong> These preferences will be used to provide personalized booking recommendations and improve your experience.
+                    </MudAlert>
+                    
+                    <div class="d-flex gap-2">
+                        <MudButton Variant="Variant.Outlined" OnClick="ResetToDefaults">
+                            Reset to Defaults
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" 
+                                   StartIcon="@Icons.Material.Filled.Save"
+                                   OnClick="SavePreferences" Disabled="_saving">
+                            @if (_saving)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                <span class="ml-2">Saving...</span>
+                            }
+                            else
+                            {
+                                <span>Save Preferences</span>
+                            }
+                        </MudButton>
+                    </div>
+                </div>
+            </MudItem>
+        </MudGrid>
+    </MudForm>
+}
+
+@code {
+    private MudForm _form = null!;
+    private bool _loading = true;
+    private bool _saving = false;
+    private MemberFacilityPreferencesDto? _preferences;
+    private string _preferredEquipmentText = string.Empty;
+    private Guid _currentMemberId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var memberId = await AuthService.GetCurrentMemberIdAsync();
+        if (memberId.HasValue)
+        {
+            _currentMemberId = memberId.Value;
+            await LoadPreferences();
+        }
+        else
+        {
+            Navigation.NavigateTo("/login");
+        }
+    }
+
+    private async Task LoadPreferences()
+    {
+        _loading = true;
+        try
+        {
+            var response = await MemberBookingService.GetMemberPreferencesAsync(_currentMemberId);
+            if (response?.IsSuccess == true && response.Data != null)
+            {
+                _preferences = response.Data;
+                _preferredEquipmentText = string.Join("\n", _preferences.PreferredEquipment);
+            }
+            else
+            {
+                Snackbar.Add("Failed to load preferences", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading preferences: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void AddTimeSlot()
+    {
+        if (_preferences != null)
+        {
+            _preferences.PreferredTimeSlots.Add(new TimeSlotPreference
+            {
+                StartTime = new TimeSpan(9, 0, 0), // 9:00 AM
+                EndTime = new TimeSpan(10, 0, 0), // 10:00 AM
+                Priority = _preferences.PreferredTimeSlots.Count + 1
+            });
+        }
+    }
+
+    private void RemoveTimeSlot(int index)
+    {
+        if (_preferences != null && index >= 0 && index < _preferences.PreferredTimeSlots.Count)
+        {
+            _preferences.PreferredTimeSlots.RemoveAt(index);
+        }
+    }
+
+    private void UpdatePreferredEquipment()
+    {
+        if (_preferences != null)
+        {
+            _preferences.PreferredEquipment = _preferredEquipmentText
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(e => e.Trim())
+                .Where(e => !string.IsNullOrEmpty(e))
+                .ToList();
+        }
+    }
+
+    private void RemoveEquipment(string equipment)
+    {
+        if (_preferences != null)
+        {
+            _preferences.PreferredEquipment.Remove(equipment);
+            _preferredEquipmentText = string.Join("\n", _preferences.PreferredEquipment);
+        }
+    }
+
+    private async Task ResetToDefaults()
+    {
+        if (_preferences != null)
+        {
+            _preferences.DefaultBookingDuration = 60;
+            _preferences.AutoSelectBestTimes = true;
+            _preferences.SendBookingReminders = true;
+            _preferences.ReminderMinutes = 30;
+            _preferences.AllowWaitlist = true;
+            _preferences.ShareBookingsWithFriends = false;
+            _preferences.DefaultPurpose = null;
+            _preferences.PreferredTimeSlots.Clear();
+            _preferences.PreferredEquipment.Clear();
+            _preferences.Notifications = new NotificationPreferences
+            {
+                BookingConfirmation = true,
+                BookingReminders = true,
+                FacilityAvailability = false,
+                MaintenanceNotices = true,
+                NewFacilities = false,
+                PreferredMethod = "email"
+            };
+            _preferredEquipmentText = string.Empty;
+            
+            Snackbar.Add("Preferences reset to defaults", Severity.Info);
+        }
+    }
+
+    private async Task SavePreferences()
+    {
+        if (_preferences == null) return;
+
+        _saving = true;
+        try
+        {
+            UpdatePreferredEquipment(); // Ensure equipment list is up to date
+
+            var request = new UpdateMemberPreferencesRequest
+            {
+                DefaultBookingDuration = _preferences.DefaultBookingDuration,
+                AutoSelectBestTimes = _preferences.AutoSelectBestTimes,
+                SendBookingReminders = _preferences.SendBookingReminders,
+                ReminderMinutes = _preferences.ReminderMinutes,
+                AllowWaitlist = _preferences.AllowWaitlist,
+                ShareBookingsWithFriends = _preferences.ShareBookingsWithFriends,
+                DefaultPurpose = _preferences.DefaultPurpose,
+                PreferredTimeSlots = _preferences.PreferredTimeSlots,
+                PreferredEquipment = _preferences.PreferredEquipment,
+                Notifications = _preferences.Notifications
+            };
+
+            var response = await MemberBookingService.UpdateMemberPreferencesAsync(_currentMemberId, request);
+            if (response?.IsSuccess == true)
+            {
+                Snackbar.Add("Preferences saved successfully", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Failed to save preferences", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving preferences: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

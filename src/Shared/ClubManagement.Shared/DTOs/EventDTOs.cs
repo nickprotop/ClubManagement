@@ -48,6 +48,13 @@ public class EventDto
     public List<string> RequiredEquipment { get; set; } = new();
     public List<EventRegistrationDto> Registrations { get; set; } = new();
     
+    // Facility Requirements
+    public List<string> RequiredCertifications { get; set; } = new();
+    public List<MembershipTier> AllowedMembershipTiers { get; set; } = new();
+    public bool RequiresFacilityAccess { get; set; } = false;
+    public int? MinimumAge { get; set; }
+    public int? MaximumAge { get; set; }
+    
     // Recurrence info
     public bool IsRecurringMaster { get; set; }
     public Guid? MasterEventId { get; set; }
@@ -85,6 +92,13 @@ public class CreateEventRequest
     public bool AllowWaitlist { get; set; } = true;
     public string? SpecialInstructions { get; set; }
     public List<string>? RequiredEquipment { get; set; }
+    
+    // Facility Requirements
+    public List<string>? RequiredCertifications { get; set; }
+    public List<MembershipTier>? AllowedMembershipTiers { get; set; }
+    public bool RequiresFacilityAccess { get; set; } = false;
+    public int? MinimumAge { get; set; }
+    public int? MaximumAge { get; set; }
     
     // Recurrence helper properties for UI
     public RecurrenceType RecurrenceType { get; set; } = RecurrenceType.None;
@@ -282,4 +296,74 @@ public class RecurringRegistrationSummary
     public int TotalOccurrences { get; set; }
     public RecurringRegistrationOption RegistrationType { get; set; }
     public List<EventOccurrenceDto> RegisteredEvents { get; set; } = new();
+}
+
+// Event-Facility Integration DTOs
+public class EventEligibilityResult
+{
+    public bool IsEligible { get; set; }
+    public List<string> Reasons { get; set; } = new();
+    public bool HasRequiredCertifications { get; set; }
+    public List<string> MissingCertifications { get; set; } = new();
+    public bool MeetsMembershipTierRequirement { get; set; }
+    public MembershipTier? RequiredTier { get; set; }
+    public bool MeetsAgeRequirement { get; set; }
+    public int? MinAge { get; set; }
+    public int? MaxAge { get; set; }
+    public bool HasFacilityAccess { get; set; }
+}
+
+public class EventFacilityRequirementsDto
+{
+    public Guid EventId { get; set; }
+    public string EventTitle { get; set; } = string.Empty;
+    public Guid? FacilityId { get; set; }
+    public string? FacilityName { get; set; }
+    public List<string> RequiredCertifications { get; set; } = new();
+    public List<MembershipTier> AllowedMembershipTiers { get; set; } = new();
+    public bool RequiresFacilityAccess { get; set; }
+    public int? MinimumAge { get; set; }
+    public int? MaximumAge { get; set; }
+    public List<string> RequiredEquipment { get; set; } = new();
+}
+
+public class FacilityAvailabilityResult
+{
+    public Guid FacilityId { get; set; }
+    public string FacilityName { get; set; } = string.Empty;
+    public bool IsAvailable { get; set; }
+    public List<ConflictingBookingDto> ConflictingBookings { get; set; } = new();
+    public List<MaintenanceScheduleDto> MaintenanceSchedules { get; set; } = new();
+    public int CurrentUtilization { get; set; }
+    public int MaxCapacity { get; set; }
+    public bool IsUnderMaintenance { get; set; }
+}
+
+public class ConflictingBookingDto
+{
+    public Guid BookingId { get; set; }
+    public string MemberName { get; set; } = string.Empty;
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+    public string Purpose { get; set; } = string.Empty;
+}
+
+public class MaintenanceScheduleDto
+{
+    public Guid Id { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+    public string MaintenanceType { get; set; } = string.Empty;
+}
+
+public class ValidationResult
+{
+    public bool IsValid { get; set; }
+    public List<string> Errors { get; set; } = new();
+    public List<string> Warnings { get; set; } = new();
+    
+    public static ValidationResult Success() => new() { IsValid = true };
+    public static ValidationResult Failed(params string[] errors) => new() { IsValid = false, Errors = errors.ToList() };
+    public static ValidationResult WithWarnings(params string[] warnings) => new() { IsValid = true, Warnings = warnings.ToList() };
 }

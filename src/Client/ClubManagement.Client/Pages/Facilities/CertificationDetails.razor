@@ -1,0 +1,395 @@
+@page "/facilities/certifications/{Id:guid}"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@inject IFacilityService FacilityService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Certification Details</PageTitle>
+
+@if (_loading)
+{
+    <div class="d-flex justify-center align-center" style="height: 200px;">
+        <MudProgressCircular Size="Size.Large" Indeterminate="true" />
+    </div>
+}
+else if (_certification == null)
+{
+    <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-8">
+        <MudAlert Severity="Severity.Error">
+            Certification not found or you don't have permission to view it.
+        </MudAlert>
+        <div class="mt-4">
+            <MudButton Variant="Variant.Text" 
+                       StartIcon="@Icons.Material.Filled.ArrowBack"
+                       OnClick="@(() => Navigation.NavigateTo("/facilities/certifications"))">
+                Back to Certifications
+            </MudButton>
+        </div>
+    </MudContainer>
+}
+else
+{
+    <div class="d-flex justify-space-between align-center mb-6">
+        <div>
+            <div class="d-flex align-center gap-3 mb-2">
+                <MudButton Variant="Variant.Text" 
+                           StartIcon="@Icons.Material.Filled.ArrowBack"
+                           OnClick="@(() => Navigation.NavigateTo("/facilities/certifications"))"
+                           Size="Size.Small">
+                    Back
+                </MudButton>
+                <MudText Typo="Typo.h4">@_certification.CertificationType Certification</MudText>
+                <MudChip T="string" Color="@(_certification.IsActive ? Color.Success : Color.Default)"
+                         Size="Size.Small">
+                    @(_certification.IsActive ? "Active" : "Inactive")
+                </MudChip>
+                @if (_certification.IsExpired)
+                {
+                    <MudChip T="string" Color="Color.Error" Size="Size.Small">
+                        EXPIRED
+                    </MudChip>
+                }
+                else if (_certification.IsExpiringSoon)
+                {
+                    <MudChip T="string" Color="Color.Warning" Size="Size.Small">
+                        Expires Soon
+                    </MudChip>
+                }
+            </div>
+            <MudText Typo="Typo.body1" Color="Color.Secondary">
+                Member: <MudLink Href="@($"/members/{_certification.MemberId}")">@_certification.MemberName</MudLink>
+            </MudText>
+        </div>
+        @if (_permissions?.CanEdit == true && _certification.IsActive)
+        {
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Error"
+                       StartIcon="@Icons.Material.Filled.Block"
+                       OnClick="OpenDeactivateDialog">
+                Deactivate
+            </MudButton>
+        }
+    </div>
+
+    <MudGrid>
+        <MudItem xs="12" md="8">
+            <!-- Certification Information -->
+            <MudCard Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Class="mr-2" />
+                            Certification Information
+                        </MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid>
+                        <MudItem xs="12" sm="6">
+                            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Certification Type</MudText>
+                            <MudText Typo="Typo.body1" Class="mb-4">@_certification.CertificationType</MudText>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Status</MudText>
+                            <div class="mb-4">
+                                <MudChip T="string" Color="@(_certification.IsActive ? Color.Success : Color.Default)"
+                                         Size="Size.Small">
+                                    @(_certification.IsActive ? "Active" : "Inactive")
+                                </MudChip>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Certified Date</MudText>
+                            <MudText Typo="Typo.body1" Class="mb-4">@_certification.CertifiedDate.ToString("MMM dd, yyyy")</MudText>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Expiry Date</MudText>
+                            @if (_certification.ExpiryDate.HasValue)
+                            {
+                                var color = _certification.IsExpired ? Color.Error : 
+                                           _certification.IsExpiringSoon ? Color.Warning : Color.Default;
+                                <MudText Typo="Typo.body1" Color="@color" Class="mb-4">
+                                    @_certification.ExpiryDate.Value.ToString("MMM dd, yyyy")
+                                    @if (_certification.DaysUntilExpiry.HasValue)
+                                    {
+                                        <br />
+                                        <small>(@(_certification.DaysUntilExpiry > 0 ? $"{_certification.DaysUntilExpiry} days left" : "EXPIRED"))</small>
+                                    }
+                                </MudText>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">Never expires</MudText>
+                            }
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Certified By</MudText>
+                            <MudText Typo="Typo.body1" Class="mb-4">@_certification.CertifiedByUserName</MudText>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Created</MudText>
+                            <MudText Typo="Typo.body1" Class="mb-4">@_certification.CreatedAt.ToString("MMM dd, yyyy")</MudText>
+                        </MudItem>
+                    </MudGrid>
+                </MudCardContent>
+            </MudCard>
+
+            <!-- Notes -->
+            @if (!string.IsNullOrWhiteSpace(_certification.Notes))
+            {
+                <MudCard>
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">
+                                <MudIcon Icon="@Icons.Material.Filled.Notes" Class="mr-2" />
+                                Notes
+                            </MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudText Typo="Typo.body1" Style="white-space: pre-wrap;">@_certification.Notes</MudText>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <!-- Member Information -->
+            <MudCard Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.Person" Class="mr-2" />
+                            Member Information
+                        </MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Name</MudText>
+                    <MudLink Href="@($"/members/{_certification.MemberId}")" 
+                             Typo="Typo.body1" 
+                             Class="mb-3 d-block">
+                        @_certification.MemberName
+                    </MudLink>
+                    
+                    <div class="d-flex gap-2">
+                        <MudButton Variant="Variant.Outlined" 
+                                   Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Person"
+                                   Href="@($"/members/{_certification.MemberId}")">
+                            View Member
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" 
+                                   Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.List"
+                                   OnClick="ViewMemberCertifications">
+                            All Certifications
+                        </MudButton>
+                    </div>
+                </MudCardContent>
+            </MudCard>
+
+            <!-- Quick Actions -->
+            @if (_permissions?.CanEdit == true)
+            {
+                <MudCard>
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">
+                                <MudIcon Icon="@Icons.Material.Filled.Settings" Class="mr-2" />
+                                Actions
+                            </MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <div class="d-flex flex-column gap-2">
+                            @if (_certification.IsActive)
+                            {
+                                <MudButton Variant="Variant.Outlined" 
+                                           Color="Color.Error"
+                                           Size="Size.Small"
+                                           StartIcon="@Icons.Material.Filled.Block"
+                                           OnClick="OpenDeactivateDialog"
+                                           FullWidth="true">
+                                    Deactivate Certification
+                                </MudButton>
+                            }
+                            @if (_permissions.CanCreate == true)
+                            {
+                                <MudButton Variant="Variant.Outlined" 
+                                           Color="Color.Primary"
+                                           Size="Size.Small"
+                                           StartIcon="@Icons.Material.Filled.Add"
+                                           OnClick="CreateNewCertification"
+                                           FullWidth="true">
+                                    Add New Certification
+                                </MudButton>
+                            }
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </MudItem>
+    </MudGrid>
+}
+
+<!-- Deactivate Certification Dialog -->
+<MudDialog @bind-IsVisible="_showDeactivateDialog" Options="_dialogOptions">
+    <TitleContent>
+        <div class="d-flex align-center">
+            <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Class="mr-3" />
+            <MudText Typo="Typo.h6">Deactivate Certification</MudText>
+        </div>
+    </TitleContent>
+    <DialogContent>
+        @if (_certification != null)
+        {
+            <MudText Typo="Typo.body1" Class="mb-4">
+                Are you sure you want to deactivate the <strong>@_certification.CertificationType</strong> 
+                certification for <strong>@_certification.MemberName</strong>?
+            </MudText>
+            <MudTextField @bind-Value="_deactivateReason"
+                          Label="Reason for Deactivation"
+                          Required="true"
+                          RequiredError="Please provide a reason"
+                          Lines="2" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDeactivateDialog">Cancel</MudButton>
+        <MudButton Color="Color.Error" 
+                   Variant="Variant.Filled"
+                   OnClick="DeactivateCertification"
+                   Disabled="_deactivating || string.IsNullOrWhiteSpace(_deactivateReason)">
+            @if (_deactivating)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                <span class="ml-2">Deactivating...</span>
+            }
+            else
+            {
+                <span>Deactivate</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    
+    private FacilityCertificationDto? _certification;
+    private FacilityPermissions? _permissions;
+    private bool _loading = true;
+    
+    // Deactivate dialog
+    private bool _showDeactivateDialog = false;
+    private bool _deactivating = false;
+    private string _deactivateReason = string.Empty;
+    
+    private DialogOptions _dialogOptions = new() { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCertification();
+        await LoadPermissions();
+    }
+
+    private async Task LoadCertification()
+    {
+        _loading = true;
+        try
+        {
+            var response = await FacilityService.GetCertificationByIdAsync(Id);
+            if (response.Success && response.Data != null)
+            {
+                _certification = response.Data;
+            }
+            else
+            {
+                Snackbar.Add(response.Message ?? "Certification not found", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading certification: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadPermissions()
+    {
+        try
+        {
+            var response = await FacilityService.GetFacilityPermissionsAsync();
+            if (response.Success)
+                _permissions = response.Data;
+        }
+        catch (Exception ex)
+        {
+            // Don't show error for permissions, just disable actions
+        }
+    }
+
+    private void OpenDeactivateDialog()
+    {
+        _deactivateReason = string.Empty;
+        _showDeactivateDialog = true;
+    }
+
+    private void CloseDeactivateDialog()
+    {
+        _showDeactivateDialog = false;
+        _deactivateReason = string.Empty;
+    }
+
+    private async Task DeactivateCertification()
+    {
+        if (_certification == null || string.IsNullOrWhiteSpace(_deactivateReason)) return;
+
+        _deactivating = true;
+        try
+        {
+            var request = new DeactivateCertificationRequest { Reason = _deactivateReason };
+            var response = await FacilityService.DeactivateCertificationAsync(_certification.Id, request);
+            
+            if (response.Success)
+            {
+                Snackbar.Add("Certification deactivated successfully", Severity.Success);
+                CloseDeactivateDialog();
+                await LoadCertification(); // Reload to show updated status
+            }
+            else
+            {
+                Snackbar.Add(response.Message ?? "Failed to deactivate certification", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deactivating certification: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _deactivating = false;
+        }
+    }
+
+    private void ViewMemberCertifications()
+    {
+        if (_certification != null)
+        {
+            Navigation.NavigateTo($"/facilities/certifications?memberId={_certification.MemberId}");
+        }
+    }
+
+    private void CreateNewCertification()
+    {
+        Navigation.NavigateTo("/facilities/certifications");
+        // The parent page will handle opening the create dialog
+    }
+}

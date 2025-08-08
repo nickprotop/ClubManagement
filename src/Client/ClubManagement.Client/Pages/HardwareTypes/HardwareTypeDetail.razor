@@ -69,7 +69,7 @@ else if (_hardwareType != null)
                         </MudStack>
                     </CardHeaderContent>
                     <CardHeaderActions>
-                        <MudChip T="string" 
+                        <MudChip T="string" T="string" 
                                  Color="@(_hardwareType.IsActive ? Color.Success : Color.Default)"
                                  Variant="Variant.Filled">
                             @(_hardwareType.IsActive ? "Active" : "Inactive")
@@ -128,12 +128,12 @@ else if (_hardwareType != null)
                                             <div class="d-flex justify-space-between align-center mb-2">
                                                 <MudText Typo="Typo.subtitle1">@property.Label</MudText>
                                                 <MudStack Row="true" Spacing="1">
-                                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                                                    <MudChip T="string" T="string" Size="Size.Small" Variant="Variant.Outlined">
                                                         @property.Type.ToString()
                                                     </MudChip>
                                                     @if (property.Required)
                                                     {
-                                                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">
+                                                        <MudChip T="string" T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">
                                                             Required
                                                         </MudChip>
                                                     }
@@ -155,7 +155,7 @@ else if (_hardwareType != null)
                                                     <div class="d-flex flex-wrap gap-1">
                                                         @foreach (var option in property.Options)
                                                         {
-                                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text">@option</MudChip>
+                                                            <MudChip T="string" T="string" Size="Size.Small" Variant="Variant.Text">@option</MudChip>
                                                         }
                                                     </div>
                                                 </div>
@@ -279,7 +279,7 @@ else if (_hardwareType != null)
                                                 </MudText>
                                             }
                                         </div>
-                                        <MudChip T="string" Size="Size.Small" 
+                                        <MudChip T="string" T="string" Size="Size.Small" 
                                                  Color="@GetStatusColor(hardware.Status)"
                                                  Variant="Variant.Filled">
                                             @hardware.Status

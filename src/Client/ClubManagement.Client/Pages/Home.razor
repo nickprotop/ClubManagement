@@ -1,5 +1,6 @@
 @page "/"
 @using ClubManagement.Client.Services
+@using ClubManagement.Client.Components.Facilities
 @using ClubManagement.Shared.DTOs
 @using ClubManagement.Shared.Models
 @inject IAuthService AuthService
@@ -121,6 +122,22 @@ else if (_dashboardData != null)
             </MudCard>
         }
 
+        <!-- Member Facility Dashboard Widget -->
+        @if (_currentUser?.Role == UserRole.Member)
+        {
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">My Facilities</MudText>
+                        <MudText Typo="Typo.caption">Your facility usage and bookings</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MemberFacilityDashboard MemberId="_currentUser.Id" OnNavigate="NavigateToPage" />
+                </MudCardContent>
+            </MudCard>
+        }
+
         <!-- Content Grid -->
         <MudGrid>
             <!-- Recent Activity -->
@@ -183,7 +200,7 @@ else if (_dashboardData != null)
                                                 @evt.StartDateTime.ToString("ddd MMM dd, yyyy h:mm tt")
                                             </MudText>
                                         </MudStack>
-                                        <MudChip T="string" 
+                                        <MudChip T="string"
                                                  Size="Size.Small" 
                                                  Color="@GetMudColor(evt.StatusColor)">
                                             @evt.Status
@@ -335,5 +352,10 @@ else if (_hasError)
             "error" => Severity.Error,
             _ => Severity.Info
         };
+    }
+
+    private void NavigateToPage(string page)
+    {
+        Navigation.NavigateTo(page);
     }
 }

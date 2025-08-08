@@ -1,0 +1,563 @@
+@page "/facility-types/{Id:guid}"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IFacilityService FacilityService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>@(_facilityType?.Name ?? "Facility Type Details")</PageTitle>
+
+@if (_loading)
+{
+    <div class="d-flex justify-center align-center" style="height: 50vh;">
+        <MudProgressCircular Indeterminate="true" />
+    </div>
+}
+else if (_facilityType == null)
+{
+    <MudAlert Severity="Severity.Error">
+        Facility type not found or you don't have permission to view it.
+    </MudAlert>
+}
+else
+{
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div class="d-flex align-center gap-3">
+            <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
+                         Color="Color.Default"
+                         OnClick="@(() => Navigation.NavigateTo("/facility-types"))"
+                         Title="Back to Facility Types" />
+            <div class="d-flex align-center gap-2">
+                <MudIcon Icon="@_facilityType.Icon" Color="Color.Primary" />
+                <MudText Typo="Typo.h4">@_facilityType.Name</MudText>
+                @if (!_facilityType.IsActive)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
+                        Inactive
+                    </MudChip>
+                }
+            </div>
+        </div>
+        
+        <div class="d-flex gap-2">
+            @if (_permissions?.CanEditTypes == true)
+            {
+                <MudButton Variant="Variant.Outlined" 
+                          Color="Color.Secondary"
+                          StartIcon="@Icons.Material.Filled.Edit"
+                          OnClick="@(() => Navigation.NavigateTo($"/facility-types/{Id}/edit"))">
+                    Edit
+                </MudButton>
+            }
+            
+            @if (_permissions?.CanCreate == true)
+            {
+                <MudButton Variant="Variant.Filled" 
+                          Color="Color.Primary"
+                          StartIcon="@Icons.Material.Filled.Add"
+                          OnClick="@(() => Navigation.NavigateTo($"/facilities/create?typeId={Id}"))">
+                    Add Facility
+                </MudButton>
+            }
+        </div>
+    </div>
+
+    <MudGrid>
+        <!-- Basic Information -->
+        <MudItem xs="12" md="8">
+            <MudCard Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Basic Information</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid>
+                        @if (!string.IsNullOrEmpty(_facilityType.Description))
+                        {
+                            <MudItem xs="12">
+                                <MudField Label="Description" Variant="Variant.Text">
+                                    @_facilityType.Description
+                                </MudField>
+                            </MudItem>
+                        }
+                        <MudItem xs="12" sm="6">
+                            <MudField Label="Sort Order" Variant="Variant.Text">
+                                @_facilityType.SortOrder
+                            </MudField>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudField Label="Status" Variant="Variant.Text">
+                                <MudChip T="string" Color="@(_facilityType.IsActive ? Color.Success : Color.Default)" 
+                                        Size="Size.Small" 
+                                        Variant="Variant.Filled">
+                                    @(_facilityType.IsActive ? "Active" : "Inactive")
+                                </MudChip>
+                            </MudField>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudField Label="Created" Variant="Variant.Text">
+                                @_facilityType.CreatedAt.ToString("MMM dd, yyyy h:mm tt")
+                            </MudField>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudField Label="Last Updated" Variant="Variant.Text">
+                                @_facilityType.UpdatedAt.ToString("MMM dd, yyyy h:mm tt")
+                            </MudField>
+                        </MudItem>
+                    </MudGrid>
+                </MudCardContent>
+            </MudCard>
+
+            <!-- Member Access Requirements -->
+            @if (_facilityType.AllowedMembershipTiers?.Count > 0 || _facilityType.RequiredCertifications?.Count > 0 || _facilityType.RequiresSupervision)
+            {
+                <MudCard Class="mb-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Member Access Requirements</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudGrid>
+                            @if (_facilityType.AllowedMembershipTiers?.Count > 0)
+                            {
+                                <MudItem xs="12">
+                                    <MudField Label="Allowed Membership Tiers" Variant="Variant.Text">
+                                        <div class="d-flex flex-wrap gap-1">
+                                            @foreach (var tier in _facilityType.AllowedMembershipTiers)
+                                            {
+                                                <MudChip T="string" Size="Size.Small" 
+                                                        Color="@GetTierColor(tier)"
+                                                        Variant="Variant.Filled">
+                                                    @tier
+                                                </MudChip>
+                                            }
+                                        </div>
+                                    </MudField>
+                                </MudItem>
+                            }
+                            @if (_facilityType.RequiredCertifications?.Count > 0)
+                            {
+                                <MudItem xs="12">
+                                    <MudField Label="Required Certifications" Variant="Variant.Text">
+                                        <div class="d-flex flex-column gap-1">
+                                            @foreach (var cert in _facilityType.RequiredCertifications)
+                                            {
+                                                <MudChip T="string" Size="Size.Small" 
+                                                        Color="Color.Warning"
+                                                        Variant="Variant.Outlined"
+                                                        Icon="@Icons.Material.Filled.Security">
+                                                    @cert
+                                                </MudChip>
+                                            }
+                                        </div>
+                                    </MudField>
+                                </MudItem>
+                            }
+                            @if (_facilityType.RequiresSupervision)
+                            {
+                                <MudItem xs="12">
+                                    <MudAlert Severity="Severity.Info" Dense="true">
+                                        <MudIcon Icon="@Icons.Material.Filled.SupervisorAccount" Class="mr-2" />
+                                        All facilities of this type require staff supervision during use
+                                    </MudAlert>
+                                </MudItem>
+                            }
+                        </MudGrid>
+                    </MudCardContent>
+                </MudCard>
+            }
+
+            <!-- Property Schema -->
+            @if (_facilityType.PropertySchema?.Properties?.Count > 0)
+            {
+                <MudCard Class="mb-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Custom Property Schema</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                Additional properties that facilities of this type can have
+                            </MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudDataGrid T="PropertyDefinition" Items="_facilityType.PropertySchema.Properties" Dense="true" Elevation="0">
+                            <Columns>
+                                <PropertyColumn Property="x => x.Label" Title="Property Name" />
+                                <PropertyColumn Property="x => x.Type" Title="Type" />
+                                <PropertyColumn Property="x => x.Required" Title="Required">
+                                    <CellTemplate>
+                                        @if (context.Item.Required)
+                                        {
+                                            <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
+                                        }
+                                        else
+                                        {
+                                            <MudIcon Icon="@Icons.Material.Filled.Close" Color="Color.Default" Size="Size.Small" />
+                                        }
+                                    </CellTemplate>
+                                </PropertyColumn>
+                                <PropertyColumn Property="x => x.DefaultValue" Title="Default Value">
+                                    <CellTemplate>
+                                        @if (!string.IsNullOrEmpty(context.Item.DefaultValue))
+                                        {
+                                            <MudText Typo="Typo.body2">@context.Item.DefaultValue</MudText>
+                                        }
+                                        else
+                                        {
+                                            <MudText Typo="Typo.body2" Color="Color.Secondary">-</MudText>
+                                        }
+                                    </CellTemplate>
+                                </PropertyColumn>
+                                <PropertyColumn Property="x => x.Options" Title="Options">
+                                    <CellTemplate>
+                                        @if (context.Item.Options?.Count > 0)
+                                        {
+                                            <MudTooltip Text="@string.Join(", ", context.Item.Options)">
+                                                <MudText Typo="Typo.body2">@context.Item.Options.Count option(s)</MudText>
+                                            </MudTooltip>
+                                        }
+                                        else
+                                        {
+                                            <MudText Typo="Typo.body2" Color="Color.Secondary">-</MudText>
+                                        }
+                                    </CellTemplate>
+                                </PropertyColumn>
+                            </Columns>
+                        </MudDataGrid>
+                    </MudCardContent>
+                </MudCard>
+            }
+
+            <!-- Facilities List -->
+            @if (_facilities?.Count > 0)
+            {
+                <MudCard>
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Facilities (@_facilities.Count)</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudDataGrid T="FacilityDto" Items="_facilities" Dense="true" Elevation="0">
+                            <Columns>
+                                <PropertyColumn Property="x => x.Name" Title="Name">
+                                    <CellTemplate>
+                                        <MudLink Href="@($"/facilities/{context.Item.Id}")" Typo="Typo.body2">
+                                            @context.Item.Name
+                                        </MudLink>
+                                    </CellTemplate>
+                                </PropertyColumn>
+                                <PropertyColumn Property="x => x.Location" Title="Location" />
+                                <PropertyColumn Property="x => x.Status" Title="Status">
+                                    <CellTemplate>
+                                        <MudChip T="string" Color="@GetFacilityStatusColor(context.Item.Status)" 
+                                                Size="Size.Small" 
+                                                Variant="Variant.Filled">
+                                            @context.Item.Status
+                                        </MudChip>
+                                    </CellTemplate>
+                                </PropertyColumn>
+                                <PropertyColumn Property="x => x.Capacity" Title="Capacity">
+                                    <CellTemplate>
+                                        @if (context.Item.Capacity.HasValue)
+                                        {
+                                            <span>@context.Item.Capacity</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </CellTemplate>
+                                </PropertyColumn>
+                            </Columns>
+                        </MudDataGrid>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </MudItem>
+
+        <!-- Sidebar -->
+        <MudItem xs="12" md="4">
+            <!-- Statistics -->
+            <MudCard Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Statistics</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <div class="d-flex flex-column gap-3">
+                        <div class="d-flex justify-space-between align-center">
+                            <div class="d-flex align-center gap-2">
+                                <MudIcon Icon="@Icons.Material.Filled.Business" Color="Color.Primary" Size="Size.Small" />
+                                <MudText>Total Facilities</MudText>
+                            </div>
+                            <MudChip T="string" Color="Color.Primary" Size="Size.Small" Variant="Variant.Text">
+                                @_facilityType.FacilityCount
+                            </MudChip>
+                        </div>
+                        <div class="d-flex justify-space-between align-center">
+                            <div class="d-flex align-center gap-2">
+                                <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
+                                <MudText>Available</MudText>
+                            </div>
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small" Variant="Variant.Text">
+                                @_facilityType.AvailableCount
+                            </MudChip>
+                        </div>
+                        <div class="d-flex justify-space-between align-center">
+                            <div class="d-flex align-center gap-2">
+                                <MudIcon Icon="@Icons.Material.Filled.Schedule" Color="Color.Info" Size="Size.Small" />
+                                <MudText>Currently Booked</MudText>
+                            </div>
+                            <MudChip T="string" Color="Color.Info" Size="Size.Small" Variant="Variant.Text">
+                                @_facilityType.BookedCount
+                            </MudChip>
+                        </div>
+                        <div class="d-flex justify-space-between align-center">
+                            <div class="d-flex align-center gap-2">
+                                <MudIcon Icon="@Icons.Material.Filled.Build" Color="Color.Warning" Size="Size.Small" />
+                                <MudText>In Maintenance</MudText>
+                            </div>
+                            <MudChip T="string" Color="Color.Warning" Size="Size.Small" Variant="Variant.Text">
+                                @_facilityType.MaintenanceCount
+                            </MudChip>
+                        </div>
+                    </div>
+                </MudCardContent>
+            </MudCard>
+
+            <!-- Actions -->
+            @if (_permissions?.CanEditTypes == true || _permissions?.CanCreateFacilities == true)
+            {
+                <MudCard>
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Actions</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <div class="d-flex flex-column gap-2">
+                            @if (_permissions?.CanCreate == true)
+                            {
+                                <MudButton Variant="Variant.Outlined" 
+                                          Color="Color.Primary"
+                                          FullWidth="true"
+                                          StartIcon="@Icons.Material.Filled.Add"
+                                          OnClick="@(() => Navigation.NavigateTo($"/facilities/create?typeId={Id}"))">
+                                    Add New Facility
+                                </MudButton>
+                            }
+
+                            @if (_permissions?.CanEditTypes == true)
+                            {
+                                @if (_facilityType.IsActive)
+                                {
+                                    <MudButton Variant="Variant.Outlined" 
+                                              Color="Color.Warning"
+                                              FullWidth="true"
+                                              StartIcon="@Icons.Material.Filled.VisibilityOff"
+                                              OnClick="@(() => ToggleActivation(false))">
+                                        Deactivate Type
+                                    </MudButton>
+                                }
+                                else
+                                {
+                                    <MudButton Variant="Variant.Outlined" 
+                                              Color="Color.Success"
+                                              FullWidth="true"
+                                              StartIcon="@Icons.Material.Filled.Visibility"
+                                              OnClick="@(() => ToggleActivation(true))">
+                                        Activate Type
+                                    </MudButton>
+                                }
+                            }
+
+                            @if (_permissions?.CanDeleteTypes == true && _facilityType.FacilityCount == 0)
+                            {
+                                <MudButton Variant="Variant.Outlined" 
+                                          Color="Color.Error"
+                                          FullWidth="true"
+                                          StartIcon="@Icons.Material.Filled.Delete"
+                                          OnClick="@(() => DeleteFacilityType())">
+                                    Delete Type
+                                </MudButton>
+                            }
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    
+    private FacilityTypeDto? _facilityType;
+    private List<FacilityDto>? _facilities;
+    private FacilityPermissions? _permissions;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissions();
+        await LoadFacilityType();
+        await LoadFacilities();
+    }
+
+    private async Task LoadPermissions()
+    {
+        try
+        {
+            var response = await FacilityService.GetFacilityPermissionsAsync();
+            if (response.Success)
+            {
+                _permissions = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load permissions: {ex.Message}");
+        }
+    }
+
+    private async Task LoadFacilityType()
+    {
+        try
+        {
+            _loading = true;
+            var response = await FacilityService.GetFacilityTypeByIdAsync(Id);
+            if (response.Success)
+            {
+                _facilityType = response.Data;
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to load facility type");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load facility type: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadFacilities()
+    {
+        try
+        {
+            var response = await FacilityService.GetFacilitiesByTypeAsync(Id);
+            if (response.Success)
+            {
+                _facilities = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load facilities: {ex.Message}");
+        }
+    }
+
+    private async Task ToggleActivation(bool activate)
+    {
+        if (_facilityType == null) return;
+
+        var action = activate ? "activate" : "deactivate";
+        var confirmed = await NotificationService.ShowConfirmationAsync(
+            $"{(activate ? "Activate" : "Deactivate")} Facility Type",
+            $"Are you sure you want to {action} '{_facilityType.Name}'?");
+            
+        if (!confirmed) return;
+
+        try
+        {
+            ApiResponse<object> response;
+            if (activate)
+            {
+                response = await FacilityService.ActivateFacilityTypeAsync(Id);
+            }
+            else
+            {
+                response = await FacilityService.DeactivateFacilityTypeAsync(Id);
+            }
+
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync($"Facility type {action}d successfully");
+                await LoadFacilityType(); // Refresh the data
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? $"Failed to {action} facility type");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to {action} facility type: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteFacilityType()
+    {
+        if (_facilityType == null) return;
+
+        var confirmed = await NotificationService.ShowConfirmationAsync(
+            "Delete Facility Type",
+            $"Are you sure you want to delete '{_facilityType.Name}'? This action cannot be undone.");
+            
+        if (!confirmed) return;
+
+        try
+        {
+            var response = await FacilityService.DeleteFacilityTypeAsync(Id);
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync("Facility type deleted successfully");
+                Navigation.NavigateTo("/facility-types");
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to delete facility type");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to delete facility type: {ex.Message}");
+        }
+    }
+
+    private Color GetTierColor(MembershipTier tier)
+    {
+        return tier switch
+        {
+            MembershipTier.Basic => Color.Default,
+            MembershipTier.Premium => Color.Primary,
+            MembershipTier.VIP => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetFacilityStatusColor(FacilityStatus status)
+    {
+        return status switch
+        {
+            FacilityStatus.Available => Color.Success,
+            FacilityStatus.Occupied => Color.Warning,
+            FacilityStatus.Maintenance => Color.Warning,
+            FacilityStatus.OutOfOrder => Color.Error,
+            FacilityStatus.Retired => Color.Default,
+            _ => Color.Default
+        };
+    }
+}

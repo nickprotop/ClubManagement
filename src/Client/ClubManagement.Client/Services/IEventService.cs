@@ -45,4 +45,15 @@ public interface IEventService
     Task<ApiResponse<EventDto>?> GetMasterEventAsync(Guid eventId);
     Task<ApiResponse<RecurrenceUpdateResult>?> PreviewRecurrenceUpdateAsync(Guid eventId, RecurrencePattern newPattern);
     Task<ApiResponse<RecurrenceUpdateResult>?> UpdateRecurrenceSeriesAsync(Guid eventId, UpdateRecurrenceRequest request);
+    
+    // Facility Integration
+    Task<ApiResponse<EventEligibilityResult>?> CheckMemberEligibilityAsync(Guid eventId, Guid memberId);
+    Task<ApiResponse<EventFacilityRequirementsDto>?> GetEventFacilityRequirementsAsync(Guid eventId);
+    Task<ApiResponse<FacilityAvailabilityResult>?> CheckFacilityAvailabilityAsync(Guid facilityId, DateTime startTime, DateTime endTime, Guid? excludeEventId = null);
+    Task<ApiResponse<FacilityBookingDto>?> BookFacilityForEventAsync(Guid eventId, Guid facilityId, string? notes = null);
+    Task<ApiResponse<object>?> CancelFacilityBookingForEventAsync(Guid eventId);
+    Task<ApiResponse<List<EventListDto>>?> GetEventsByCertificationRequirementAsync(string certificationType);
+    Task<ApiResponse<List<EventListDto>>?> GetEventsForMembershipTierAsync(MembershipTier tier);
+    Task<ApiResponse<ValidationResult>?> ValidateEventFacilityRequirementsAsync(CreateEventRequest request);
+    Task<ApiResponse<ValidationResult>?> ValidateEventFacilityRequirementsForUpdateAsync(Guid eventId, UpdateEventRequest request);
 }

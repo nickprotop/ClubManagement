@@ -18,6 +18,9 @@ public class User : BaseEntity
     public bool EmailVerified { get; set; } = false;
     public DateTime? PasswordChangedAt { get; set; }
     public Dictionary<string, object> CustomFields { get; set; } = new();
+    
+    // Navigation properties
+    public Member? Member { get; set; }
 }
 
 public enum UserRole

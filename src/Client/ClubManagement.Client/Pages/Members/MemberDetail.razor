@@ -86,11 +86,11 @@ else if (_member != null)
                             <MudTextField Label="Membership Number" Value="@_member.MembershipNumber" ReadOnly="true" Variant="Variant.Outlined" />
                             <MudStack>
                                 <MudText Typo="Typo.subtitle2">Tier</MudText>
-                                <MudChip T="string" Color="@GetTierColor(_member.Tier)" Size="Size.Medium">@_member.Tier</MudChip>
+                                <MudChip T="string" T="string" Color="@GetTierColor(_member.Tier)" Size="Size.Medium">@_member.Tier</MudChip>
                             </MudStack>
                             <MudStack>
                                 <MudText Typo="Typo.subtitle2">Status</MudText>
-                                <MudChip T="string" Color="@GetStatusColor(_member.Status)" Size="Size.Medium">@_member.Status</MudChip>
+                                <MudChip T="string" T="string" Color="@GetStatusColor(_member.Status)" Size="Size.Medium">@_member.Status</MudChip>
                             </MudStack>
                             <MudTextField Label="Joined" Value="@_member.JoinedAt.ToString("MMM dd, yyyy")" ReadOnly="true" Variant="Variant.Outlined" />
                             @if (_member.LastVisitAt.HasValue)

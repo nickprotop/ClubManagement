@@ -45,7 +45,7 @@
                         </div>
                         @if (member.Status != MembershipStatus.Active)
                         {
-                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Text="@member.Status.ToString()" />
+                            <MudChip T="string" T="string" Size="Size.Small" Color="Color.Warning" Text="@member.Status.ToString()" />
                         }
                     </div>
                 </ItemTemplate>
@@ -76,7 +76,7 @@
                         <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1">
                             @foreach (var member in _selectedMembers)
                             {
-                                <MudChip T="string" Text="@member.DisplayText" 
+                                <MudChip T="string" T="string" Text="@member.DisplayText" 
                                          OnClose="() => RemoveSelectedMember(member)"
                                          CloseIcon="Icons.Material.Filled.Close" />
                             }

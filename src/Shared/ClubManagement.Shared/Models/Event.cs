@@ -21,7 +21,14 @@ public class Event : BaseEntity
     public string? SpecialInstructions { get; set; }
     public List<string> RequiredEquipment { get; set; } = new();
     
-    // Equipment Integration (new system)
+    // Facility Requirements (new system)
+    public List<string> RequiredCertifications { get; set; } = new();
+    public List<MembershipTier> AllowedMembershipTiers { get; set; } = new();
+    public bool RequiresFacilityAccess { get; set; } = false;
+    public int? MinimumAge { get; set; }
+    public int? MaximumAge { get; set; }
+    
+    // Equipment Integration (existing system)
     public List<EventEquipmentRequirement> EquipmentRequirements { get; set; } = new();
     public List<EventEquipmentAssignment> EquipmentAssignments { get; set; } = new();
     

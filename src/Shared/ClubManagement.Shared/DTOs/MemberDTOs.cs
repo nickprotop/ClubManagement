@@ -134,3 +134,14 @@ public class MemberSearchDto
     public MembershipStatus Status { get; set; }
     public string? ProfilePhotoUrl { get; set; }
 }
+
+public class MemberSummaryDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string MembershipNumber { get; set; } = string.Empty;
+    public MembershipTier Tier { get; set; }
+    public MembershipStatus Status { get; set; }
+    public string DisplayText => $"{Name} ({Email})";
+}

@@ -68,4 +68,9 @@ public class MemberService : IMemberService
     {
         return await _apiService.PostAsync<bool>($"api/members/{id}/status", status);
     }
+
+    public async Task<ApiResponse<List<MemberSummaryDto>>?> GetMemberSummariesAsync()
+    {
+        return await _apiService.GetAsync<List<MemberSummaryDto>>("api/members/summaries");
+    }
 }

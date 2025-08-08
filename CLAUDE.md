@@ -480,6 +480,382 @@ builder.Services.AddScoped<I[Feature]AuthorizationService, [Feature]Authorizatio
 
 **Always implement this pattern when adding new controllers or features requiring role-based access control.**
 
+## SYSTEM IMPLEMENTATION REQUIREMENTS
+
+**When implementing ANY new system in the Club Management platform, you MUST follow these established patterns discovered from the hardware system analysis.**
+
+### 1. API Controller Requirements
+
+#### MANDATORY Controller Structure
+```csharp
+[ApiController]
+[Route("api/[controller]")]
+[Authorize] // REQUIRED on all controllers
+public class [Feature]Controller : ControllerBase
+{
+    private readonly ITenantDbContextFactory _tenantDbContextFactory; // REQUIRED
+    private readonly ITenantService _tenantService; // REQUIRED
+    private readonly I[Feature]AuthorizationService _authService; // REQUIRED
+
+    public [Feature]Controller(
+        ITenantDbContextFactory tenantDbContextFactory,
+        ITenantService tenantService,
+        I[Feature]AuthorizationService authService)
+    {
+        _tenantDbContextFactory = tenantDbContextFactory;
+        _tenantService = tenantService;
+        _authService = authService;
+    }
+}
+```
+
+#### REQUIRED API Endpoints Pattern
+**Every system MUST implement these core endpoints:**
+
+```csharp
+// Core CRUD Operations
+GET    /api/[feature]                    // List with filters and pagination
+GET    /api/[feature]/{id}               // Get single item by ID
+POST   /api/[feature]                    // Create new item
+PUT    /api/[feature]/{id}               // Update existing item
+DELETE /api/[feature]/{id}               // Delete item
+
+// Permissions Endpoints (CRITICAL for UI state management)
+GET    /api/[feature]/permissions        // Global permissions for user
+GET    /api/[feature]/{id}/permissions   // Resource-specific permissions
+
+// Search & Discovery
+GET    /api/[feature]/search             // Search with query parameters
+GET    /api/[feature]/dashboard          // Analytics/summary data
+```
+
+#### MANDATORY Endpoint Implementation Pattern
+**Every endpoint MUST follow this exact pattern:**
+
+```csharp
+[HttpGet]
+public async Task<ActionResult<ApiResponse<T>>> GetItems()
+{
+    try
+    {
+        // STEP 1: Extract user and tenant from JWT (REQUIRED)
+        var userId = this.GetCurrentUserId();
+        var tenantId = this.GetCurrentTenantId();
+        
+        // STEP 2: Resolve tenant and validate (REQUIRED)
+        var tenant = await _tenantService.GetTenantByIdAsync(tenantId);
+        if (tenant == null)
+            return BadRequest(ApiResponse<T>.ErrorResult("Invalid tenant"));
+            
+        // STEP 3: Create tenant-specific database context (CRITICAL)
+        using var tenantContext = await _tenantDbContextFactory.CreateTenantDbContextAsync(tenant.Domain);
+        
+        // STEP 4: Check authorization before any operations (REQUIRED)
+        if (!await _authService.CanView[Feature]Async(userId, tenantContext))
+            return Forbid("Insufficient permissions");
+        
+        // STEP 5: Perform database operations using tenantContext
+        var items = await tenantContext.[Feature]s.ToListAsync();
+        
+        // STEP 6: Return wrapped response (REQUIRED)
+        return Ok(ApiResponse<T>.SuccessResult(items));
+    }
+    catch (UnauthorizedAccessException ex)
+    {
+        return Unauthorized(ApiResponse<T>.ErrorResult($"Unauthorized: {ex.Message}"));
+    }
+    catch (Exception ex)
+    {
+        return StatusCode(500, ApiResponse<T>.ErrorResult($"Error: {ex.Message}"));
+    }
+}
+```
+
+### 2. Authorization System Requirements
+
+#### REQUIRED Authorization Service Interface
+```csharp
+public interface I[Feature]AuthorizationService
+{
+    Task<[Feature]Permissions> GetPermissionsAsync(Guid userId, ClubManagementDbContext tenantContext, Guid? resourceId = null);
+    Task<bool> CanPerformActionAsync(Guid userId, [Feature]Action action, ClubManagementDbContext tenantContext, Guid? resourceId = null);
+    Task<AuthorizationResult> CheckAuthorizationAsync(Guid userId, [Feature]Action action, ClubManagementDbContext tenantContext, Guid? resourceId = null);
+    
+    // Specific permission methods (customize per system)
+    Task<bool> CanView[Feature]Async(Guid userId, ClubManagementDbContext tenantContext, Guid? resourceId = null);
+    Task<bool> CanManage[Feature]Async(Guid userId, ClubManagementDbContext tenantContext, Guid? resourceId = null);
+}
+```
+
+#### REQUIRED Permission Models
+```csharp
+// Actions Enum - Define all possible actions in the system
+public enum [Feature]Action
+{
+    View, ViewDetails, Create, Edit, Delete,
+    // Add system-specific actions
+}
+
+// Permissions Class - Granular boolean permissions
+public class [Feature]Permissions
+{
+    // Basic CRUD
+    public bool CanView { get; set; }
+    public bool CanViewDetails { get; set; }
+    public bool CanCreate { get; set; }
+    public bool CanEdit { get; set; }
+    public bool CanDelete { get; set; }
+    
+    // System-specific permissions (add as needed)
+    
+    // Context Information (REQUIRED)
+    public string[] Restrictions { get; set; } = Array.Empty<string>();
+    public string[] ReasonsDenied { get; set; } = Array.Empty<string>();
+    public MembershipTier? RequiredTierForAction { get; set; }
+}
+```
+
+#### REQUIRED Role-Based Permission Implementation
+**Every authorization service MUST implement role-based permissions:**
+
+```csharp
+private [Feature]Permissions GetMemberPermissions(User user, [Feature]? resource)
+{
+    return new [Feature]Permissions
+    {
+        CanView = true,
+        // Define member-specific permissions
+        Restrictions = new[] { "Limited access explanation" }
+    };
+}
+
+private [Feature]Permissions GetStaffPermissions(User user, [Feature]? resource)
+{
+    return new [Feature]Permissions
+    {
+        CanView = true,
+        CanCreate = true,
+        CanEdit = true,
+        // Staff-level permissions
+        Restrictions = new[] { "Cannot delete items" }
+    };
+}
+
+// Implement for: Member, Staff, Instructor, Coach, Admin, SuperAdmin
+```
+
+### 3. Client-Side Service Requirements
+
+#### REQUIRED Service Interface
+```csharp
+public interface I[Feature]Service
+{
+    // Core CRUD
+    Task<ApiResponse<PagedResult<[Feature]Dto>>> Get[Feature]sAsync();
+    Task<ApiResponse<[Feature]Dto>> Get[Feature]ByIdAsync(Guid id);
+    Task<ApiResponse<[Feature]Dto>> Create[Feature]Async(Create[Feature]Request request);
+    Task<ApiResponse<[Feature]Dto>> Update[Feature]Async(Guid id, Update[Feature]Request request);
+    Task<ApiResponse<object>> Delete[Feature]Async(Guid id);
+    
+    // Permissions (CRITICAL for UI)
+    Task<ApiResponse<[Feature]Permissions>> Get[Feature]PermissionsAsync(Guid? id = null);
+    
+    // Search & Discovery
+    Task<ApiResponse<List<[Feature]Dto>>> Search[Feature]sAsync(string? searchTerm);
+}
+```
+
+#### REQUIRED Service Implementation
+```csharp
+public class [Feature]Service : I[Feature]Service
+{
+    private readonly IApiService _apiService;
+
+    public [Feature]Service(IApiService apiService)
+    {
+        _apiService = apiService;
+    }
+
+    public async Task<ApiResponse<[Feature]Permissions>> Get[Feature]PermissionsAsync(Guid? id = null)
+    {
+        var url = id.HasValue ? $"api/[feature]/{id}/permissions" : "api/[feature]/permissions";
+        return await _apiService.GetAsync<[Feature]Permissions>(url);
+    }
+    
+    // Implement all other required methods...
+}
+```
+
+### 4. UI/UX Component Requirements
+
+#### REQUIRED Page Structure
+```
+/[feature]                    // List view with search/filters
+/[feature]/create             // Create new item
+/[feature]/{id}              // Detail view
+/[feature]/{id}/edit         // Edit existing item
+```
+
+#### MANDATORY UI Patterns
+```razor
+@page "/[feature]"
+@using ClubManagement.Shared.Models.Authorization
+@inject I[Feature]Service [Feature]Service
+@inject INotificationService NotificationService
+@attribute [Authorize]
+
+<!-- REQUIRED: Permission-based UI rendering -->
+@if (_permissions?.CanCreate == true)
+{
+    <MudButton OnClick="CreateNew">Add [Feature]</MudButton>
+}
+
+<!-- REQUIRED: Load permissions on initialization -->
+@code {
+    private [Feature]Permissions? _permissions;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissions(); // MUST load permissions first
+        await LoadData();
+    }
+    
+    private async Task LoadPermissions()
+    {
+        var response = await [Feature]Service.Get[Feature]PermissionsAsync();
+        if (response.Success)
+            _permissions = response.Data;
+    }
+}
+```
+
+#### REQUIRED Component Features
+- **Permission-driven visibility**: All action buttons/links conditional on permissions
+- **MudBlazor consistency**: Use established MudBlazor components and styling
+- **Search with debouncing**: 300ms timer for search input
+- **Status visualization**: Color-coded chips for different states
+- **Breadcrumb navigation**: Consistent navigation patterns
+- **Loading states**: Show loading indicators during async operations
+- **Error handling**: Display user-friendly error messages
+
+### 5. Database Integration Requirements
+
+#### REQUIRED DbContext Updates
+```csharp
+public class ClubManagementDbContext : DbContext
+{
+    // Add DbSet for new entities
+    public DbSet<[Feature]> [Feature]s { get; set; }
+    public DbSet<[Feature]Type> [Feature]Types { get; set; }
+}
+```
+
+#### REQUIRED Entity Patterns
+```csharp
+public class [Feature] : BaseEntity  // MUST inherit from BaseEntity
+{
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public Guid [Feature]TypeId { get; set; }
+    public Dictionary<string, object> Properties { get; set; } = new(); // Dynamic properties
+    public [Feature]Status Status { get; set; }
+    
+    // Navigation properties
+    public [Feature]Type [Feature]Type { get; set; } = null!;
+}
+```
+
+#### REQUIRED Migration Pattern
+```bash
+# ALWAYS create migrations for schema changes
+dotnet ef migrations add Add[Feature]System --project src/Infrastructure/ClubManagement.Infrastructure --startup-project src/Api/ClubManagement.Api
+```
+
+### 6. Service Registration Requirements
+
+#### REQUIRED Dependency Injection Registration
+```csharp
+// In Program.cs - MUST register all services
+builder.Services.AddScoped<I[Feature]AuthorizationService, [Feature]AuthorizationService>();
+builder.Services.AddScoped<I[Feature]Service, [Feature]Service>(); // Client-side service
+```
+
+### 7. DTO and Request/Response Models
+
+#### REQUIRED DTO Pattern
+```csharp
+public class [Feature]Dto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public [Feature]Status Status { get; set; }
+    public Dictionary<string, object> Properties { get; set; } = new();
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    
+    // Navigation properties as DTOs
+    public [Feature]TypeDto [Feature]Type { get; set; } = null!;
+}
+
+public class Create[Feature]Request
+{
+    [Required]
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    [Required]
+    public Guid [Feature]TypeId { get; set; }
+    public Dictionary<string, string> Properties { get; set; } = new();
+}
+
+public class Update[Feature]Request : Create[Feature]Request
+{
+    public [Feature]Status Status { get; set; }
+}
+```
+
+### 8. CRITICAL Security Requirements
+
+#### MANDATORY Security Checklist
+- [ ] **Multi-tenant isolation**: NEVER access shared DbContext for tenant data
+- [ ] **Authorization on every endpoint**: Check permissions before any operation
+- [ ] **Tenant validation**: Validate tenant exists before creating context
+- [ ] **JWT token validation**: Extract and validate user/tenant from token
+- [ ] **Input validation**: Validate all request models
+- [ ] **Response wrapping**: All responses in ApiResponse<T> format
+- [ ] **Error handling**: Proper exception handling and logging
+- [ ] **Permission loading**: Load permissions before rendering UI
+
+### 9. Testing Requirements
+
+#### REQUIRED Test Coverage
+- **Controller tests**: Test tenant isolation and authorization
+- **Service tests**: Test all authorization scenarios by role
+- **Integration tests**: End-to-end API testing
+- **UI tests**: Permission-based rendering tests
+
+### 10. Documentation Requirements
+
+#### REQUIRED Documentation Updates
+- Update CHANGELOG.md with new features
+- Add API endpoint documentation
+- Document permission model and role mappings
+- Update navigation structure
+
+**⚠️ FAILURE TO FOLLOW THESE PATTERNS WILL RESULT IN:**
+- Security vulnerabilities (tenant data leakage)
+- Inconsistent user experience
+- Authorization bypass vulnerabilities
+- Client-side failures due to API format mismatches
+- Multi-tenancy violations
+
+**✅ FOLLOWING THESE PATTERNS ENSURES:**
+- Secure multi-tenant isolation
+- Consistent authorization model
+- Reliable client-server communication
+- Maintainable and scalable code
+- Proper error handling and user feedback
+
 ## MudBlazor Component Binding Patterns
 
 **IMPORTANT**: Use these correct binding patterns for MudBlazor 8+ components.

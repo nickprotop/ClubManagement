@@ -1,0 +1,530 @@
+@page "/facilities/{Id:guid}"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IFacilityService FacilityService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>@(_facility?.Name ?? "Facility Details")</PageTitle>
+
+@if (_loading)
+{
+    <div class="d-flex justify-center align-center" style="height: 50vh;">
+        <MudProgressCircular Indeterminate="true" />
+    </div>
+}
+else if (_facility == null)
+{
+    <MudAlert Severity="Severity.Error">
+        Facility not found or you don't have permission to view it.
+    </MudAlert>
+}
+else
+{
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div class="d-flex align-center gap-3">
+            <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
+                         Color="Color.Default"
+                         OnClick="@(() => Navigation.NavigateTo("/facilities"))"
+                         Title="Back to Facilities" />
+            <div class="d-flex align-center gap-2">
+                <MudIcon Icon="@_facility.Icon" Color="Color.Primary" />
+                <MudText Typo="Typo.h4">@_facility.Name</MudText>
+            </div>
+        </div>
+        
+        <div class="d-flex gap-2">
+            @if (_permissions?.CanEdit == true)
+            {
+                <MudButton Variant="Variant.Outlined" 
+                          Color="Color.Secondary"
+                          StartIcon="@Icons.Material.Filled.Edit"
+                          OnClick="@(() => Navigation.NavigateTo($"/facilities/{Id}/edit"))">
+                    Edit
+                </MudButton>
+            }
+            
+            @if (_permissions?.CanViewAllBookings == true)
+            {
+                <MudButton Variant="Variant.Filled" 
+                          Color="Color.Primary"
+                          StartIcon="@Icons.Material.Filled.Schedule"
+                          OnClick="@(() => Navigation.NavigateTo($"/facilities/{Id}/bookings"))">
+                    View Bookings
+                </MudButton>
+            }
+        </div>
+    </div>
+
+    <MudGrid>
+        <!-- Basic Information -->
+        <MudItem xs="12" md="8">
+            <MudCard Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Basic Information</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid>
+                        <MudItem xs="12" sm="6">
+                            <MudField Label="Type" Variant="Variant.Text">
+                                @_facility.FacilityTypeName
+                            </MudField>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudField Label="Status" Variant="Variant.Text">
+                                <MudChip T="string" Color="@GetStatusColor(_facility.Status)" 
+                                        Size="Size.Small" 
+                                        Variant="Variant.Filled">
+                                    @_facility.Status
+                                </MudChip>
+                            </MudField>
+                        </MudItem>
+                        @if (!string.IsNullOrEmpty(_facility.Description))
+                        {
+                            <MudItem xs="12">
+                                <MudField Label="Description" Variant="Variant.Text">
+                                    @_facility.Description
+                                </MudField>
+                            </MudItem>
+                        }
+                        @if (!string.IsNullOrEmpty(_facility.Location))
+                        {
+                            <MudItem xs="12" sm="6">
+                                <MudField Label="Location" Variant="Variant.Text">
+                                    @_facility.Location
+                                </MudField>
+                            </MudItem>
+                        }
+                        @if (_facility.Capacity.HasValue)
+                        {
+                            <MudItem xs="12" sm="6">
+                                <MudField Label="Capacity" Variant="Variant.Text">
+                                    @_facility.Capacity people
+                                </MudField>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                </MudCardContent>
+            </MudCard>
+
+            <!-- Operating Hours -->
+            @if (_facility.OperatingDays?.Count > 0 || _facility.OperatingHoursStart.HasValue || _facility.OperatingHoursEnd.HasValue)
+            {
+                <MudCard Class="mb-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Operating Hours</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudGrid>
+                            @if (_facility.OperatingDays?.Count > 0)
+                            {
+                                <MudItem xs="12">
+                                    <MudField Label="Operating Days" Variant="Variant.Text">
+                                        <div class="d-flex flex-wrap gap-1">
+                                            @foreach (var day in _facility.OperatingDays)
+                                            {
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Text">
+                                                    @day.ToString()
+                                                </MudChip>
+                                            }
+                                        </div>
+                                    </MudField>
+                                </MudItem>
+                            }
+                            @if (_facility.OperatingHoursStart.HasValue && _facility.OperatingHoursEnd.HasValue)
+                            {
+                                <MudItem xs="12" sm="6">
+                                    <MudField Label="Operating Hours" Variant="Variant.Text">
+                                        @_facility.OperatingHoursStart.Value.ToString(@"h\:mm") - @_facility.OperatingHoursEnd.Value.ToString(@"h\:mm")
+                                    </MudField>
+                                </MudItem>
+                            }
+                        </MudGrid>
+                    </MudCardContent>
+                </MudCard>
+            }
+
+            <!-- Pricing -->
+            @if (_facility.HourlyRate.HasValue || _facility.MemberHourlyRate > 0 || _facility.NonMemberHourlyRate > 0)
+            {
+                <MudCard Class="mb-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Pricing</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudGrid>
+                            @if (_facility.HourlyRate.HasValue)
+                            {
+                                <MudItem xs="12" sm="6">
+                                    <MudField Label="Hourly Rate" Variant="Variant.Text">
+                                        @(_facility.HourlyRate.Value > 0 ? _facility.HourlyRate.Value.ToString("C") : "Free")
+                                    </MudField>
+                                </MudItem>
+                            }
+                            @if (_facility.MemberHourlyRate > 0)
+                            {
+                                <MudItem xs="12" sm="6">
+                                    <MudField Label="Member Hourly Rate" Variant="Variant.Text">
+                                        @(_facility.MemberHourlyRate > 0 ? _facility.MemberHourlyRate.ToString("C") : "Free for Members")
+                                    </MudField>
+                                </MudItem>
+                            }
+                            @if (_facility.NonMemberHourlyRate > 0)
+                            {
+                                <MudItem xs="12" sm="6">
+                                    <MudField Label="Non-Member Hourly Rate" Variant="Variant.Text">
+                                        @(_facility.NonMemberHourlyRate > 0 ? _facility.NonMemberHourlyRate.ToString("C") : "Free")
+                                    </MudField>
+                                </MudItem>
+                            }
+                        </MudGrid>
+                    </MudCardContent>
+                </MudCard>
+            }
+
+            <!-- Current Booking Status -->
+            @if (_facility.IsCurrentlyBooked && _facility.CurrentBooking != null)
+            {
+                <MudCard Class="mb-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6" Color="Color.Info">Currently Booked</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudGrid>
+                            <MudItem xs="12" sm="6">
+                                <MudField Label="Booked By" Variant="Variant.Text">
+                                    @_facility.CurrentBooking.MemberName
+                                </MudField>
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudField Label="Booking Status" Variant="Variant.Text">
+                                    <MudChip T="string" Color="@GetBookingStatusColor(_facility.CurrentBooking.Status)" 
+                                            Size="Size.Small" 
+                                            Variant="Variant.Filled">
+                                        @_facility.CurrentBooking.Status
+                                    </MudChip>
+                                </MudField>
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudField Label="Start Time" Variant="Variant.Text">
+                                    @_facility.CurrentBooking.StartDateTime.ToString("MMM dd, yyyy h:mm tt")
+                                </MudField>
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudField Label="End Time" Variant="Variant.Text">
+                                    @_facility.CurrentBooking.EndDateTime.ToString("MMM dd, yyyy h:mm tt")
+                                </MudField>
+                            </MudItem>
+                        </MudGrid>
+                    </MudCardContent>
+                </MudCard>
+            }
+
+            <!-- Custom Properties -->
+            @if (_facility.Properties?.Count > 0)
+            {
+                <MudCard Class="mb-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Additional Properties</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudGrid>
+                            @foreach (var property in _facility.Properties)
+                            {
+                                <MudItem xs="12" sm="6">
+                                    <MudField Label="@property.Key" Variant="Variant.Text">
+                                        @property.Value?.ToString()
+                                    </MudField>
+                                </MudItem>
+                            }
+                        </MudGrid>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </MudItem>
+
+        <!-- Sidebar -->
+        <MudItem xs="12" md="4">
+            <!-- Member Access Requirements -->
+            @if (_facility.AllowedMembershipTiers?.Count > 0 || _facility.RequiredCertifications?.Count > 0)
+            {
+                <MudCard Class="mb-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Member Access Requirements</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        @if (_facility.AllowedMembershipTiers?.Count > 0)
+                        {
+                            <div class="mb-3">
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">Allowed Membership Tiers:</MudText>
+                                <div class="d-flex flex-wrap gap-1">
+                                    @foreach (var tier in _facility.AllowedMembershipTiers)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" 
+                                                Color="@GetTierColor(tier)"
+                                                Variant="Variant.Filled">
+                                            @tier
+                                        </MudChip>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        @if (_facility.RequiredCertifications?.Count > 0)
+                        {
+                            <div class="mb-3">
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">Required Certifications:</MudText>
+                                <div class="d-flex flex-column gap-1">
+                                    @foreach (var cert in _facility.RequiredCertifications)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" 
+                                                Color="Color.Warning"
+                                                Variant="Variant.Outlined"
+                                                Icon="@Icons.Material.Filled.Security">
+                                            @cert
+                                        </MudChip>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        @if (_facility.RequiresSupervision)
+                        {
+                            <MudAlert Severity="Severity.Warning" Dense="true">
+                                <MudIcon Icon="@Icons.Material.Filled.SupervisorAccount" Class="mr-2" />
+                                Supervision Required
+                            </MudAlert>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            }
+
+            <!-- Quick Stats -->
+            <MudCard Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Quick Information</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <div class="d-flex flex-column gap-2">
+                        <div class="d-flex justify-space-between">
+                            <MudText>Created:</MudText>
+                            <MudText>@_facility.CreatedAt.ToString("MMM dd, yyyy")</MudText>
+                        </div>
+                        <div class="d-flex justify-space-between">
+                            <MudText>Updated:</MudText>
+                            <MudText>@_facility.UpdatedAt.ToString("MMM dd, yyyy")</MudText>
+                        </div>
+                        @if (_facility.LastMaintenanceDate.HasValue)
+                        {
+                            <div class="d-flex justify-space-between">
+                                <MudText>Last Maintenance:</MudText>
+                                <MudText>@_facility.LastMaintenanceDate.Value.ToString("MMM dd, yyyy")</MudText>
+                            </div>
+                        }
+                        @if (_facility.NextMaintenanceDate.HasValue)
+                        {
+                            <div class="d-flex justify-space-between">
+                                <MudText>Next Maintenance:</MudText>
+                                <MudText Color="@GetMaintenanceColor(_facility.NextMaintenanceDate.Value)">
+                                    @_facility.NextMaintenanceDate.Value.ToString("MMM dd, yyyy")
+                                </MudText>
+                            </div>
+                        }
+                    </div>
+                </MudCardContent>
+            </MudCard>
+
+            <!-- Actions -->
+            @if (_permissions?.CanViewAllBookings == true || _permissions?.CanEdit == true)
+            {
+                <MudCard>
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Actions</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <div class="d-flex flex-column gap-2">
+                            @if (_permissions?.CanViewAllBookings == true)
+                            {
+                                <MudButton Variant="Variant.Outlined" 
+                                          Color="Color.Primary"
+                                          FullWidth="true"
+                                          StartIcon="@Icons.Material.Filled.Schedule"
+                                          OnClick="@(() => Navigation.NavigateTo($"/facilities/{Id}/bookings"))">
+                                    Manage Bookings
+                                </MudButton>
+                                
+                                <MudButton Variant="Variant.Outlined" 
+                                          Color="Color.Info"
+                                          FullWidth="true"
+                                          StartIcon="@Icons.Material.Filled.History"
+                                          OnClick="@(() => LoadUsageHistory())">
+                                    View Usage History
+                                </MudButton>
+                            }
+
+                            @if (_permissions?.CanEdit == true)
+                            {
+                                <MudButton Variant="Variant.Outlined" 
+                                          Color="Color.Warning"
+                                          FullWidth="true"
+                                          StartIcon="@Icons.Material.Filled.Build"
+                                          OnClick="@(() => SetMaintenanceMode())">
+                                    @(_facility.Status == FacilityStatus.Maintenance ? "Remove from" : "Set") Maintenance
+                                </MudButton>
+                            }
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    
+    private FacilityDto? _facility;
+    private FacilityPermissions? _permissions;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissions();
+        await LoadFacility();
+    }
+
+    private async Task LoadPermissions()
+    {
+        try
+        {
+            var response = await FacilityService.GetFacilityPermissionsAsync(Id);
+            if (response.Success)
+            {
+                _permissions = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load permissions: {ex.Message}");
+        }
+    }
+
+    private async Task LoadFacility()
+    {
+        try
+        {
+            _loading = true;
+            var response = await FacilityService.GetFacilityByIdAsync(Id);
+            if (response.Success)
+            {
+                _facility = response.Data;
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to load facility");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load facility: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadUsageHistory()
+    {
+        // TODO: Implement usage history dialog or navigation
+        await NotificationService.ShowInfoAsync("Usage history feature coming soon");
+    }
+
+    private async Task SetMaintenanceMode()
+    {
+        var isInMaintenance = _facility?.Status == FacilityStatus.Maintenance;
+        var action = isInMaintenance ? "remove from maintenance" : "set maintenance mode";
+        
+        var confirmed = await NotificationService.ShowConfirmationAsync(
+            $"Facility Maintenance",
+            $"Are you sure you want to {action} for '{_facility?.Name}'?");
+            
+        if (!confirmed) return;
+
+        try
+        {
+            // TODO: Implement maintenance mode toggle
+            await NotificationService.ShowInfoAsync("Maintenance mode toggle feature coming soon");
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to update facility: {ex.Message}");
+        }
+    }
+
+    private Color GetStatusColor(FacilityStatus status)
+    {
+        return status switch
+        {
+            FacilityStatus.Available => Color.Success,
+            FacilityStatus.Occupied => Color.Warning,
+            FacilityStatus.Maintenance => Color.Warning,
+            FacilityStatus.OutOfOrder => Color.Error,
+            FacilityStatus.Retired => Color.Default,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetBookingStatusColor(BookingStatus status)
+    {
+        return status switch
+        {
+            BookingStatus.Confirmed => Color.Success,
+            BookingStatus.CheckedIn => Color.Info,
+            BookingStatus.CheckedOut => Color.Primary,
+            BookingStatus.Cancelled => Color.Error,
+            BookingStatus.NoShow => Color.Warning,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetTierColor(MembershipTier tier)
+    {
+        return tier switch
+        {
+            MembershipTier.Basic => Color.Default,
+            MembershipTier.Premium => Color.Primary,
+            MembershipTier.VIP => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetMaintenanceColor(DateTime maintenanceDate)
+    {
+        var daysUntil = (maintenanceDate - DateTime.Now).Days;
+        return daysUntil switch
+        {
+            <= 7 => Color.Error,
+            <= 30 => Color.Warning,
+            _ => Color.Default
+        };
+    }
+}

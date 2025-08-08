@@ -137,7 +137,7 @@
                                 @if (context.IsRecurringMaster)
                                 {
                                     <MudTooltip Text="@GetRecurrenceTooltip(context)" Placement="Placement.Top">
-                                        <MudChip T="string" Size="Size.Small" 
+                                        <MudChip T="string" T="string" Size="Size.Small" 
                                                  Color="Color.Primary" 
                                                  Icon="@Icons.Material.Filled.Repeat"
                                                  Text="Series" />
@@ -146,7 +146,7 @@
                                 else if (context.MasterEventId.HasValue)
                                 {
                                     <MudTooltip Text="@GetRecurrenceTooltip(context)" Placement="Placement.Top">
-                                        <MudChip T="string" Size="Size.Small" 
+                                        <MudChip T="string" T="string" Size="Size.Small" 
                                                  Color="Color.Info" 
                                                  Icon="@Icons.Material.Filled.Link"
                                                  Text="Part of Series" />
@@ -154,15 +154,15 @@
                                 }
                                 @if (IsEventFullyBooked(context))
                                 {
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Text="Full" />
+                                    <MudChip T="string" T="string" Size="Size.Small" Color="Color.Warning" Text="Full" />
                                 }
                                 @if (IsEventStartingSoon(context))
                                 {
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Text="Starting Soon" />
+                                    <MudChip T="string" T="string" Size="Size.Small" Color="Color.Error" Text="Starting Soon" />
                                 }
                                 @if (context.Price == 0)
                                 {
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Text="Free" />
+                                    <MudChip T="string" T="string" Size="Size.Small" Color="Color.Success" Text="Free" />
                                 }
                             </MudStack>
                             @if (context.MasterEventId.HasValue && context.OccurrenceNumber.HasValue)
@@ -174,22 +174,22 @@
                             <!-- Mobile-only additional info -->
                             <div class="d-md-none">
                                 <MudStack Row="true" Spacing="2" Style="flex-wrap: wrap;" Class="mt-2">
-                                    <MudChip T="string" Size="Size.Small" Color="@GetTypeColor(context.Type)">@context.Type</MudChip>
-                                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+                                    <MudChip T="string" T="string" Size="Size.Small" Color="@GetTypeColor(context.Type)">@context.Type</MudChip>
+                                    <MudChip T="string" T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
                                     @if (context.Price.HasValue)
                                     {
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Info">$@context.Price.Value.ToString("F2")</MudChip>
+                                        <MudChip T="string" T="string" Size="Size.Small" Color="Color.Info">$@context.Price.Value.ToString("F2")</MudChip>
                                     }
                                     else
                                     {
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Success">Free</MudChip>
+                                        <MudChip T="string" T="string" Size="Size.Small" Color="Color.Success">Free</MudChip>
                                     }
                                 </MudStack>
                             </div>
                         </MudStack>
                     </MudTd>
                     <MudTd DataLabel="Type" Class="d-none d-md-table-cell">
-                        <MudChip T="string" Size="Size.Small" Color="@GetTypeColor(context.Type)">@context.Type</MudChip>
+                        <MudChip T="string" T="string" Size="Size.Small" Color="@GetTypeColor(context.Type)">@context.Type</MudChip>
                     </MudTd>
                     <MudTd DataLabel="Date & Time">
                         <MudStack Spacing="0">
@@ -255,7 +255,7 @@
                         }
                     </MudTd>
                     <MudTd DataLabel="Status" Class="d-none d-md-table-cell">
-                        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+                        <MudChip T="string" T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
                     </MudTd>
                     <MudTd DataLabel="Actions">
                         <!-- Desktop: Button group -->

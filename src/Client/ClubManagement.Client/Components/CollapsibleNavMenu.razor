@@ -146,31 +146,80 @@
             
             <!-- Submenu - expanded view -->
             <div class="nav-submenu expanded-only">
-                <div class="nav-item submenu-item @(IsCurrentPage("/facilities") ? "active" : "")" @onclick="@(() => NavigateTo("/facilities"))">
+                <!-- Member Portal Section -->
+                <div class="nav-item submenu-item @(IsCurrentPage("/member/facilities") ? "active" : "")" @onclick="@(() => NavigateTo("/member/facilities"))">
                     <div class="nav-link">
-                        <MudIcon Icon="@Icons.Material.Filled.Store" Class="nav-icon" />
-                        <span class="nav-text">All Facilities</span>
+                        <MudIcon Icon="@Icons.Material.Filled.Search" Class="nav-icon" />
+                        <span class="nav-text">Browse & Book</span>
                     </div>
                 </div>
-                <div class="nav-item submenu-item @(IsCurrentPage("/facilities/bookings") ? "active" : "")" @onclick="@(() => NavigateTo("/facilities/bookings"))">
+                <div class="nav-item submenu-item @(IsCurrentPage("/member/bookings") ? "active" : "")" @onclick="@(() => NavigateTo("/member/bookings"))">
                     <div class="nav-link">
-                        <MudIcon Icon="@Icons.Material.Filled.BookOnline" Class="nav-icon" />
-                        <span class="nav-text">Bookings</span>
+                        <MudIcon Icon="@Icons.Material.Filled.EventNote" Class="nav-icon" />
+                        <span class="nav-text">My Bookings</span>
                     </div>
                 </div>
+                
+                <!-- Management Section (Staff/Admin Only) -->
+                @if (_permissions.Navigation.ShowFacilityManagement)
+                {
+                    <div class="nav-item submenu-item @(IsCurrentPage("/facilities") ? "active" : "")" @onclick="@(() => NavigateTo("/facilities"))">
+                        <div class="nav-link">
+                            <MudIcon Icon="@Icons.Material.Filled.Store" Class="nav-icon" />
+                            <span class="nav-text">Manage Facilities</span>
+                        </div>
+                    </div>
+                    <div class="nav-item submenu-item @(IsCurrentPage("/facility-bookings") ? "active" : "")" @onclick="@(() => NavigateTo("/facility-bookings"))">
+                        <div class="nav-link">
+                            <MudIcon Icon="@Icons.Material.Filled.BookOnline" Class="nav-icon" />
+                            <span class="nav-text">Manage Bookings</span>
+                        </div>
+                    </div>
+                    <div class="nav-item submenu-item @(IsCurrentPage("/facility-types") ? "active" : "")" @onclick="@(() => NavigateTo("/facility-types"))">
+                        <div class="nav-link">
+                            <MudIcon Icon="@Icons.Material.Filled.Category" Class="nav-icon" />
+                            <span class="nav-text">Facility Types</span>
+                        </div>
+                    </div>
+                    <div class="nav-item submenu-item @(IsCurrentPage("/facilities/certifications") ? "active" : "")" @onclick="@(() => NavigateTo("/facilities/certifications"))">
+                        <div class="nav-link">
+                            <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Class="nav-icon" />
+                            <span class="nav-text">Certifications</span>
+                        </div>
+                    </div>
+                }
             </div>
             
             <!-- Popout submenu - collapsed view -->
             <div class="submenu-popout @(_activePopout == "facilities" ? "show" : "")" style="top: @GetPopoutPosition("facilities"); left: 72px;">
                 <div class="popout-header">Facilities</div>
-                <div class="nav-item @(IsCurrentPage("/facilities") ? "active" : "")" @onclick="@(() => NavigateTo("/facilities"))">
-                    <MudIcon Icon="@Icons.Material.Filled.Store" Size="Size.Small" />
-                    <span>All Facilities</span>
+                <div class="nav-item @(IsCurrentPage("/member/facilities") ? "active" : "")" @onclick="@(() => NavigateTo("/member/facilities"))">
+                    <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" />
+                    <span>Browse & Book</span>
                 </div>
-                <div class="nav-item @(IsCurrentPage("/facilities/bookings") ? "active" : "")" @onclick="@(() => NavigateTo("/facilities/bookings"))">
-                    <MudIcon Icon="@Icons.Material.Filled.BookOnline" Size="Size.Small" />
-                    <span>Bookings</span>
+                <div class="nav-item @(IsCurrentPage("/member/bookings") ? "active" : "")" @onclick="@(() => NavigateTo("/member/bookings"))">
+                    <MudIcon Icon="@Icons.Material.Filled.EventNote" Size="Size.Small" />
+                    <span>My Bookings</span>
                 </div>
+                @if (_permissions.Navigation.ShowFacilityManagement)
+                {
+                    <div class="nav-item @(IsCurrentPage("/facilities") ? "active" : "")" @onclick="@(() => NavigateTo("/facilities"))">
+                        <MudIcon Icon="@Icons.Material.Filled.Store" Size="Size.Small" />
+                        <span>Manage Facilities</span>
+                    </div>
+                    <div class="nav-item @(IsCurrentPage("/facility-bookings") ? "active" : "")" @onclick="@(() => NavigateTo("/facility-bookings"))">
+                        <MudIcon Icon="@Icons.Material.Filled.BookOnline" Size="Size.Small" />
+                        <span>Manage Bookings</span>
+                    </div>
+                    <div class="nav-item @(IsCurrentPage("/facility-types") ? "active" : "")" @onclick="@(() => NavigateTo("/facility-types"))">
+                        <MudIcon Icon="@Icons.Material.Filled.Category" Size="Size.Small" />
+                        <span>Facility Types</span>
+                    </div>
+                    <div class="nav-item @(IsCurrentPage("/facilities/certifications") ? "active" : "")" @onclick="@(() => NavigateTo("/facilities/certifications"))">
+                        <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Size="Size.Small" />
+                        <span>Certifications</span>
+                    </div>
+                }
             </div>
         </div>
     }
@@ -561,7 +610,7 @@
         {
             "members" => currentPath.Contains("/members"),
             "events" => currentPath.Contains("/events"),
-            "facilities" => currentPath.Contains("/facilities"),
+            "facilities" => currentPath.Contains("/facilities") || currentPath.Contains("/facility-") || currentPath.Contains("/member/facilities") || currentPath.Contains("/member/bookings"),
             "hardware" => currentPath.Contains("/hardware"),
             "payments" => currentPath.Contains("/payments") || currentPath.Contains("/subscriptions"),
             "communications" => currentPath.Contains("/communications"),

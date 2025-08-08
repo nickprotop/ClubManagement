@@ -1,0 +1,402 @@
+@page "/facilities"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IFacilityService FacilityService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>Facility Management</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <MudText Typo="Typo.h4">Facility Management</MudText>
+    @if (_permissions?.CanCreate == true)
+    {
+        <MudButton Variant="Variant.Filled" 
+                   Color="Color.Primary" 
+                   StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="@(() => Navigation.NavigateTo("/facilities/create"))">
+            Add Facility
+        </MudButton>
+    }
+</div>
+
+<MudCard>
+    <MudCardContent>
+        <!-- Search and Filters -->
+        <div class="d-flex gap-4 mb-4">
+            <MudTextField @bind-Value="_searchTerm"
+                         Label="Search Facilities"
+                         Variant="Variant.Outlined"
+                         Adornment="Adornment.Start"
+                         AdornmentIcon="@Icons.Material.Filled.Search"
+                         OnKeyUp="OnSearchKeyUp"
+                         Class="flex-grow-1" />
+            
+            <MudSelect @bind-Value="_selectedTypeId"
+                      Label="Facility Type"
+                      Variant="Variant.Outlined"
+                      Clearable="true"
+                      OnSelectionChanged="OnFilterChanged">
+                @if (_facilityTypes != null)
+                {
+                    @foreach (var type in _facilityTypes)
+                    {
+                        <MudSelectItem T="Guid?" Value="type.Id">@type.Name</MudSelectItem>
+                    }
+                }
+            </MudSelect>
+
+            <MudSelect @bind-Value="_selectedStatus"
+                      Label="Status"
+                      Variant="Variant.Outlined"
+                      Clearable="true"
+                      OnSelectionChanged="OnFilterChanged">
+                <MudSelectItem T="FacilityStatus?" Value="FacilityStatus.Available">Available</MudSelectItem>
+                <MudSelectItem T="FacilityStatus?" Value="FacilityStatus.Occupied">Occupied</MudSelectItem>
+                <MudSelectItem T="FacilityStatus?" Value="FacilityStatus.Maintenance">Maintenance</MudSelectItem>
+                <MudSelectItem T="FacilityStatus?" Value="FacilityStatus.OutOfOrder">Out of Order</MudSelectItem>
+                <MudSelectItem T="FacilityStatus?" Value="FacilityStatus.Retired">Retired</MudSelectItem>
+            </MudSelect>
+        </div>
+
+        <!-- Facility Table -->
+        <MudDataGrid T="FacilityDto"
+                     Items="_filteredFacilities"
+                     Loading="_loading"
+                     Elevation="0"
+                     Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Name" Title="Name">
+                    <CellTemplate>
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="@context.Item.Icon" Class="mr-2" />
+                            <MudLink Href="@($"/facilities/{context.Item.Id}")" Typo="Typo.body2">
+                                @context.Item.Name
+                            </MudLink>
+                        </div>
+                    </CellTemplate>
+                </PropertyColumn>
+                
+                <PropertyColumn Property="x => x.FacilityTypeName" Title="Type" />
+                
+                <PropertyColumn Property="x => x.Status" Title="Status">
+                    <CellTemplate>
+                        @if (context.Item.Status == FacilityStatus.Available)
+                        {
+                            @if (context.Item.IsCurrentlyBooked && context.Item.CurrentBooking != null)
+                            {
+                                <MudChip T="string" Color="Color.Info" 
+                                        Size="Size.Small" 
+                                        Variant="Variant.Filled"
+                                        Icon="@Icons.Material.Filled.Person">
+                                    Booked by @context.Item.CurrentBooking.MemberName
+                                </MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Color="Color.Success" 
+                                        Size="Size.Small" 
+                                        Variant="Variant.Filled"
+                                        Icon="@Icons.Material.Filled.Check">
+                                    Available
+                                </MudChip>
+                            }
+                        }
+                        else
+                        {
+                            <MudChip T="string" Color="@GetStatusColor(context.Item.Status)" 
+                                    Size="Size.Small" 
+                                    Variant="Variant.Filled">
+                                @context.Item.Status
+                            </MudChip>
+                        }
+                    </CellTemplate>
+                </PropertyColumn>
+                
+                <PropertyColumn Property="x => x.Location" Title="Location" />
+                
+                <PropertyColumn Property="x => x.Capacity" Title="Capacity">
+                    <CellTemplate>
+                        @if (context.Item.Capacity.HasValue)
+                        {
+                            <span>@context.Item.Capacity people</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Not specified</span>
+                        }
+                    </CellTemplate>
+                </PropertyColumn>
+
+                <PropertyColumn Property="x => x.HourlyRate" Title="Rate" Format="C">
+                    <CellTemplate>
+                        @if (context.Item.HourlyRate.HasValue && context.Item.HourlyRate > 0)
+                        {
+                            <span>@context.Item.HourlyRate.Value.ToString("C")/hr</span>
+                        }
+                        else
+                        {
+                            <span class="text-success">Free</span>
+                        }
+                    </CellTemplate>
+                </PropertyColumn>
+
+                <TemplateColumn Title="Member Access" Sortable="false">
+                    <CellTemplate>
+                        <div class="d-flex flex-column gap-1">
+                            @if (context.Item.AllowedMembershipTiers?.Count > 0)
+                            {
+                                <div class="d-flex flex-wrap gap-1">
+                                    @foreach (var tier in context.Item.AllowedMembershipTiers)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" 
+                                                Color="@GetTierColor(tier)"
+                                                Variant="Variant.Text">
+                                            @tier
+                                        </MudChip>
+                                    }
+                                </div>
+                            }
+                            @if (context.Item.RequiredCertifications?.Count > 0)
+                            {
+                                <MudTooltip Text="@string.Join(", ", context.Item.RequiredCertifications)">
+                                    <MudIcon Icon="@Icons.Material.Filled.Security" 
+                                            Size="Size.Small" 
+                                            Color="Color.Warning" />
+                                </MudTooltip>
+                            }
+                        </div>
+                    </CellTemplate>
+                </TemplateColumn>
+
+                <TemplateColumn Title="Actions" Sortable="false">
+                    <CellTemplate>
+                        <div class="d-flex gap-2">
+                            <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                         Size="Size.Small"
+                                         Color="Color.Primary"
+                                         Href="@($"/facilities/{context.Item.Id}")"
+                                         Title="View Details" />
+                            
+                            @if (_permissions?.CanEdit == true)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                             Size="Size.Small"
+                                             Color="Color.Secondary"
+                                             Href="@($"/facilities/{context.Item.Id}/edit")"
+                                             Title="Edit Facility" />
+                            }
+                            
+                            @if (_permissions?.CanDelete == true && !context.Item.IsCurrentlyBooked)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                             Size="Size.Small"
+                                             Color="Color.Error"
+                                             OnClick="() => DeleteFacility(context.Item)"
+                                             Title="Delete Facility" />
+                            }
+
+                            @if (_permissions?.CanManageBookings == true)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Schedule"
+                                             Size="Size.Small"
+                                             Color="Color.Info"
+                                             Href="@($"/facilities/{context.Item.Id}/bookings")"
+                                             Title="View Bookings" />
+                            }
+                        </div>
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+@code {
+    private List<FacilityDto>? _facilities;
+    private List<FacilityDto>? _filteredFacilities;
+    private List<FacilityTypeDto>? _facilityTypes;
+    private FacilityPermissions? _permissions;
+    private bool _loading = true;
+    
+    private string _searchTerm = string.Empty;
+    private Guid? _selectedTypeId;
+    private FacilityStatus? _selectedStatus;
+    
+    private Timer? _searchTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissions();
+        await LoadFacilityTypes();
+        await LoadFacilities();
+    }
+
+    private async Task LoadPermissions()
+    {
+        try
+        {
+            var response = await FacilityService.GetFacilityPermissionsAsync();
+            if (response.Success)
+            {
+                _permissions = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load permissions: {ex.Message}");
+        }
+    }
+
+    private async Task LoadFacilityTypes()
+    {
+        try
+        {
+            var response = await FacilityService.GetFacilityTypesAsync();
+            if (response.Success)
+            {
+                _facilityTypes = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load facility types: {ex.Message}");
+        }
+    }
+
+    private async Task LoadFacilities()
+    {
+        try
+        {
+            _loading = true;
+            var response = await FacilityService.GetFacilitiesAsync();
+            if (response.Success)
+            {
+                _facilities = response.Data;
+                ApplyFilters();
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to load facilities");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load facilities: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        if (_facilities == null)
+        {
+            _filteredFacilities = new List<FacilityDto>();
+            return;
+        }
+
+        var filtered = _facilities.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(_searchTerm))
+        {
+            filtered = filtered.Where(f => 
+                f.Name.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                f.FacilityTypeName.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                f.Location?.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) == true);
+        }
+
+        if (_selectedTypeId.HasValue)
+        {
+            filtered = filtered.Where(f => f.FacilityTypeId == _selectedTypeId.Value);
+        }
+
+        if (_selectedStatus.HasValue)
+        {
+            filtered = filtered.Where(f => f.Status == _selectedStatus.Value);
+        }
+
+        _filteredFacilities = filtered.ToList();
+    }
+
+    private void OnSearchKeyUp(KeyboardEventArgs e)
+    {
+        _searchTimer?.Dispose();
+        _searchTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(() =>
+            {
+                ApplyFilters();
+                StateHasChanged();
+            });
+        }, null, 300, Timeout.Infinite);
+    }
+
+    private Task OnFilterChanged()
+    {
+        ApplyFilters();
+        return Task.CompletedTask;
+    }
+
+    private async Task DeleteFacility(FacilityDto facility)
+    {
+        var confirmed = await NotificationService.ShowConfirmationAsync(
+            "Delete Facility",
+            $"Are you sure you want to delete '{facility.Name}'? This action cannot be undone.");
+            
+        if (!confirmed) return;
+
+        try
+        {
+            var response = await FacilityService.DeleteFacilityAsync(facility.Id);
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync("Facility deleted successfully");
+                await LoadFacilities();
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to delete facility");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to delete facility: {ex.Message}");
+        }
+    }
+
+    private Color GetStatusColor(FacilityStatus status)
+    {
+        return status switch
+        {
+            FacilityStatus.Available => Color.Success,
+            FacilityStatus.Occupied => Color.Warning,
+            FacilityStatus.Maintenance => Color.Warning,
+            FacilityStatus.OutOfOrder => Color.Error,
+            FacilityStatus.Retired => Color.Default,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetTierColor(MembershipTier tier)
+    {
+        return tier switch
+        {
+            MembershipTier.Basic => Color.Default,
+            MembershipTier.Premium => Color.Primary,
+            MembershipTier.VIP => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+
+    public void Dispose()
+    {
+        _searchTimer?.Dispose();
+    }
+}

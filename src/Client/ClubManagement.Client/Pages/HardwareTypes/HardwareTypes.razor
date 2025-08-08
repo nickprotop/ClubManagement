@@ -84,13 +84,13 @@
                                     <div class="d-flex flex-wrap gap-1 mt-2">
                                         @foreach (var prop in type.PropertySchema.Properties.Take(3))
                                         {
-                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                                            <MudChip T="string" T="string" Size="Size.Small" Variant="Variant.Outlined">
                                                 @prop.Label
                                             </MudChip>
                                         }
                                         @if (type.PropertySchema.Properties.Count > 3)
                                         {
-                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                                            <MudChip T="string" T="string" Size="Size.Small" Variant="Variant.Outlined">
                                                 +@(type.PropertySchema.Properties.Count - 3) more
                                             </MudChip>
                                         }

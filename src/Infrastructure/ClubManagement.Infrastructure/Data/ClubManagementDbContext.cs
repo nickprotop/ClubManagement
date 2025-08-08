@@ -31,6 +31,8 @@ public class ClubManagementDbContext : DbContext
     public DbSet<RefreshToken> RefreshTokens { get; set; }
     public DbSet<ImpersonationSession> ImpersonationSessions { get; set; }
     public DbSet<MemberAuditLog> MemberAuditLogs { get; set; }
+    public DbSet<MemberFacilityCertification> MemberFacilityCertifications { get; set; }
+    public DbSet<MemberBookingLimit> MemberBookingLimits { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -91,6 +93,41 @@ public class ClubManagementDbContext : DbContext
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
                 v => JsonSerializer.Deserialize<List<DayOfWeek>>(v, (JsonSerializerOptions?)null) ?? new List<DayOfWeek>())
+            .HasColumnType("jsonb");
+
+        modelBuilder.Entity<Facility>()
+            .Property(e => e.AllowedMembershipTiers)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => JsonSerializer.Deserialize<List<MembershipTier>>(v, (JsonSerializerOptions?)null) ?? new List<MembershipTier>())
+            .HasColumnType("jsonb");
+
+        modelBuilder.Entity<Facility>()
+            .Property(e => e.RequiredCertifications)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>())
+            .HasColumnType("jsonb");
+
+        modelBuilder.Entity<FacilityType>()
+            .Property(e => e.AllowedMembershipTiers)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => JsonSerializer.Deserialize<List<MembershipTier>>(v, (JsonSerializerOptions?)null) ?? new List<MembershipTier>())
+            .HasColumnType("jsonb");
+
+        modelBuilder.Entity<FacilityType>()
+            .Property(e => e.RequiredCertifications)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>())
+            .HasColumnType("jsonb");
+
+        modelBuilder.Entity<FacilityBooking>()
+            .Property(e => e.AdditionalParticipants)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => JsonSerializer.Deserialize<List<Guid>>(v, (JsonSerializerOptions?)null) ?? new List<Guid>())
             .HasColumnType("jsonb");
 
         modelBuilder.Entity<HardwareType>()
@@ -296,5 +333,152 @@ public class ClubManagementDbContext : DbContext
 
         modelBuilder.Entity<MemberAuditLog>()
             .HasIndex(log => new { log.Action, log.Timestamp });
+
+        // Configure Facility relationships
+        modelBuilder.Entity<FacilityBooking>()
+            .HasOne(fb => fb.Facility)
+            .WithMany(f => f.Bookings)
+            .HasForeignKey(fb => fb.FacilityId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<FacilityBooking>()
+            .HasOne(fb => fb.Member)
+            .WithMany()
+            .HasForeignKey(fb => fb.MemberId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<FacilityBooking>()
+            .HasOne(fb => fb.BookedByUser)
+            .WithMany()
+            .HasForeignKey(fb => fb.BookedByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<FacilityBooking>()
+            .HasOne(fb => fb.CheckedInByUser)
+            .WithMany()
+            .HasForeignKey(fb => fb.CheckedInByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<FacilityBooking>()
+            .HasOne(fb => fb.CheckedOutByUser)
+            .WithMany()
+            .HasForeignKey(fb => fb.CheckedOutByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<FacilityBooking>()
+            .HasOne(fb => fb.CancelledByUser)
+            .WithMany()
+            .HasForeignKey(fb => fb.CancelledByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Configure MemberFacilityCertification relationships
+        modelBuilder.Entity<MemberFacilityCertification>()
+            .HasOne(mfc => mfc.Member)
+            .WithMany()
+            .HasForeignKey(mfc => mfc.MemberId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<MemberFacilityCertification>()
+            .HasOne(mfc => mfc.CertifiedByUser)
+            .WithMany()
+            .HasForeignKey(mfc => mfc.CertifiedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Configure FacilityType relationship
+        modelBuilder.Entity<FacilityType>()
+            .HasMany(ft => ft.Facilities)
+            .WithOne(f => f.FacilityType)
+            .HasForeignKey(f => f.FacilityTypeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Facility indexes
+        modelBuilder.Entity<Facility>()
+            .HasIndex(f => new { f.Status, f.TenantId });
+
+        modelBuilder.Entity<Facility>()
+            .HasIndex(f => new { f.FacilityTypeId, f.Status });
+
+        modelBuilder.Entity<Facility>()
+            .HasIndex(f => f.Location);
+
+        // FacilityBooking indexes
+        modelBuilder.Entity<FacilityBooking>()
+            .HasIndex(fb => new { fb.FacilityId, fb.StartDateTime, fb.EndDateTime });
+
+        modelBuilder.Entity<FacilityBooking>()
+            .HasIndex(fb => new { fb.MemberId, fb.Status });
+
+        modelBuilder.Entity<FacilityBooking>()
+            .HasIndex(fb => new { fb.Status, fb.StartDateTime });
+
+        modelBuilder.Entity<FacilityBooking>()
+            .HasIndex(fb => fb.BookingSource);
+
+        modelBuilder.Entity<FacilityBooking>()
+            .HasIndex(fb => fb.RecurrenceGroupId)
+            .HasFilter("\"RecurrenceGroupId\" IS NOT NULL");
+
+        // MemberFacilityCertification indexes
+        modelBuilder.Entity<MemberFacilityCertification>()
+            .HasIndex(mfc => new { mfc.MemberId, mfc.CertificationType, mfc.IsActive });
+
+        modelBuilder.Entity<MemberFacilityCertification>()
+            .HasIndex(mfc => new { mfc.ExpiryDate, mfc.IsActive })
+            .HasFilter("\"ExpiryDate\" IS NOT NULL AND \"IsActive\" = true");
+
+        // MemberBookingLimit JSON columns
+        modelBuilder.Entity<MemberBookingLimit>()
+            .Property(e => e.AllowedDays)
+            .HasConversion(
+                v => v != null ? JsonSerializer.Serialize(v, (JsonSerializerOptions?)null) : null,
+                v => !string.IsNullOrEmpty(v) ? JsonSerializer.Deserialize<DayOfWeek[]>(v, (JsonSerializerOptions?)null) : null)
+            .HasColumnType("jsonb");
+
+        // MemberBookingLimit indexes
+        modelBuilder.Entity<MemberBookingLimit>()
+            .HasIndex(mbl => new { mbl.MemberId, mbl.IsActive });
+
+        modelBuilder.Entity<MemberBookingLimit>()
+            .HasIndex(mbl => new { mbl.FacilityId, mbl.IsActive });
+
+        modelBuilder.Entity<MemberBookingLimit>()
+            .HasIndex(mbl => new { mbl.FacilityTypeId, mbl.IsActive });
+
+        modelBuilder.Entity<MemberBookingLimit>()
+            .HasIndex(mbl => new { mbl.ApplicableTier, mbl.IsActive });
+
+        // Configure Event JSON columns
+        modelBuilder.Entity<Event>()
+            .Property(e => e.RequiredCertifications)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>())
+            .HasColumnType("jsonb");
+
+        modelBuilder.Entity<Event>()
+            .Property(e => e.AllowedMembershipTiers)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => JsonSerializer.Deserialize<List<MembershipTier>>(v, (JsonSerializerOptions?)null) ?? new List<MembershipTier>())
+            .HasColumnType("jsonb");
+
+        modelBuilder.Entity<Event>()
+            .Property(e => e.RequiredEquipment)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>())
+            .HasColumnType("jsonb");
+
+        // Event indexes for facility integration
+        modelBuilder.Entity<Event>()
+            .HasIndex(e => new { e.FacilityId, e.StartDateTime, e.EndDateTime })
+            .HasFilter("\"FacilityId\" IS NOT NULL");
+
+        modelBuilder.Entity<Event>()
+            .HasIndex(e => e.RequiresFacilityAccess)
+            .HasFilter("\"RequiresFacilityAccess\" = true");
+
+        modelBuilder.Entity<MemberBookingLimit>()
+            .HasIndex(mbl => new { mbl.EffectiveFrom, mbl.EffectiveTo, mbl.IsActive });
     }
 }

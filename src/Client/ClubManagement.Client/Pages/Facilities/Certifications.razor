@@ -1,0 +1,543 @@
+@page "/facilities/certifications"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@inject IFacilityService FacilityService
+@inject IMemberService MemberService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
+
+<PageTitle>Facility Certifications</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-6">
+    <div>
+        <MudText Typo="Typo.h4" GutterBottom="true">Facility Certifications</MudText>
+        <MudText Typo="Typo.body1" Color="Color.Secondary">
+            Manage member safety certifications and training records
+        </MudText>
+    </div>
+    @if (_permissions?.CanCreate == true)
+    {
+        <MudButton Variant="Variant.Filled" 
+                   Color="Color.Primary" 
+                   StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenCreateDialog">
+            Add Certification
+        </MudButton>
+    }
+</div>
+
+<!-- Filters -->
+<MudCard Class="mb-4">
+    <MudCardContent>
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudTextField @bind-Value="_filter.Search"
+                              Label="Search"
+                              Placeholder="Member name, email, or certification type"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true"
+                              OnKeyUp="OnSearchKeyUp" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect @bind-Value="_filter.CertificationType"
+                           Label="Certification Type"
+                           Clearable="true">
+                    @foreach (var type in _certificationTypes)
+                    {
+                        <MudSelectItem Value="@type">@type</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2">
+                <MudSelect @bind-Value="_filter.IsActive"
+                           Label="Status"
+                           Clearable="true">
+                    <MudSelectItem Value="@(true)">Active</MudSelectItem>
+                    <MudSelectItem Value="@(false)">Inactive</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2">
+                <MudNumericField @bind-Value="_filter.ExpiringWithinDays"
+                                 Label="Expiring Within (Days)"
+                                 Min="0" Max="365"
+                                 Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2">
+                <MudCheckBox @bind-Value="_filter.ExpiredOnly" Label="Expired Only" />
+            </MudItem>
+        </MudGrid>
+        <div class="d-flex gap-2 mt-4">
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Primary" 
+                       OnClick="ApplyFilters">
+                Apply Filters
+            </MudButton>
+            <MudButton Variant="Variant.Text" 
+                       OnClick="ClearFilters">
+                Clear
+            </MudButton>
+        </div>
+    </MudCardContent>
+</MudCard>
+
+<!-- Certifications Data Grid -->
+<MudDataGrid T="FacilityCertificationDto" 
+             Items="_certifications" 
+             Loading="_loading" 
+             ServerData="LoadServerData"
+             @ref="_dataGrid">
+    <ToolBarContent>
+        <div class="d-flex align-center gap-4">
+            <MudText Typo="Typo.h6">Certifications</MudText>
+            <MudSpacer />
+            @if (_permissions?.CanView == true)
+            {
+                <MudButton Variant="Variant.Text"
+                           Color="Color.Secondary"
+                           StartIcon="@Icons.Material.Filled.Warning"
+                           OnClick="ShowExpiringCertifications">
+                    View Expiring (@_expiringCount)
+                </MudButton>
+            }
+        </div>
+    </ToolBarContent>
+    <Columns>
+        <PropertyColumn Property="x => x.MemberName" Title="Member" Sortable="true">
+            <CellTemplate>
+                <MudLink Href="@($"/members/{context.Item.MemberId}")" 
+                         Typo="Typo.body2">
+                    @context.Item.MemberName
+                </MudLink>
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.CertificationType" Title="Certification" Sortable="true" />
+        <PropertyColumn Property="x => x.CertifiedDate" Title="Certified Date" Sortable="true">
+            <CellTemplate>
+                @context.Item.CertifiedDate.ToString("MMM dd, yyyy")
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.ExpiryDate" Title="Expires" Sortable="true">
+            <CellTemplate>
+                @if (context.Item.ExpiryDate.HasValue)
+                {
+                    var daysUntilExpiry = context.Item.DaysUntilExpiry;
+                    var color = daysUntilExpiry <= 0 ? Color.Error : 
+                               daysUntilExpiry <= 30 ? Color.Warning : Color.Default;
+                    
+                    <MudText Color="@color" Typo="Typo.body2">
+                        @context.Item.ExpiryDate.Value.ToString("MMM dd, yyyy")
+                        @if (daysUntilExpiry <= 30)
+                        {
+                            <br />
+                            <small>(@(daysUntilExpiry > 0 ? $"{daysUntilExpiry} days left" : "EXPIRED"))</small>
+                        }
+                    </MudText>
+                }
+                else
+                {
+                    <MudText Color="Color.Secondary">Never expires</MudText>
+                }
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.CertifiedByUserName" Title="Certified By" Sortable="true" />
+        <PropertyColumn Property="x => x.IsActive" Title="Status" Sortable="true">
+            <CellTemplate>
+                <MudChip T="string" Color="@(context.Item.IsActive ? Color.Success : Color.Default)"
+                         Size="Size.Small">
+                    @(context.Item.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        <TemplateColumn Title="Actions" Sortable="false">
+            <CellTemplate>
+                <div class="d-flex gap-1">
+                    @if (_permissions?.CanView == true)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                       Size="Size.Small"
+                                       Color="Color.Primary"
+                                       Title="View Details"
+                                       OnClick="() => ViewCertification(context.Item)" />
+                    }
+                    @if (_permissions?.CanEdit == true && context.Item.IsActive)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Block"
+                                       Size="Size.Small"
+                                       Color="Color.Error"
+                                       Title="Deactivate"
+                                       OnClick="() => OpenDeactivateDialog(context.Item)" />
+                    }
+                </div>
+            </CellTemplate>
+        </TemplateColumn>
+    </Columns>
+    <PagerContent>
+        <MudDataGridPager T="FacilityCertificationDto" />
+    </PagerContent>
+</MudDataGrid>
+
+<!-- Create Certification Dialog -->
+<MudDialog @bind-IsVisible="_showCreateDialog" Options="_dialogOptions">
+    <TitleContent>
+        <div class="d-flex align-center">
+            <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-3" />
+            <MudText Typo="Typo.h6">Add New Certification</MudText>
+        </div>
+    </TitleContent>
+    <DialogContent>
+        @if (_createRequest != null)
+        {
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudSelect @bind-Value="_createRequest.MemberId"
+                               Label="Member"
+                               Required="true"
+                               RequiredError="Please select a member">
+                        @foreach (var member in _members)
+                        {
+                            <MudSelectItem Value="@member.Id">@member.Name (@member.Email)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="8">
+                    <MudAutocomplete @bind-Value="_createRequest.CertificationType"
+                                     Label="Certification Type"
+                                     SearchFunc="SearchCertificationTypes"
+                                     Required="true"
+                                     RequiredError="Please enter certification type" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker @bind-Date="_expiryDate"
+                                   Label="Expiry Date (Optional)"
+                                   MinDate="DateTime.Today" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_createRequest.Notes"
+                                  Label="Notes (Optional)"
+                                  Lines="3"
+                                  Placeholder="Additional notes or training details..." />
+                </MudItem>
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseCreateDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" 
+                   Variant="Variant.Filled"
+                   OnClick="CreateCertification"
+                   Disabled="_creating">
+            @if (_creating)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                <span class="ml-2">Creating...</span>
+            }
+            else
+            {
+                <span>Create Certification</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<!-- Deactivate Certification Dialog -->
+<MudDialog @bind-IsVisible="_showDeactivateDialog" Options="_dialogOptions">
+    <TitleContent>
+        <div class="d-flex align-center">
+            <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Class="mr-3" />
+            <MudText Typo="Typo.h6">Deactivate Certification</MudText>
+        </div>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedCertification != null)
+        {
+            <MudText Typo="Typo.body1" Class="mb-4">
+                Are you sure you want to deactivate the <strong>@_selectedCertification.CertificationType</strong> 
+                certification for <strong>@_selectedCertification.MemberName</strong>?
+            </MudText>
+            <MudTextField @bind-Value="_deactivateReason"
+                          Label="Reason for Deactivation"
+                          Required="true"
+                          RequiredError="Please provide a reason"
+                          Lines="2" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDeactivateDialog">Cancel</MudButton>
+        <MudButton Color="Color.Error" 
+                   Variant="Variant.Filled"
+                   OnClick="DeactivateCertification"
+                   Disabled="_deactivating || string.IsNullOrWhiteSpace(_deactivateReason)">
+            @if (_deactivating)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                <span class="ml-2">Deactivating...</span>
+            }
+            else
+            {
+                <span>Deactivate</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private MudDataGrid<FacilityCertificationDto>? _dataGrid;
+    private List<FacilityCertificationDto> _certifications = new();
+    private List<string> _certificationTypes = new();
+    private List<MemberSummaryDto> _members = new();
+    private FacilityPermissions? _permissions;
+    
+    private bool _loading = true;
+    private int _expiringCount = 0;
+    
+    private CertificationListFilter _filter = new();
+    
+    // Create dialog
+    private bool _showCreateDialog = false;
+    private bool _creating = false;
+    private CreateCertificationRequest? _createRequest;
+    private DateTime? _expiryDate;
+    
+    // Deactivate dialog
+    private bool _showDeactivateDialog = false;
+    private bool _deactivating = false;
+    private FacilityCertificationDto? _selectedCertification;
+    private string _deactivateReason = string.Empty;
+    
+    private DialogOptions _dialogOptions = new() { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissions();
+        await LoadCertificationTypes();
+        await LoadMembers();
+        await LoadExpiringCount();
+    }
+
+    private async Task LoadPermissions()
+    {
+        try
+        {
+            var response = await FacilityService.GetFacilityPermissionsAsync();
+            if (response.Success)
+                _permissions = response.Data;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading permissions: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadCertificationTypes()
+    {
+        try
+        {
+            var response = await FacilityService.GetCertificationTypesAsync();
+            if (response.Success && response.Data != null)
+                _certificationTypes = response.Data;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading certification types: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadMembers()
+    {
+        try
+        {
+            var response = await MemberService.GetMemberSummariesAsync();
+            if (response.Success && response.Data != null)
+                _members = response.Data;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading members: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadExpiringCount()
+    {
+        try
+        {
+            var response = await FacilityService.GetExpiringCertificationsAsync(30);
+            if (response.Success && response.Data != null)
+                _expiringCount = response.Data.Count;
+        }
+        catch (Exception ex)
+        {
+            // Don't show error for this, it's not critical
+        }
+    }
+
+    private async Task<GridData<FacilityCertificationDto>> LoadServerData(GridState<FacilityCertificationDto> state)
+    {
+        _loading = true;
+        try
+        {
+            _filter.Page = state.Page + 1;
+            _filter.PageSize = state.PageSize;
+            _filter.SortBy = state.SortDefinitions?.FirstOrDefault()?.SortBy ?? "certifieddate";
+            _filter.SortDescending = state.SortDefinitions?.FirstOrDefault()?.Descending ?? true;
+
+            var response = await FacilityService.GetCertificationsAsync(_filter);
+            if (response.Success && response.Data != null)
+            {
+                _certifications = response.Data.Items;
+                return new GridData<FacilityCertificationDto>
+                {
+                    Items = _certifications,
+                    TotalItems = response.Data.TotalCount
+                };
+            }
+            else
+            {
+                Snackbar.Add(response.Message ?? "Failed to load certifications", Severity.Error);
+                return new GridData<FacilityCertificationDto> { Items = new(), TotalItems = 0 };
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading certifications: {ex.Message}", Severity.Error);
+            return new GridData<FacilityCertificationDto> { Items = new(), TotalItems = 0 };
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnSearchKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await ApplyFilters();
+        }
+    }
+
+    private async Task ApplyFilters()
+    {
+        await _dataGrid?.ReloadServerData()!;
+    }
+
+    private async Task ClearFilters()
+    {
+        _filter = new CertificationListFilter();
+        await _dataGrid?.ReloadServerData()!;
+    }
+
+    private void OpenCreateDialog()
+    {
+        _createRequest = new CreateCertificationRequest();
+        _expiryDate = null;
+        _showCreateDialog = true;
+    }
+
+    private void CloseCreateDialog()
+    {
+        _showCreateDialog = false;
+        _createRequest = null;
+        _expiryDate = null;
+    }
+
+    private async Task CreateCertification()
+    {
+        if (_createRequest == null) return;
+
+        _creating = true;
+        try
+        {
+            _createRequest.ExpiryDate = _expiryDate;
+            var response = await FacilityService.CreateCertificationAsync(_createRequest);
+            
+            if (response.Success)
+            {
+                Snackbar.Add("Certification created successfully", Severity.Success);
+                CloseCreateDialog();
+                await _dataGrid?.ReloadServerData()!;
+                await LoadExpiringCount();
+            }
+            else
+            {
+                Snackbar.Add(response.Message ?? "Failed to create certification", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating certification: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _creating = false;
+        }
+    }
+
+    private void OpenDeactivateDialog(FacilityCertificationDto certification)
+    {
+        _selectedCertification = certification;
+        _deactivateReason = string.Empty;
+        _showDeactivateDialog = true;
+    }
+
+    private void CloseDeactivateDialog()
+    {
+        _showDeactivateDialog = false;
+        _selectedCertification = null;
+        _deactivateReason = string.Empty;
+    }
+
+    private async Task DeactivateCertification()
+    {
+        if (_selectedCertification == null || string.IsNullOrWhiteSpace(_deactivateReason)) return;
+
+        _deactivating = true;
+        try
+        {
+            var request = new DeactivateCertificationRequest { Reason = _deactivateReason };
+            var response = await FacilityService.DeactivateCertificationAsync(_selectedCertification.Id, request);
+            
+            if (response.Success)
+            {
+                Snackbar.Add("Certification deactivated successfully", Severity.Success);
+                CloseDeactivateDialog();
+                await _dataGrid?.ReloadServerData()!;
+                await LoadExpiringCount();
+            }
+            else
+            {
+                Snackbar.Add(response.Message ?? "Failed to deactivate certification", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deactivating certification: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _deactivating = false;
+        }
+    }
+
+    private void ViewCertification(FacilityCertificationDto certification)
+    {
+        Navigation.NavigateTo($"/facilities/certifications/{certification.Id}");
+    }
+
+    private async Task ShowExpiringCertifications()
+    {
+        _filter.ExpiringWithinDays = 30;
+        await ApplyFilters();
+    }
+
+    private async Task<IEnumerable<string>> SearchCertificationTypes(string value, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return _certificationTypes;
+
+        return _certificationTypes.Where(x => x.Contains(value, StringComparison.InvariantCultureIgnoreCase));
+    }
+}

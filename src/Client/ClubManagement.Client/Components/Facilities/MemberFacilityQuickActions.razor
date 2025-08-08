@@ -1,0 +1,294 @@
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Client.Services
+@inject IMemberBookingService MemberBookingService
+@inject IFacilityService FacilityService
+@inject AuthService AuthService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudGrid>
+    <!-- Quick Book Favorite Facility -->
+    @if (_favoriteFacilities.Any())
+    {
+        <MudItem xs="12">
+            <MudCard Class="mb-3" Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">⚡ Quick Book</MudText>
+                        <MudText Typo="Typo.caption">Book your favorite facilities instantly</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid>
+                        @foreach (var facility in _favoriteFacilities.Take(3))
+                        {
+                            <MudItem xs="12" sm="4">
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true"
+                                           StartIcon="@Icons.Material.Filled.FlashOn"
+                                           OnClick="() => QuickBookFacility(facility)">
+                                    @facility.Name
+                                </MudButton>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    }
+
+    <!-- Booking Recommendations -->
+    <MudItem xs="12" md="6">
+        <MudCard Elevation="2">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">🎯 Recommended Times</MudText>
+                    <MudText Typo="Typo.caption">Based on your booking patterns</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (_loading)
+                {
+                    <div class="d-flex justify-center pa-4">
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    </div>
+                }
+                else if (_recommendations.Any())
+                {
+                    @foreach (var rec in _recommendations.Take(3))
+                    {
+                        <div class="d-flex align-center justify-space-between pa-2 mb-2" 
+                             style="border-radius: 8px; background-color: var(--mud-palette-surface);">
+                            <div>
+                                <MudText Typo="Typo.body2">
+                                    <strong>@rec.StartTime.ToString("ddd h:mm tt")</strong>
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Dark">
+                                    @rec.RecommendationReason
+                                </MudText>
+                            </div>
+                            <div class="d-flex align-center gap-2">
+                                @if (rec.EstimatedCost.HasValue)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success">
+                                        $@rec.EstimatedCost.Value.ToString("N0")
+                                    </MudChip>
+                                }
+                                @if (rec.IsAvailable)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" 
+                                                 Color="Color.Primary" OnClick="() => BookRecommendedSlot(rec)" />
+                                }
+                                else
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Error">Booked</MudChip>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="text-center pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Medium" Color="Color.Dark" />
+                        <MudText Typo="Typo.body2" Color="Color.Dark" Class="mt-2">
+                            Book more facilities to get personalized recommendations
+                        </MudText>
+                    </div>
+                }
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <!-- Quick Actions -->
+    <MudItem xs="12" md="6">
+        <MudCard Elevation="2">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">🚀 Quick Actions</MudText>
+                    <MudText Typo="Typo.caption">Common tasks and shortcuts</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudStack Spacing="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                               StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="BookNewFacility">
+                        Book New Facility
+                    </MudButton>
+                    
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" FullWidth="true"
+                               StartIcon="@Icons.Material.Filled.Schedule"
+                               OnClick="CheckAvailability">
+                        Check Availability
+                    </MudButton>
+                    
+                    <MudButton Variant="Variant.Outlined" Color="Color.Tertiary" FullWidth="true"
+                               StartIcon="@Icons.Material.Filled.Repeat"
+                               OnClick="SetupRecurringBooking">
+                        Setup Recurring
+                    </MudButton>
+                    
+                    @if (_upcomingBookings.Any())
+                    {
+                        <MudDivider />
+                        <MudText Typo="Typo.caption" Class="mt-2">Next booking in @GetTimeUntilNextBooking()</MudText>
+                        <MudButton Variant="Variant.Text" Color="Color.Info" FullWidth="true" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Check"
+                                   OnClick="CheckIntoUpcomingBooking">
+                            Check In Early
+                        </MudButton>
+                    }
+                </MudStack>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter] public Guid MemberId { get; set; }
+    [Parameter] public EventCallback<string> OnNavigate { get; set; }
+
+    private bool _loading = true;
+    private List<FacilityDto> _favoriteFacilities = new();
+    private List<RecommendedBookingSlot> _recommendations = new();
+    private List<FacilityBookingDto> _upcomingBookings = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadQuickActionData();
+    }
+
+    private async Task LoadQuickActionData()
+    {
+        _loading = true;
+        try
+        {
+            var memberId = MemberId != Guid.Empty ? MemberId : (await AuthService.GetCurrentMemberIdAsync() ?? Guid.Empty);
+            if (memberId == Guid.Empty) return;
+
+            // Load data in parallel
+            var tasks = new Task[]
+            {
+                LoadFavoriteFacilities(memberId),
+                LoadUpcomingBookings(memberId),
+                LoadRecommendations(memberId)
+            };
+
+            await Task.WhenAll(tasks);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading quick actions: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadFavoriteFacilities(Guid memberId)
+    {
+        try
+        {
+            var response = await MemberBookingService.GetMemberFavoriteFacilitiesAsync(memberId);
+            if (response?.Success == true && response.Data != null)
+            {
+                _favoriteFacilities = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading favorite facilities: {ex.Message}");
+        }
+    }
+
+    private async Task LoadUpcomingBookings(Guid memberId)
+    {
+        try
+        {
+            var response = await MemberBookingService.GetMemberUpcomingBookingsAsync(memberId, 1);
+            if (response?.Success == true && response.Data != null)
+            {
+                _upcomingBookings = response.Data.Take(1).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading upcoming bookings: {ex.Message}");
+        }
+    }
+
+    private async Task LoadRecommendations(Guid memberId)
+    {
+        try
+        {
+            if (_favoriteFacilities.Any())
+            {
+                var facility = _favoriteFacilities.First();
+                var response = await MemberBookingService.GetRecommendedBookingSlotsAsync(memberId, facility.Id);
+                if (response?.Success == true && response.Data != null)
+                {
+                    _recommendations = response.Data;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading recommendations: {ex.Message}");
+        }
+    }
+
+    private async Task QuickBookFacility(FacilityDto facility)
+    {
+        await OnNavigate.InvokeAsync($"/facilities/book?facilityId={facility.Id}");
+    }
+
+    private async Task BookNewFacility()
+    {
+        await OnNavigate.InvokeAsync("/facilities/book");
+    }
+
+    private async Task CheckAvailability()
+    {
+        await OnNavigate.InvokeAsync("/facilities");
+    }
+
+    private async Task SetupRecurringBooking()
+    {
+        Snackbar.Add("Recurring booking setup coming soon!", Severity.Info);
+    }
+
+    private async Task BookRecommendedSlot(RecommendedBookingSlot slot)
+    {
+        // This would typically open a booking dialog or navigate to booking page
+        Snackbar.Add($"Booking slot for {slot.StartTime:MMM dd h:mm tt} - functionality coming soon!", Severity.Info);
+    }
+
+    private async Task CheckIntoUpcomingBooking()
+    {
+        if (_upcomingBookings.Any())
+        {
+            var booking = _upcomingBookings.First();
+            Snackbar.Add($"Check-in for {booking.FacilityName} - functionality coming soon!", Severity.Info);
+        }
+    }
+
+    private string GetTimeUntilNextBooking()
+    {
+        if (!_upcomingBookings.Any()) return "N/A";
+        
+        var nextBooking = _upcomingBookings.First();
+        var timeUntil = nextBooking.StartDateTime - DateTime.UtcNow;
+        
+        if (timeUntil.TotalDays >= 1)
+            return $"{(int)timeUntil.TotalDays} day{((int)timeUntil.TotalDays != 1 ? "s" : "")}";
+        if (timeUntil.TotalHours >= 1)
+            return $"{(int)timeUntil.TotalHours} hour{((int)timeUntil.TotalHours != 1 ? "s" : "")}";
+        if (timeUntil.TotalMinutes >= 1)
+            return $"{(int)timeUntil.TotalMinutes} minute{((int)timeUntil.TotalMinutes != 1 ? "s" : "")}";
+        
+        return "now";
+    }
+}

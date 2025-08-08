@@ -1,0 +1,329 @@
+@page "/facility-types/create"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IFacilityService FacilityService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>Create Facility Type</PageTitle>
+
+<div class="d-flex align-center gap-3 mb-4">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
+                 Color="Color.Default"
+                 OnClick="@(() => Navigation.NavigateTo("/facility-types"))"
+                 Title="Back to Facility Types" />
+    <MudText Typo="Typo.h4">Create New Facility Type</MudText>
+</div>
+
+<MudForm @ref="_form" @bind-IsValid="_isFormValid">
+    <MudCard>
+        <MudCardContent>
+            <MudGrid>
+                <!-- Basic Information -->
+                <MudItem xs="12">
+                    <MudText Typo="Typo.h6" Class="mb-4">Basic Information</MudText>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_model.Name"
+                                 Label="Type Name"
+                                 Required="true"
+                                 RequiredError="Facility type name is required"
+                                 Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_model.Icon"
+                                 Label="Icon (Material Design Icon Name)"
+                                 Placeholder="e.g., meeting_room, fitness_center, pool"
+                                 Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.Description"
+                                 Label="Description"
+                                 Lines="3"
+                                 Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_model.SortOrder"
+                                   Label="Sort Order"
+                                   Min="0"
+                                   Variant="Variant.Outlined" />
+                </MudItem>
+
+                <!-- Member Access Requirements -->
+                <MudItem xs="12">
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.h6" Class="mb-4">Member Access Requirements</MudText>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-SelectedValues="_selectedTiers"
+                              Label="Allowed Membership Tiers"
+                              MultiSelection="true"
+                              Variant="Variant.Outlined">
+                        <MudSelectItem Value="MembershipTier.Basic">Basic</MudSelectItem>
+                        <MudSelectItem Value="MembershipTier.Premium">Premium</MudSelectItem>
+                        <MudSelectItem Value="MembershipTier.VIP">VIP</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <div class="d-flex align-center gap-2">
+                        <MudCheckBox @bind-Value="_model.RequiresSupervision" 
+                                    Label="Requires Supervision" />
+                        <MudTooltip Text="Check if all facilities of this type require staff supervision during use">
+                            <MudIcon Icon="@Icons.Material.Filled.Help" Size="Size.Small" />
+                        </MudTooltip>
+                    </div>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_certificationsText"
+                                 Label="Required Certifications (comma-separated)"
+                                 Placeholder="e.g., Pool Safety, Equipment Training, First Aid"
+                                 Variant="Variant.Outlined" />
+                </MudItem>
+
+                <!-- Property Schema -->
+                <MudItem xs="12">
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.h6" Class="mb-4">Custom Property Schema</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                        Define additional properties that facilities of this type can have (e.g., Pool Depth, Court Surface, Equipment Available)
+                    </MudText>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <div class="d-flex justify-space-between align-center mb-3">
+                        <MudText Typo="Typo.subtitle1">Properties</MudText>
+                        <MudButton Variant="Variant.Outlined"
+                                  Color="Color.Primary"
+                                  StartIcon="@Icons.Material.Filled.Add"
+                                  OnClick="AddProperty"
+                                  Size="Size.Small">
+                            Add Property
+                        </MudButton>
+                    </div>
+
+                    @if (_properties.Count > 0)
+                    {
+                        <MudCard Elevation="0" Class="border">
+                            <MudCardContent Class="pa-0">
+                                @for (int i = 0; i < _properties.Count; i++)
+                                {
+                                    var property = _properties[i];
+                                    var index = i; // Capture for closure
+                                    
+                                    <div class="d-flex align-center gap-2 pa-3 @(i < _properties.Count - 1 ? "border-bottom" : "")">
+                                        <MudTextField @bind-Value="property.Label"
+                                                     Label="Property Name"
+                                                     Variant="Variant.Outlined"
+                                                     Size="Size.Small"
+                                                     Class="flex-grow-1" />
+                                        
+                                        <MudSelect @bind-Value="property.Type"
+                                                  Label="Type"
+                                                  Variant="Variant.Outlined"
+                                                  Size="Size.Small"
+                                                  Style="min-width: 120px;">
+                                            <MudSelectItem Value="PropertyType.Text">Text</MudSelectItem>
+                                            <MudSelectItem Value="PropertyType.Number">Number</MudSelectItem>
+                                            <MudSelectItem Value="PropertyType.Boolean">Boolean</MudSelectItem>
+                                            <MudSelectItem Value="PropertyType.Select">Select</MudSelectItem>
+                                            <MudSelectItem Value="PropertyType.MultiSelect">Multi-Select</MudSelectItem>
+                                        </MudSelect>
+
+                                        <MudTextField @bind-Value="property.DefaultValue"
+                                                     Label="Default"
+                                                     Variant="Variant.Outlined"
+                                                     Size="Size.Small"
+                                                     Style="min-width: 100px;" />
+
+                                        @if (property.Type == PropertyType.Select || property.Type == PropertyType.MultiSelect)
+                                        {
+                                            <MudTextField @bind-Value="_propertyOptions[index]"
+                                                         Label="Options (comma-separated)"
+                                                         Variant="Variant.Outlined"
+                                                         Size="Size.Small"
+                                                         OnBlur="@(() => UpdatePropertyOptions(index))"
+                                                         Style="min-width: 150px;" />
+                                        }
+
+                                        <MudCheckBox @bind-Value="property.Required" 
+                                                    Label="Required" 
+                                                    Size="Size.Small" />
+
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                     Color="Color.Error"
+                                                     Size="Size.Small"
+                                                     OnClick="@(() => RemoveProperty(index))" />
+                                    </div>
+                                }
+                            </MudCardContent>
+                        </MudCard>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Info" Dense="true">
+                            No custom properties defined. Click "Add Property" to create additional fields for facilities of this type.
+                        </MudAlert>
+                    }
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+
+        <MudCardActions>
+            <MudButton Color="Color.Default" 
+                      OnClick="@(() => Navigation.NavigateTo("/facility-types"))">
+                Cancel
+            </MudButton>
+            <MudSpacer />
+            <MudButton Color="Color.Primary" 
+                      Variant="Variant.Filled"
+                      OnClick="SubmitForm"
+                      Disabled="_isSubmitting">
+                @if (_isSubmitting)
+                {
+                    <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                    <MudText Class="ms-2">Creating...</MudText>
+                }
+                else
+                {
+                    <MudText>Create Facility Type</MudText>
+                }
+            </MudButton>
+        </MudCardActions>
+    </MudCard>
+</MudForm>
+
+@code {
+    private MudForm _form = null!;
+    private bool _isFormValid;
+    private bool _isSubmitting;
+
+    private CreateFacilityTypeRequest _model = new();
+    
+    // Multi-select for membership tiers
+    private IEnumerable<MembershipTier> _selectedTiers = new List<MembershipTier>();
+    
+    // Certifications as text input
+    private string _certificationsText = string.Empty;
+
+    // Property schema management
+    private List<PropertyDefinition> _properties = new();
+    private List<string> _propertyOptions = new(); // Track options text for each property
+
+    protected override void OnInitialized()
+    {
+        // Set default values
+        _model.Icon = "meeting_room";
+        _model.SortOrder = 0;
+        _selectedTiers = new[] { MembershipTier.Basic, MembershipTier.Premium, MembershipTier.VIP };
+    }
+
+    private void AddProperty()
+    {
+        _properties.Add(new PropertyDefinition
+        {
+            Label = "",
+            Type = PropertyType.Text,
+            Required = false,
+            Options = new List<string>()
+        });
+        _propertyOptions.Add("");
+    }
+
+    private void RemoveProperty(int index)
+    {
+        if (index >= 0 && index < _properties.Count)
+        {
+            _properties.RemoveAt(index);
+            _propertyOptions.RemoveAt(index);
+        }
+    }
+
+    private void UpdatePropertyOptions(int index)
+    {
+        if (index >= 0 && index < _properties.Count && index < _propertyOptions.Count)
+        {
+            var optionsText = _propertyOptions[index];
+            if (!string.IsNullOrWhiteSpace(optionsText))
+            {
+                _properties[index].Options = optionsText
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(o => o.Trim())
+                    .Where(o => !string.IsNullOrWhiteSpace(o))
+                    .ToList();
+            }
+            else
+            {
+                _properties[index].Options = new List<string>();
+            }
+        }
+    }
+
+    private async Task SubmitForm()
+    {
+        if (_form == null) return;
+        
+        await _form.Validate();
+        if (!_isFormValid) return;
+
+        _isSubmitting = true;
+        try
+        {
+            // Map membership tiers
+            _model.AllowedMembershipTiers = _selectedTiers.ToList();
+            
+            // Parse certifications
+            if (!string.IsNullOrWhiteSpace(_certificationsText))
+            {
+                _model.RequiredCertifications = _certificationsText
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(c => c.Trim())
+                    .Where(c => !string.IsNullOrWhiteSpace(c))
+                    .ToList();
+            }
+
+            // Update property options from text inputs
+            for (int i = 0; i < _properties.Count; i++)
+            {
+                UpdatePropertyOptions(i);
+            }
+
+            // Set property schema
+            _model.PropertySchema = new PropertySchema
+            {
+                Properties = _properties
+                    .Where(p => !string.IsNullOrWhiteSpace(p.Label))
+                    .ToList()
+            };
+
+            var response = await FacilityService.CreateFacilityTypeAsync(_model);
+            if (response.Success && response.Data != null)
+            {
+                await NotificationService.ShowSuccessAsync("Facility type created successfully");
+                Navigation.NavigateTo($"/facility-types/{response.Data.Id}");
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to create facility type");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to create facility type: {ex.Message}");
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+}

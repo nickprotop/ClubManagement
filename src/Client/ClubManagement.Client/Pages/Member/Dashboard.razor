@@ -1,0 +1,136 @@
+@page "/member/dashboard"
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Client.Services
+@using ClubManagement.Client.Components.Facilities
+@inject IMemberBookingService MemberBookingService
+@inject AuthService AuthService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Member Dashboard</PageTitle>
+
+<div class="d-flex align-center justify-space-between mb-4">
+    <div>
+        <MudText Typo="Typo.h4">My Dashboard</MudText>
+        <MudText Typo="Typo.subtitle1" Color="Color.Dark">Your club activity overview</MudText>
+    </div>
+    <MudButtonGroup Variant="Variant.Outlined" Color="Color.Primary">
+        <MudButton StartIcon="@Icons.Material.Filled.CalendarMonth"
+                   OnClick="@(() => Navigation.NavigateTo("/events/calendar"))">
+            Calendar
+        </MudButton>
+        <MudButton StartIcon="@Icons.Material.Filled.BookOnline"
+                   OnClick="@(() => Navigation.NavigateTo("/member/facilities"))">
+            Book Facility
+        </MudButton>
+        <MudButton StartIcon="@Icons.Material.Filled.Event"
+                   OnClick="@(() => Navigation.NavigateTo("/events"))">
+            Browse Events
+        </MudButton>
+    </MudButtonGroup>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-center pa-8">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+    </div>
+}
+else
+{
+    <!-- Facility Dashboard Section -->
+    <MudCard Class="mb-4" Elevation="3">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <div class="d-flex align-center justify-space-between">
+                    <div>
+                        <MudText Typo="Typo.h5">🏢 My Facilities</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Dark">Your facility usage and bookings overview</MudText>
+                    </div>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.History"
+                               OnClick="@(() => Navigation.NavigateTo("/member/booking-history"))">
+                        View Detailed History
+                    </MudButton>
+                </div>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            @if (_currentMemberId.HasValue)
+            {
+                <MemberFacilityDashboard MemberId="_currentMemberId.Value" OnNavigate="NavigateToPage" />
+            }
+        </MudCardContent>
+    </MudCard>
+
+    <!-- Quick Actions Row -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 text-center cursor-pointer hover:elevation-6" Elevation="2" 
+                      @onclick="@(() => Navigation.NavigateTo("/member/facilities"))">
+                <MudIcon Icon="@Icons.Material.Filled.Search" Color="Color.Primary" Size="Size.Large" Class="mb-2" />
+                <MudText Typo="Typo.h6" Color="Color.Primary">Browse Facilities</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Dark">Explore available facilities</MudText>
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 text-center cursor-pointer hover:elevation-6" Elevation="2"
+                      @onclick="@(() => Navigation.NavigateTo("/member/bookings"))">
+                <MudIcon Icon="@Icons.Material.Filled.EventNote" Color="Color.Success" Size="Size.Large" Class="mb-2" />
+                <MudText Typo="Typo.h6" Color="Color.Success">My Bookings</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Dark">Manage your reservations</MudText>
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 text-center cursor-pointer hover:elevation-6" Elevation="2"
+                      @onclick="@(() => Navigation.NavigateTo("/member/facility-preferences"))">
+                <MudIcon Icon="@Icons.Material.Filled.Settings" Color="Color.Tertiary" Size="Size.Large" Class="mb-2" />
+                <MudText Typo="Typo.h6" Color="Color.Tertiary">Preferences</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Dark">Customize your experience</MudText>
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 text-center cursor-pointer hover:elevation-6" Elevation="2"
+                      @onclick="@(() => Navigation.NavigateTo("/events/my-registrations"))">
+                <MudIcon Icon="@Icons.Material.Filled.PersonPin" Color="Color.Info" Size="Size.Large" Class="mb-2" />
+                <MudText Typo="Typo.h6" Color="Color.Info">My Events</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Dark">View your registrations</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private bool _loading = true;
+    private Guid? _currentMemberId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _currentMemberId = await AuthService.GetCurrentMemberIdAsync();
+            if (!_currentMemberId.HasValue)
+            {
+                Navigation.NavigateTo("/login");
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading dashboard: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void NavigateToPage(string page)
+    {
+        Navigation.NavigateTo(page);
+    }
+}

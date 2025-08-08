@@ -23,6 +23,14 @@ public class FacilityBooking : BaseEntity
     public DateTime? CancelledAt { get; set; }
     public Guid? CancelledByUserId { get; set; }
     
+    // Enhanced Member Properties
+    public BookingSource BookingSource { get; set; } = BookingSource.MemberPortal;
+    public bool IsRecurring { get; set; } = false;
+    public Guid? RecurrenceGroupId { get; set; }
+    public string? MemberNotes { get; set; }
+    public bool RequiresStaffSupervision { get; set; } = false;
+    public List<Guid> AdditionalParticipants { get; set; } = new();
+    
     // Navigation properties
     public Facility Facility { get; set; } = null!;
     public Member Member { get; set; } = null!;
@@ -41,4 +49,13 @@ public enum BookingStatus
     Cancelled,
     NoShow,
     Completed
+}
+
+public enum BookingSource
+{
+    MemberPortal,
+    StaffBooking,
+    EventBooking,
+    RecurringBooking,
+    WalkIn
 }

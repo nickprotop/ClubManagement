@@ -64,7 +64,7 @@
                                 <MudStack Spacing="1">
                                     <MudText Typo="Typo.h6">@registration.EventSeriesName</MudText>
                                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                                        <MudChip T="string" Size="Size.Small" 
+                                        <MudChip T="string" T="string" Size="Size.Small" 
                                                  Color="@GetRegistrationTypeColor(registration.RegistrationType)"
                                                  Text="@GetRegistrationTypeText(registration.RegistrationType)" />
                                         <MudText Typo="Typo.body2" Color="Color.Secondary">
@@ -129,7 +129,7 @@
                                                     @eventOccurrence.StartDateTime.ToString("MMM dd, h:mm tt")
                                                     @if (eventOccurrence.IsFullyBooked)
                                                     {
-                                                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Text="Full" />
+                                                        <MudChip T="string" T="string" Size="Size.Small" Color="Color.Warning" Text="Full" />
                                                     }
                                                 </MudText>
                                             </MudStack>
@@ -167,7 +167,7 @@
                 <MudText Typo="Typo.h6">@_selectedRegistration.EventSeriesName</MudText>
                 
                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                    <MudChip T="string" Size="Size.Small" 
+                    <MudChip T="string" T="string" Size="Size.Small" 
                              Color="@GetRegistrationTypeColor(_selectedRegistration.RegistrationType)"
                              Text="@GetRegistrationTypeText(_selectedRegistration.RegistrationType)" />
                     <MudText Typo="Typo.body2">
@@ -203,7 +203,7 @@
                                         </MudText>
                                         @if (eventOccurrence.IsFullyBooked)
                                         {
-                                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Text="Full" />
+                                            <MudChip T="string" T="string" Size="Size.Small" Color="Color.Warning" Text="Full" />
                                         }
                                     </MudStack>
                                 </MudStack>

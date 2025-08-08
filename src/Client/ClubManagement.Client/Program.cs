@@ -29,6 +29,8 @@ builder.Services.AddScoped<IPermissionsService, PermissionsService>();
 builder.Services.AddScoped<IHardwareService, HardwareService>();
 builder.Services.AddScoped<IHardwareTypeService, HardwareTypeService>();
 builder.Services.AddScoped<IHardwareAssignmentService, HardwareAssignmentService>();
+builder.Services.AddScoped<IFacilityService, FacilityService>();
+builder.Services.AddScoped<IMemberBookingService, MemberBookingService>();
 
 // Add authentication
 builder.Services.AddAuthorizationCore();

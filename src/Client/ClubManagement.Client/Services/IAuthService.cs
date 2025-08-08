@@ -9,6 +9,7 @@ public interface IAuthService
     Task LogoutAsync();
     Task<bool> IsAuthenticatedAsync();
     Task<UserProfileDto?> GetCurrentUserAsync();
+    Task<Guid?> GetCurrentMemberIdAsync();
     Task<bool> RefreshTokenAsync();
     Task<bool> ValidateAndRefreshTokenAsync();
     Task HandleSessionExpiredAsync();

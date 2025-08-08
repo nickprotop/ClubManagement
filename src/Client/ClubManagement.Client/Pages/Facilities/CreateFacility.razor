@@ -1,0 +1,366 @@
+@page "/facilities/create"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@using System.ComponentModel.DataAnnotations
+@inject IFacilityService FacilityService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>Create Facility</PageTitle>
+
+<div class="d-flex align-center gap-3 mb-4">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
+                 Color="Color.Default"
+                 OnClick="@(() => Navigation.NavigateTo("/facilities"))"
+                 Title="Back to Facilities" />
+    <MudText Typo="Typo.h4">Create New Facility</MudText>
+</div>
+
+<MudForm @ref="_form" @bind-IsValid="_isFormValid">
+    <MudCard>
+        <MudCardContent>
+            <MudGrid>
+                <!-- Basic Information -->
+                <MudItem xs="12">
+                    <MudText Typo="Typo.h6" Class="mb-4">Basic Information</MudText>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_model.Name"
+                                 Label="Facility Name"
+                                 Required="true"
+                                 RequiredError="Facility name is required"
+                                 Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_model.FacilityTypeId"
+                              Label="Facility Type"
+                              Required="true"
+                              RequiredError="Facility type is required"
+                              Variant="Variant.Outlined">
+                        @if (_facilityTypes != null)
+                        {
+                            @foreach (var type in _facilityTypes)
+                            {
+                                <MudSelectItem Value="type.Id">@type.Name</MudSelectItem>
+                            }
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.Description"
+                                 Label="Description"
+                                 Lines="3"
+                                 Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_model.Location"
+                                 Label="Location"
+                                 Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_model.Icon"
+                                 Label="Icon (Material Design Icon Name)"
+                                 Placeholder="e.g., meeting_room, fitness_center, pool"
+                                 Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_model.Capacity"
+                                   Label="Capacity (people)"
+                                   Min="1"
+                                   Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_model.Status"
+                              Label="Status"
+                              Variant="Variant.Outlined">
+                        <MudSelectItem Value="FacilityStatus.Available">Available</MudSelectItem>
+                        <MudSelectItem Value="FacilityStatus.Occupied">Occupied</MudSelectItem>
+                        <MudSelectItem Value="FacilityStatus.Maintenance">Maintenance</MudSelectItem>
+                        <MudSelectItem Value="FacilityStatus.OutOfOrder">Out of Order</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+
+                <!-- Operating Hours -->
+                <MudItem xs="12">
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.h6" Class="mb-4">Operating Hours</MudText>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Operating Days:</MudText>
+                    <div class="d-flex flex-wrap gap-2">
+                        <MudCheckBox @bind-Value="_sunday" Label="Sunday" />
+                        <MudCheckBox @bind-Value="_monday" Label="Monday" />
+                        <MudCheckBox @bind-Value="_tuesday" Label="Tuesday" />
+                        <MudCheckBox @bind-Value="_wednesday" Label="Wednesday" />
+                        <MudCheckBox @bind-Value="_thursday" Label="Thursday" />
+                        <MudCheckBox @bind-Value="_friday" Label="Friday" />
+                        <MudCheckBox @bind-Value="_saturday" Label="Saturday" />
+                    </div>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTimePicker @bind-Time="_openingTime"
+                                  Label="Opening Time"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTimePicker @bind-Time="_closingTime"
+                                  Label="Closing Time"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+
+                <!-- Pricing -->
+                <MudItem xs="12">
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.h6" Class="mb-4">Pricing</MudText>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_model.HourlyRate"
+                                   Label="Hourly Rate"
+                                   Min="0"
+                                   Format="C"
+                                   Variant="Variant.Outlined"
+                                   Adornment="Adornment.Start"
+                                   AdornmentText="$" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_model.MemberHourlyRate"
+                                   Label="Member Hourly Rate"
+                                   Min="0"
+                                   Format="C"
+                                   Variant="Variant.Outlined"
+                                   Adornment="Adornment.Start"
+                                   AdornmentText="$" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_model.DailyRate"
+                                   Label="Daily Rate"
+                                   Min="0"
+                                   Format="C"
+                                   Variant="Variant.Outlined"
+                                   Adornment="Adornment.Start"
+                                   AdornmentText="$" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_model.MemberDailyRate"
+                                   Label="Member Daily Rate"
+                                   Min="0"
+                                   Format="C"
+                                   Variant="Variant.Outlined"
+                                   Adornment="Adornment.Start"
+                                   AdornmentText="$" />
+                </MudItem>
+
+                <!-- Member Access -->
+                <MudItem xs="12">
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.h6" Class="mb-4">Member Access Requirements</MudText>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-SelectedValues="_selectedTiers"
+                              Label="Allowed Membership Tiers"
+                              MultiSelection="true"
+                              Variant="Variant.Outlined">
+                        <MudSelectItem Value="MembershipTier.Basic">Basic</MudSelectItem>
+                        <MudSelectItem Value="MembershipTier.Premium">Premium</MudSelectItem>
+                        <MudSelectItem Value="MembershipTier.VIP">VIP</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <div class="d-flex align-center gap-2">
+                        <MudCheckBox @bind-Value="_model.RequiresSupervision" 
+                                    Label="Requires Supervision" />
+                        <MudTooltip Text="Check if this facility requires staff supervision during use">
+                            <MudIcon Icon="@Icons.Material.Filled.Help" Size="Size.Small" />
+                        </MudTooltip>
+                    </div>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_certificationsText"
+                                 Label="Required Certifications (comma-separated)"
+                                 Placeholder="e.g., Pool Safety, Equipment Training, First Aid"
+                                 Variant="Variant.Outlined" />
+                </MudItem>
+
+                <!-- Maintenance -->
+                <MudItem xs="12">
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.h6" Class="mb-4">Maintenance Information</MudText>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="_model.LastMaintenanceDate"
+                                  Label="Last Maintenance Date"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="_model.NextMaintenanceDate"
+                                  Label="Next Maintenance Date"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.MaintenanceNotes"
+                                 Label="Maintenance Notes"
+                                 Lines="2"
+                                 Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+
+        <MudCardActions>
+            <MudButton Color="Color.Default" 
+                      OnClick="@(() => Navigation.NavigateTo("/facilities"))">
+                Cancel
+            </MudButton>
+            <MudSpacer />
+            <MudButton Color="Color.Primary" 
+                      Variant="Variant.Filled"
+                      OnClick="SubmitForm"
+                      Disabled="_isSubmitting">
+                @if (_isSubmitting)
+                {
+                    <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                    <MudText Class="ms-2">Creating...</MudText>
+                }
+                else
+                {
+                    <MudText>Create Facility</MudText>
+                }
+            </MudButton>
+        </MudCardActions>
+    </MudCard>
+</MudForm>
+
+@code {
+    private MudForm _form = null!;
+    private bool _isFormValid;
+    private bool _isSubmitting;
+
+    private CreateFacilityRequest _model = new();
+    private List<FacilityTypeDto>? _facilityTypes;
+    
+    // Operating days (using individual bools for easier MudBlazor binding)
+    private bool _sunday, _monday, _tuesday, _wednesday, _thursday, _friday, _saturday;
+    
+    // Time pickers
+    private TimeSpan? _openingTime;
+    private TimeSpan? _closingTime;
+    
+    // Multi-select for membership tiers
+    private IEnumerable<MembershipTier> _selectedTiers = new List<MembershipTier>();
+    
+    // Certifications as text input
+    private string _certificationsText = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadFacilityTypes();
+        
+        // Set default values
+        _model.Status = FacilityStatus.Available;
+        _model.Icon = "meeting_room";
+        _selectedTiers = new[] { MembershipTier.Basic, MembershipTier.Premium, MembershipTier.VIP };
+    }
+
+    private async Task LoadFacilityTypes()
+    {
+        try
+        {
+            var response = await FacilityService.GetFacilityTypesAsync();
+            if (response.Success)
+            {
+                _facilityTypes = response.Data?.Where(t => t.IsActive).ToList();
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to load facility types");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load facility types: {ex.Message}");
+        }
+    }
+
+    private async Task SubmitForm()
+    {
+        if (_form == null) return;
+        
+        await _form.Validate();
+        if (!_isFormValid) return;
+
+        _isSubmitting = true;
+        try
+        {
+            // Map operating days
+            var operatingDays = new List<DayOfWeek>();
+            if (_sunday) operatingDays.Add(DayOfWeek.Sunday);
+            if (_monday) operatingDays.Add(DayOfWeek.Monday);
+            if (_tuesday) operatingDays.Add(DayOfWeek.Tuesday);
+            if (_wednesday) operatingDays.Add(DayOfWeek.Wednesday);
+            if (_thursday) operatingDays.Add(DayOfWeek.Thursday);
+            if (_friday) operatingDays.Add(DayOfWeek.Friday);
+            if (_saturday) operatingDays.Add(DayOfWeek.Saturday);
+            
+            _model.OperatingDays = operatingDays;
+            
+            // Map operating times
+            _model.OpeningTime = _openingTime?.ToString(@"hh\:mm");
+            _model.ClosingTime = _closingTime?.ToString(@"hh\:mm");
+            
+            // Map membership tiers
+            _model.AllowedMembershipTiers = _selectedTiers.ToList();
+            
+            // Parse certifications
+            if (!string.IsNullOrWhiteSpace(_certificationsText))
+            {
+                _model.RequiredCertifications = _certificationsText
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(c => c.Trim())
+                    .Where(c => !string.IsNullOrWhiteSpace(c))
+                    .ToList();
+            }
+
+            var response = await FacilityService.CreateFacilityAsync(_model);
+            if (response.Success && response.Data != null)
+            {
+                await NotificationService.ShowSuccessAsync("Facility created successfully");
+                Navigation.NavigateTo($"/facilities/{response.Data.Id}");
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to create facility");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to create facility: {ex.Message}");
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+}

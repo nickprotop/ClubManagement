@@ -195,4 +195,61 @@ public class EventService : IEventService
     {
         return await _apiService.GetAsync<List<RecurringRegistrationSummary>>("api/events/user/recurring-registrations");
     }
+
+    // Facility Integration
+    public async Task<ApiResponse<EventEligibilityResult>?> CheckMemberEligibilityAsync(Guid eventId, Guid memberId)
+    {
+        return await _apiService.GetAsync<EventEligibilityResult>($"api/event-facility/{eventId}/eligibility/{memberId}");
+    }
+
+    public async Task<ApiResponse<EventFacilityRequirementsDto>?> GetEventFacilityRequirementsAsync(Guid eventId)
+    {
+        return await _apiService.GetAsync<EventFacilityRequirementsDto>($"api/event-facility/{eventId}/facility-requirements");
+    }
+
+    public async Task<ApiResponse<FacilityAvailabilityResult>?> CheckFacilityAvailabilityAsync(Guid facilityId, DateTime startTime, DateTime endTime, Guid? excludeEventId = null)
+    {
+        var queryParams = new List<string>
+        {
+            $"startTime={startTime:O}",
+            $"endTime={endTime:O}"
+        };
+
+        if (excludeEventId.HasValue)
+            queryParams.Add($"excludeEventId={excludeEventId.Value}");
+
+        var queryString = "?" + string.Join("&", queryParams);
+        return await _apiService.GetAsync<FacilityAvailabilityResult>($"api/event-facility/facility/{facilityId}/availability{queryString}");
+    }
+
+    public async Task<ApiResponse<FacilityBookingDto>?> BookFacilityForEventAsync(Guid eventId, Guid facilityId, string? notes = null)
+    {
+        var request = new { Notes = notes };
+        return await _apiService.PostAsync<FacilityBookingDto>($"api/event-facility/{eventId}/book-facility/{facilityId}", request);
+    }
+
+    public async Task<ApiResponse<object>?> CancelFacilityBookingForEventAsync(Guid eventId)
+    {
+        return await _apiService.DeleteAsync<object>($"api/event-facility/{eventId}/cancel-facility-booking");
+    }
+
+    public async Task<ApiResponse<List<EventListDto>>?> GetEventsByCertificationRequirementAsync(string certificationType)
+    {
+        return await _apiService.GetAsync<List<EventListDto>>($"api/event-facility/certification/{Uri.EscapeDataString(certificationType)}/events");
+    }
+
+    public async Task<ApiResponse<List<EventListDto>>?> GetEventsForMembershipTierAsync(MembershipTier tier)
+    {
+        return await _apiService.GetAsync<List<EventListDto>>($"api/event-facility/tier/{tier}/events");
+    }
+
+    public async Task<ApiResponse<ValidationResult>?> ValidateEventFacilityRequirementsAsync(CreateEventRequest request)
+    {
+        return await _apiService.PostAsync<ValidationResult>("api/event-facility/validate-requirements", request);
+    }
+
+    public async Task<ApiResponse<ValidationResult>?> ValidateEventFacilityRequirementsForUpdateAsync(Guid eventId, UpdateEventRequest request)
+    {
+        return await _apiService.PostAsync<ValidationResult>($"api/event-facility/{eventId}/validate-requirements", request);
+    }
 }

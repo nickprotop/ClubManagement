@@ -35,15 +35,15 @@ else
                     <MudStack Spacing="2">
                         <MudText Typo="Typo.h4">@_event.Title</MudText>
                         <MudStack Row="true" Spacing="4" AlignItems="AlignItems.Center">
-                            <MudChip T="string" Color="GetEventTypeColor(_event.Type)" Size="Size.Small">@_event.Type</MudChip>
-                            <MudChip T="string" Color="GetEventStatusColor(_event.Status)" Size="Size.Small">@_event.Status</MudChip>
+                            <MudChip T="string" T="string" Color="GetEventTypeColor(_event.Type)" Size="Size.Small">@_event.Type</MudChip>
+                            <MudChip T="string" T="string" Color="GetEventStatusColor(_event.Status)" Size="Size.Small">@_event.Status</MudChip>
                             @if (_event.Price.HasValue && _event.Price > 0)
                             {
-                                <MudChip T="string" Color="Color.Info" Size="Size.Small">$@_event.Price.Value.ToString("F2")</MudChip>
+                                <MudChip T="string" T="string" Color="Color.Info" Size="Size.Small">$@_event.Price.Value.ToString("F2")</MudChip>
                             }
                             else if (_event.Price == 0)
                             {
-                                <MudChip T="string" Color="Color.Success" Size="Size.Small">Free</MudChip>
+                                <MudChip T="string" T="string" Color="Color.Success" Size="Size.Small">Free</MudChip>
                             }
                         </MudStack>
                         <MudText Typo="Typo.body1" Color="Color.Secondary">@_event.Description</MudText>
@@ -196,7 +196,7 @@ else
                                         <MudText>You are registered for this event</MudText>
                                         @if (_userRegistrationStatus != null)
                                         {
-                                            <MudChip T="string" Size="Size.Small" 
+                                            <MudChip T="string" T="string" Size="Size.Small" 
                                                      Color="@GetRegistrationStatusColor(_userRegistrationStatus.Status)"
                                                      Icon="@GetRegistrationStatusIcon(_userRegistrationStatus.Status)">
                                                 @GetRegistrationStatusText(_userRegistrationStatus.Status)
@@ -243,7 +243,7 @@ else
                                             @if (isHardware)
                                             {
                                                 <MudIcon Icon="@Icons.Material.Filled.Build" Size="Size.Small" Color="Color.Primary" />
-                                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
+                                                <MudChip T="string" T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
                                                     @equipment
                                                 </MudChip>
                                                 @if (_permissions?.CanEdit == true)
@@ -259,7 +259,7 @@ else
                                             else
                                             {
                                                 <MudIcon Icon="@Icons.Material.Filled.ListAlt" Size="Size.Small" Color="Color.Default" />
-                                                <MudChip T="string" Size="Size.Small" Color="Color.Default">
+                                                <MudChip T="string" T="string" Size="Size.Small" Color="Color.Default">
                                                     @equipment
                                                 </MudChip>
                                             }
@@ -328,7 +328,7 @@ else
                             <RowTemplate>
                                 <MudTd>@context.MemberName</MudTd>
                                 <MudTd>
-                                    <MudChip T="string" Size="Size.Small" Color="GetRegistrationStatusColor(context.Status)">
+                                    <MudChip T="string" T="string" Size="Size.Small" Color="GetRegistrationStatusColor(context.Status)">
                                         @context.Status
                                         @if (context.IsWaitlisted && context.WaitlistPosition.HasValue)
                                         {
@@ -340,13 +340,13 @@ else
                                 <MudTd>
                                     @if (context.CheckedInAt.HasValue)
                                     {
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Success">
+                                        <MudChip T="string" T="string" Size="Size.Small" Color="Color.Success">
                                             Checked In @context.CheckedInAt.Value.ToString("h:mm tt")
                                         </MudChip>
                                     }
                                     else if (context.NoShow)
                                     {
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Error">No Show</MudChip>
+                                        <MudChip T="string" T="string" Size="Size.Small" Color="Color.Error">No Show</MudChip>
                                     }
                                     else
                                     {

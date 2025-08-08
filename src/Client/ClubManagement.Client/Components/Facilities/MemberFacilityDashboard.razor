@@ -1,0 +1,428 @@
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Client.Services
+@inject IMemberBookingService MemberBookingService
+@inject AuthService AuthService
+@inject ISnackbar Snackbar
+
+<MudGrid>
+    <!-- Quick Stats Row -->
+    <MudItem xs="12" md="3">
+        <MudPaper Class="pa-4 ma-2" Elevation="3">
+            <div class="d-flex align-center">
+                <MudIcon Icon="@Icons.Material.Filled.CalendarToday" Color="Color.Primary" Size="Size.Large" Class="mr-3" />
+                <div>
+                    <MudText Typo="Typo.h5">@_upcomingBookings.Count</MudText>
+                    <MudText Typo="Typo.caption">Upcoming Bookings</MudText>
+                </div>
+            </div>
+        </MudPaper>
+    </MudItem>
+    
+    <MudItem xs="12" md="3">
+        <MudPaper Class="pa-4 ma-2" Elevation="3">
+            <div class="d-flex align-center">
+                <MudIcon Icon="@Icons.Material.Filled.FavoriteBorder" Color="Color.Secondary" Size="Size.Large" Class="mr-3" />
+                <div>
+                    <MudText Typo="Typo.h5">@_favoriteFacilities.Count</MudText>
+                    <MudText Typo="Typo.caption">Favorite Facilities</MudText>
+                </div>
+            </div>
+        </MudPaper>
+    </MudItem>
+    
+    <MudItem xs="12" md="3">
+        <MudPaper Class="pa-4 ma-2" Elevation="3">
+            <div class="d-flex align-center">
+                <MudIcon Icon="@Icons.Material.Filled.AccessTime" Color="Color.Tertiary" Size="Size.Large" Class="mr-3" />
+                <div>
+                    <MudText Typo="Typo.h5">@($"{_bookingHistory?.TotalHoursBooked:N0}h")</MudText>
+                    <MudText Typo="Typo.caption">Total Hours Booked</MudText>
+                </div>
+            </div>
+        </MudPaper>
+    </MudItem>
+    
+    <MudItem xs="12" md="3">
+        <MudPaper Class="pa-4 ma-2" Elevation="3">
+            <div class="d-flex align-center">
+                <MudIcon Icon="@Icons.Material.Filled.Savings" Color="Color.Success" Size="Size.Large" Class="mr-3" />
+                <div>
+                    <MudText Typo="Typo.h5">@($"${_bookingHistory?.TotalSavings:N0}")</MudText>
+                    <MudText Typo="Typo.caption">Member Savings</MudText>
+                </div>
+            </div>
+        </MudPaper>
+    </MudItem>
+    
+    <!-- Upcoming Bookings Card -->
+    <MudItem xs="12" md="6">
+        <MudCard Class="ma-2" Elevation="3">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <div class="d-flex align-center justify-space-between">
+                        <div>
+                            <MudText Typo="Typo.h6">Upcoming Bookings</MudText>
+                            <MudText Typo="Typo.caption">Next 7 days</MudText>
+                        </div>
+                        <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Primary" 
+                                     OnClick="() => NavigateToBookFacility()" />
+                    </div>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent Class="pt-0">
+                @if (_loading)
+                {
+                    <div class="d-flex justify-center pa-4">
+                        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                    </div>
+                }
+                else if (_upcomingBookings.Any())
+                {
+                    @foreach (var booking in _upcomingBookings.Take(5))
+                    {
+                        <div class="d-flex align-center pa-2 mb-2" style="border-radius: 8px; background-color: var(--mud-palette-surface);">
+                            <MudIcon Icon="@Icons.Material.Filled.Place" Color="Color.Primary" Class="mr-3" />
+                            <div class="flex-grow-1">
+                                <MudText Typo="Typo.body2"><strong>@booking.FacilityName</strong></MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Dark">
+                                    @booking.StartDateTime.ToString("MMM dd, h:mm tt") - @booking.EndDateTime.ToString("h:mm tt")
+                                </MudText>
+                                @if (!string.IsNullOrEmpty(booking.Purpose))
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Dark">@booking.Purpose</MudText>
+                                }
+                            </div>
+                            <MudChip T="string" Size="Size.Small" Color="GetBookingStatusColor(booking.Status)">
+                                @booking.Status
+                            </MudChip>
+                        </div>
+                    }
+                    
+                    @if (_upcomingBookings.Count > 5)
+                    {
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" 
+                                 OnClick="() => NavigateToMyBookings()" Class="mt-2">
+                            View All (@_upcomingBookings.Count) Bookings
+                        </MudButton>
+                    }
+                }
+                else
+                {
+                    <div class="text-center pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.EventBusy" Size="Size.Large" Color="Color.Dark" />
+                        <MudText Typo="Typo.body2" Color="Color.Dark" Class="mt-2">No upcoming bookings</MudText>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                                 StartIcon="@Icons.Material.Filled.Add" Class="mt-2"
+                                 OnClick="() => NavigateToBookFacility()">
+                            Book a Facility
+                        </MudButton>
+                    </div>
+                }
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    
+    <!-- Favorite Facilities Card -->
+    <MudItem xs="12" md="6">
+        <MudCard Class="ma-2" Elevation="3">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <div class="d-flex align-center justify-space-between">
+                        <div>
+                            <MudText Typo="Typo.h6">Your Favorite Facilities</MudText>
+                            <MudText Typo="Typo.caption">Most frequently booked</MudText>
+                        </div>
+                        <MudIconButton Icon="@Icons.Material.Filled.Explore" Color="Color.Primary"
+                                     OnClick="() => NavigateToBrowseFacilities()" />
+                    </div>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent Class="pt-0">
+                @if (_loading)
+                {
+                    <div class="d-flex justify-center pa-4">
+                        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                    </div>
+                }
+                else if (_favoriteFacilities.Any())
+                {
+                    @foreach (var facility in _favoriteFacilities)
+                    {
+                        <div class="d-flex align-center pa-2 mb-2 cursor-pointer hover:bg-surface" 
+                             style="border-radius: 8px; background-color: var(--mud-palette-surface);"
+                             @onclick="() => NavigateToFacilityDetail(facility.Id)">
+                            <div class="mr-3" style="width: 40px; height: 40px; border-radius: 50%; background-color: var(--mud-palette-primary); display: flex; align-items: center; justify-content: center;">
+                                <MudIcon Icon="@(facility.FacilityTypeIcon ?? Icons.Material.Filled.Place)" Color="Color.Surface" Size="Size.Medium" />
+                            </div>
+                            <div class="flex-grow-1">
+                                <MudText Typo="Typo.body2"><strong>@facility.Name</strong></MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Dark">@facility.FacilityTypeName</MudText>
+                                @if (!string.IsNullOrEmpty(facility.Location))
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Dark">@facility.Location</MudText>
+                                }
+                            </div>
+                            <div class="text-right">
+                                <MudText Typo="Typo.caption" Color="Color.Primary">
+                                    $@facility.MemberHourlyRate/hr
+                                </MudText>
+                                <MudChip T="string" Size="Size.Small" Color="GetFacilityStatusColor(facility.Status)">
+                                    @facility.Status
+                                </MudChip>
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="text-center pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.StarBorder" Size="Size.Large" Color="Color.Dark" />
+                        <MudText Typo="Typo.body2" Color="Color.Dark" Class="mt-2">No favorite facilities yet</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Dark">Your most booked facilities will appear here</MudText>
+                    </div>
+                }
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    
+    <!-- Access Status Card -->
+    <MudItem xs="12">
+        <MudCard Class="ma-2" Elevation="3">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Your Access Status</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (_accessStatus != null)
+                {
+                    <MudGrid>
+                        <MudItem xs="12" md="3">
+                            <div class="text-center">
+                                <MudIcon Icon="@Icons.Material.Filled.Badge" Color="GetTierColor(_accessStatus.Tier)" Size="Size.Large" />
+                                <MudText Typo="Typo.h6" Color="GetTierColor(_accessStatus.Tier)">@_accessStatus.Tier</MudText>
+                                <MudText Typo="Typo.caption">Membership Tier</MudText>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" md="3">
+                            <div class="text-center">
+                                <MudIcon Icon="@Icons.Material.Filled.Place" Color="Color.Success" Size="Size.Large" />
+                                <MudText Typo="Typo.h6">@_accessStatus.AccessibleFacilitiesCount</MudText>
+                                <MudText Typo="Typo.caption">Accessible Facilities</MudText>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" md="3">
+                            <div class="text-center">
+                                <MudIcon Icon="@Icons.Material.Filled.Verified" Color="Color.Info" Size="Size.Large" />
+                                <MudText Typo="Typo.h6">@_accessStatus.ActiveCertifications.Count</MudText>
+                                <MudText Typo="Typo.caption">Active Certifications</MudText>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" md="3">
+                            <div class="text-center">
+                                @if (_accessStatus.MembershipExpiry.HasValue)
+                                {
+                                    var daysUntilExpiry = (_accessStatus.MembershipExpiry.Value - DateTime.UtcNow).Days;
+                                    var expiryColor = daysUntilExpiry <= 30 ? Color.Warning : Color.Success;
+                                    <MudIcon Icon="@Icons.Material.Filled.Schedule" Color="@expiryColor" Size="Size.Large" />
+                                    <MudText Typo="Typo.h6" Color="@expiryColor">@daysUntilExpiry</MudText>
+                                    <MudText Typo="Typo.caption">Days Until Expiry</MudText>
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.AllInclusive" Color="Color.Success" Size="Size.Large" />
+                                    <MudText Typo="Typo.h6" Color="Color.Success">∞</MudText>
+                                    <MudText Typo="Typo.caption">No Expiry</MudText>
+                                }
+                            </div>
+                        </MudItem>
+                    </MudGrid>
+                    
+                    @if (_accessStatus.Warnings.Any())
+                    {
+                        <MudAlert Severity="Severity.Warning" Class="mt-3">
+                            @foreach (var warning in _accessStatus.Warnings)
+                            {
+                                <div>@warning</div>
+                            }
+                        </MudAlert>
+                    }
+                    
+                    @if (_accessStatus.ExpiringSoonCertifications.Any())
+                    {
+                        <MudAlert Severity="Severity.Info" Class="mt-3">
+                            <strong>Certifications expiring soon:</strong> @string.Join(", ", _accessStatus.ExpiringSoonCertifications)
+                        </MudAlert>
+                    }
+                }
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter] public Guid MemberId { get; set; }
+    [Parameter] public EventCallback<string> OnNavigate { get; set; }
+
+    private bool _loading = true;
+    private List<FacilityBookingDto> _upcomingBookings = new();
+    private List<FacilityDto> _favoriteFacilities = new();
+    private MemberBookingHistoryDto? _bookingHistory;
+    private MemberAccessStatusDto? _accessStatus;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboardData();
+    }
+
+    private async Task LoadDashboardData()
+    {
+        _loading = true;
+        try
+        {
+            var memberId = MemberId != Guid.Empty ? MemberId : (await AuthService.GetCurrentMemberIdAsync() ?? Guid.Empty);
+            if (memberId == Guid.Empty) return;
+
+            // Load all dashboard data in parallel
+            var tasks = new Task[]
+            {
+                LoadUpcomingBookings(memberId),
+                LoadFavoriteFacilities(memberId),
+                LoadBookingHistory(memberId),
+                LoadAccessStatus(memberId)
+            };
+
+            await Task.WhenAll(tasks);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading dashboard data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadUpcomingBookings(Guid memberId)
+    {
+        try
+        {
+            var response = await MemberBookingService.GetMemberUpcomingBookingsAsync(memberId);
+            if (response?.Success == true && response.Data != null)
+            {
+                _upcomingBookings = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading upcoming bookings: {ex.Message}");
+        }
+    }
+
+    private async Task LoadFavoriteFacilities(Guid memberId)
+    {
+        try
+        {
+            var response = await MemberBookingService.GetMemberFavoriteFacilitiesAsync(memberId);
+            if (response?.Success == true && response.Data != null)
+            {
+                _favoriteFacilities = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading favorite facilities: {ex.Message}");
+        }
+    }
+
+    private async Task LoadBookingHistory(Guid memberId)
+    {
+        try
+        {
+            var response = await MemberBookingService.GetMemberBookingHistoryAsync(memberId);
+            if (response?.Success == true && response.Data != null)
+            {
+                _bookingHistory = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading booking history: {ex.Message}");
+        }
+    }
+
+    private async Task LoadAccessStatus(Guid memberId)
+    {
+        try
+        {
+            var response = await MemberBookingService.GetMemberAccessStatusAsync(memberId);
+            if (response?.Success == true && response.Data != null)
+            {
+                _accessStatus = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading access status: {ex.Message}");
+        }
+    }
+
+    private Color GetBookingStatusColor(BookingStatus status)
+    {
+        return status switch
+        {
+            BookingStatus.Confirmed => Color.Success,
+            BookingStatus.CheckedIn => Color.Info,
+            BookingStatus.Completed => Color.Primary,
+            BookingStatus.Cancelled => Color.Error,
+            BookingStatus.NoShow => Color.Warning,
+            _ => Color.Dark
+        };
+    }
+
+    private Color GetFacilityStatusColor(FacilityStatus status)
+    {
+        return status switch
+        {
+            FacilityStatus.Available => Color.Success,
+            FacilityStatus.Occupied => Color.Info,
+            FacilityStatus.Maintenance => Color.Warning,
+            FacilityStatus.OutOfOrder => Color.Error,
+            _ => Color.Dark
+        };
+    }
+
+    private Color GetTierColor(MembershipTier tier)
+    {
+        return tier switch
+        {
+            MembershipTier.VIP => Color.Tertiary,
+            MembershipTier.Premium => Color.Secondary,
+            MembershipTier.Family => Color.Info,
+            _ => Color.Primary
+        };
+    }
+
+    private async Task NavigateToBookFacility()
+    {
+        await OnNavigate.InvokeAsync("/facilities/book");
+    }
+
+    private async Task NavigateToMyBookings()
+    {
+        await OnNavigate.InvokeAsync("/member/bookings");
+    }
+
+    private async Task NavigateToBrowseFacilities()
+    {
+        await OnNavigate.InvokeAsync("/facilities");
+    }
+
+    private async Task NavigateToFacilityDetail(Guid facilityId)
+    {
+        await OnNavigate.InvokeAsync($"/facilities/{facilityId}");
+    }
+}

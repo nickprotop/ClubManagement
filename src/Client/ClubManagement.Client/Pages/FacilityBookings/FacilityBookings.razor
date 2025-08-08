@@ -1,0 +1,539 @@
+@page "/facility-bookings"
+@page "/facilities/{FacilityId:guid}/bookings"
+@using ClubManagement.Client.Services
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using ClubManagement.Shared.Models.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject IFacilityService FacilityService
+@inject IMemberService MemberService
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>@(_facility != null ? $"{_facility.Name} Bookings" : "Facility Bookings")</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div class="d-flex align-center gap-3">
+        @if (FacilityId.HasValue && _facility != null)
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
+                         Color="Color.Default"
+                         OnClick="@(() => Navigation.NavigateTo($"/facilities/{FacilityId}"))"
+                         Title="Back to Facility Details" />
+            <div class="d-flex align-center gap-2">
+                <MudIcon Icon="@_facility.Icon" Color="Color.Primary" />
+                <MudText Typo="Typo.h4">@_facility.Name Bookings</MudText>
+            </div>
+        }
+        else
+        {
+            <MudText Typo="Typo.h4">Facility Bookings</MudText>
+        }
+    </div>
+    
+    @if (_permissions?.CanCreate == true)
+    {
+        <MudButton Variant="Variant.Filled" 
+                   Color="Color.Primary" 
+                   StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="@(() => OpenCreateBookingDialog())">
+            New Booking
+        </MudButton>
+    }
+</div>
+
+<MudCard>
+    <MudCardContent>
+        <!-- Filters -->
+        <div class="d-flex gap-4 mb-4 flex-wrap">
+            @if (!FacilityId.HasValue)
+            {
+                <MudSelect @bind-Value="_selectedFacilityId"
+                          Label="Facility"
+                          Variant="Variant.Outlined"
+                          Clearable="true"
+                          OnSelectionChanged="OnFilterChanged">
+                    @if (_facilities != null)
+                    {
+                        @foreach (var facility in _facilities)
+                        {
+                            <MudSelectItem Value="facility.Id">@facility.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            }
+
+            <MudSelect @bind-Value="_selectedMemberId"
+                      Label="Member"
+                      Variant="Variant.Outlined"
+                      Clearable="true"
+                      OnSelectionChanged="OnFilterChanged">
+                @if (_members != null)
+                {
+                    @foreach (var member in _members)
+                    {
+                        <MudSelectItem Value="member.Id">@member.FullName</MudSelectItem>
+                    }
+                }
+            </MudSelect>
+
+            <MudDatePicker @bind-Date="_startDate"
+                          Label="Start Date"
+                          Variant="Variant.Outlined"
+                          OnDateChanged="OnFilterChanged" />
+
+            <MudDatePicker @bind-Date="_endDate"
+                          Label="End Date"
+                          Variant="Variant.Outlined"
+                          OnDateChanged="OnFilterChanged" />
+
+            <MudSelect @bind-Value="_selectedStatus"
+                      Label="Status"
+                      Variant="Variant.Outlined"
+                      Clearable="true"
+                      OnSelectionChanged="OnFilterChanged">
+                <MudSelectItem Value="BookingStatus.Confirmed">Confirmed</MudSelectItem>
+                <MudSelectItem Value="BookingStatus.CheckedIn">Checked In</MudSelectItem>
+                <MudSelectItem Value="BookingStatus.CheckedOut">Checked Out</MudSelectItem>
+                <MudSelectItem Value="BookingStatus.Cancelled">Cancelled</MudSelectItem>
+                <MudSelectItem Value="BookingStatus.NoShow">No Show</MudSelectItem>
+            </MudSelect>
+        </div>
+
+        <!-- Bookings Table -->
+        <MudDataGrid T="FacilityBookingDto"
+                     Items="_bookings"
+                     Loading="_loading"
+                     Elevation="0"
+                     Dense="true"
+                     SortMode="SortMode.Multiple">
+            <Columns>
+                <PropertyColumn Property="x => x.StartDateTime" Title="Date & Time" Sortable="true">
+                    <CellTemplate>
+                        <div>
+                            <MudText Typo="Typo.body2">@context.Item.StartDateTime.ToString("MMM dd, yyyy")</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @context.Item.StartDateTime.ToString("h:mm tt") - @context.Item.EndDateTime.ToString("h:mm tt")
+                            </MudText>
+                        </div>
+                    </CellTemplate>
+                </PropertyColumn>
+                
+                @if (!FacilityId.HasValue)
+                {
+                    <PropertyColumn Property="x => x.FacilityName" Title="Facility" Sortable="true">
+                        <CellTemplate>
+                            <MudLink Href="@($"/facilities/{context.Item.FacilityId}")" Typo="Typo.body2">
+                                @context.Item.FacilityName
+                            </MudLink>
+                            @if (!string.IsNullOrEmpty(context.Item.FacilityLocation))
+                            {
+                                <br />
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Item.FacilityLocation</MudText>
+                            }
+                        </CellTemplate>
+                    </PropertyColumn>
+                }
+                
+                <PropertyColumn Property="x => x.MemberName" Title="Member" Sortable="true">
+                    <CellTemplate>
+                        <MudLink Href="@($"/members/{context.Item.MemberId}")" Typo="Typo.body2">
+                            @context.Item.MemberName
+                        </MudLink>
+                        @if (!string.IsNullOrEmpty(context.Item.MemberEmail))
+                        {
+                            <br />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Item.MemberEmail</MudText>
+                        }
+                    </CellTemplate>
+                </PropertyColumn>
+                
+                <PropertyColumn Property="x => x.Status" Title="Status" Sortable="true">
+                    <CellTemplate>
+                        <MudChip T="string" Color="@GetStatusColor(context.Item.Status)" 
+                                Size="Size.Small" 
+                                Variant="Variant.Filled">
+                            @context.Item.Status
+                        </MudChip>
+                        @if (context.Item.NoShow)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Warning" 
+                                    Color="Color.Warning" 
+                                    Size="Size.Small" 
+                                    Title="No Show" />
+                        }
+                    </CellTemplate>
+                </PropertyColumn>
+
+                <PropertyColumn Property="x => x.BookingSource" Title="Source" Sortable="true">
+                    <CellTemplate>
+                        <MudChip T="string" Color="@GetSourceColor(context.Item.BookingSource)" 
+                                Size="Size.Small" 
+                                Variant="Variant.Text">
+                            @context.Item.BookingSource
+                        </MudChip>
+                    </CellTemplate>
+                </PropertyColumn>
+
+                <PropertyColumn Property="x => x.Cost" Title="Cost" Sortable="true">
+                    <CellTemplate>
+                        @if (context.Item.Cost.HasValue)
+                        {
+                            <MudText Typo="Typo.body2">@context.Item.Cost.Value.ToString("C")</MudText>
+                            @if (context.Item.PaymentDate.HasValue)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Paid" 
+                                        Color="Color.Success" 
+                                        Size="Size.Small" 
+                                        Title="Paid" />
+                            }
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Free</MudText>
+                        }
+                    </CellTemplate>
+                </PropertyColumn>
+
+                <PropertyColumn Property="x => x.ParticipantCount" Title="Participants">
+                    <CellTemplate>
+                        @if (context.Item.ParticipantCount.HasValue)
+                        {
+                            <div class="d-flex align-center gap-1">
+                                <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" />
+                                <MudText Typo="Typo.body2">@context.Item.ParticipantCount</MudText>
+                            </div>
+                        }
+                    </CellTemplate>
+                </PropertyColumn>
+
+                <TemplateColumn Title="Actions" Sortable="false">
+                    <CellTemplate>
+                        <div class="d-flex gap-1">
+                            <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                         Size="Size.Small"
+                                         Color="Color.Primary"
+                                         OnClick="@(() => ViewBookingDetails(context.Item))"
+                                         Title="View Details" />
+                            
+                            @if (_permissions?.CanEdit == true && context.Item.Status == BookingStatus.Confirmed)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Login"
+                                             Size="Size.Small"
+                                             Color="Color.Success"
+                                             OnClick="@(() => CheckInBooking(context.Item))"
+                                             Title="Check In" />
+                            }
+
+                            @if (_permissions?.CanEdit == true && context.Item.Status == BookingStatus.CheckedIn)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Logout"
+                                             Size="Size.Small"
+                                             Color="Color.Info"
+                                             OnClick="@(() => CheckOutBooking(context.Item))"
+                                             Title="Check Out" />
+                            }
+                            
+                            @if (_permissions?.CanEdit == true && (context.Item.Status == BookingStatus.Confirmed || context.Item.Status == BookingStatus.CheckedIn))
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Cancel"
+                                             Size="Size.Small"
+                                             Color="Color.Warning"
+                                             OnClick="@(() => CancelBooking(context.Item))"
+                                             Title="Cancel" />
+                            }
+
+                            @if (_permissions?.CanEdit == true)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                             Size="Size.Small"
+                                             Color="Color.Secondary"
+                                             OnClick="@(() => EditBooking(context.Item))"
+                                             Title="Edit" />
+                            }
+                        </div>
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudCardContent>
+</MudCard>
+
+<!-- Create Booking Dialog -->
+<MudDialog @bind-IsVisible="_createBookingDialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-3" />
+            New Facility Booking
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <!-- Create booking form will go here -->
+        <MudAlert Severity="Severity.Info">
+            Booking creation form coming soon...
+        </MudAlert>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _createBookingDialogVisible = false)">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled">Create Booking</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public Guid? FacilityId { get; set; }
+    
+    private List<FacilityBookingDto>? _bookings;
+    private List<FacilityDto>? _facilities;
+    private List<MemberDto>? _members;
+    private FacilityDto? _facility;
+    private FacilityPermissions? _permissions;
+    private bool _loading = true;
+    
+    // Filters
+    private Guid? _selectedFacilityId;
+    private Guid? _selectedMemberId;
+    private DateTime? _startDate;
+    private DateTime? _endDate;
+    private BookingStatus? _selectedStatus;
+    
+    // Dialog
+    private bool _createBookingDialogVisible;
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissions();
+        await LoadFacilities();
+        await LoadMembers();
+        
+        if (FacilityId.HasValue)
+        {
+            _selectedFacilityId = FacilityId.Value;
+            await LoadFacility();
+        }
+        
+        await LoadBookings();
+    }
+
+    private async Task LoadPermissions()
+    {
+        try
+        {
+            var response = await FacilityService.GetFacilityPermissionsAsync();
+            if (response.Success)
+            {
+                _permissions = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load permissions: {ex.Message}");
+        }
+    }
+
+    private async Task LoadFacility()
+    {
+        if (!FacilityId.HasValue) return;
+
+        try
+        {
+            var response = await FacilityService.GetFacilityByIdAsync(FacilityId.Value);
+            if (response.Success)
+            {
+                _facility = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load facility: {ex.Message}");
+        }
+    }
+
+    private async Task LoadFacilities()
+    {
+        try
+        {
+            var response = await FacilityService.GetFacilitiesAsync();
+            if (response.Success)
+            {
+                _facilities = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load facilities: {ex.Message}");
+        }
+    }
+
+    private async Task LoadMembers()
+    {
+        try
+        {
+            var response = await MemberService.GetMembersAsync(new MemberSearchRequest());
+            if (response.Success)
+            {
+                _members = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load members: {ex.Message}");
+        }
+    }
+
+    private async Task LoadBookings()
+    {
+        try
+        {
+            _loading = true;
+            var response = await FacilityService.GetFacilityBookingsAsync(
+                _selectedFacilityId,
+                _selectedMemberId,
+                _startDate,
+                _endDate,
+                _selectedStatus);
+                
+            if (response.Success)
+            {
+                _bookings = response.Data;
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to load bookings");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to load bookings: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnFilterChanged()
+    {
+        await LoadBookings();
+    }
+
+    private void OpenCreateBookingDialog()
+    {
+        _createBookingDialogVisible = true;
+    }
+
+    private async Task ViewBookingDetails(FacilityBookingDto booking)
+    {
+        Navigation.NavigateTo($"/facility-bookings/{booking.Id}");
+    }
+
+    private async Task CheckInBooking(FacilityBookingDto booking)
+    {
+        try
+        {
+            var request = new CheckInBookingRequest
+            {
+                CheckedInAt = DateTime.UtcNow
+            };
+
+            var response = await FacilityService.CheckInFacilityBookingAsync(booking.Id, request);
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync("Member checked in successfully");
+                await LoadBookings();
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to check in");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to check in: {ex.Message}");
+        }
+    }
+
+    private async Task CheckOutBooking(FacilityBookingDto booking)
+    {
+        try
+        {
+            var request = new CheckOutBookingRequest
+            {
+                CheckedOutAt = DateTime.UtcNow
+            };
+
+            var response = await FacilityService.CheckOutFacilityBookingAsync(booking.Id, request);
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync("Member checked out successfully");
+                await LoadBookings();
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to check out");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to check out: {ex.Message}");
+        }
+    }
+
+    private async Task CancelBooking(FacilityBookingDto booking)
+    {
+        var confirmed = await NotificationService.ShowConfirmationAsync(
+            "Cancel Booking",
+            $"Are you sure you want to cancel the booking for {booking.MemberName} on {booking.StartDateTime:MMM dd, yyyy h:mm tt}?");
+            
+        if (!confirmed) return;
+
+        try
+        {
+            var response = await FacilityService.CancelFacilityBookingAsync(booking.Id);
+            if (response.Success)
+            {
+                await NotificationService.ShowSuccessAsync("Booking cancelled successfully");
+                await LoadBookings();
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync(response.Message ?? "Failed to cancel booking");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to cancel booking: {ex.Message}");
+        }
+    }
+
+    private async Task EditBooking(FacilityBookingDto booking)
+    {
+        Navigation.NavigateTo($"/facility-bookings/{booking.Id}/edit");
+    }
+
+    private Color GetStatusColor(BookingStatus status)
+    {
+        return status switch
+        {
+            BookingStatus.Confirmed => Color.Primary,
+            BookingStatus.CheckedIn => Color.Success,
+            BookingStatus.CheckedOut => Color.Info,
+            BookingStatus.Cancelled => Color.Error,
+            BookingStatus.NoShow => Color.Warning,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetSourceColor(BookingSource source)
+    {
+        return source switch
+        {
+            BookingSource.MemberPortal => Color.Primary,
+            BookingSource.StaffBooking => Color.Secondary,
+            BookingSource.StaffBooking => Color.Info,
+            BookingSource.EventBooking => Color.Success,
+            _ => Color.Default
+        };
+    }
+}

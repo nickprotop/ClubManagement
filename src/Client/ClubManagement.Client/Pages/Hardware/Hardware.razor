@@ -93,7 +93,7 @@
                         {
                             @if (context.Item.IsCurrentlyAssigned && context.Item.CurrentAssignment != null)
                             {
-                                <MudChip Color="Color.Info" 
+                                <MudChip T="string" Color="Color.Info" 
                                         Size="Size.Small" 
                                         Variant="Variant.Filled"
                                         Icon="@Icons.Material.Filled.Person">
@@ -102,7 +102,7 @@
                             }
                             else
                             {
-                                <MudChip Color="Color.Success" 
+                                <MudChip T="string" Color="Color.Success" 
                                         Size="Size.Small" 
                                         Variant="Variant.Filled"
                                         Icon="@Icons.Material.Filled.Check">
@@ -112,7 +112,7 @@
                         }
                         else
                         {
-                            <MudChip Color="@GetStatusColor(context.Item.Status)" 
+                            <MudChip T="string" Color="@GetStatusColor(context.Item.Status)" 
                                     Size="Size.Small" 
                                     Variant="Variant.Filled">
                                 @context.Item.Status

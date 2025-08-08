@@ -17,8 +17,19 @@ public class Facility : BaseEntity
     public TimeSpan? OperatingHoursEnd { get; set; }
     public List<DayOfWeek> OperatingDays { get; set; } = new();
     
+    // Member Integration Properties
+    public List<MembershipTier> AllowedMembershipTiers { get; set; } = new();
+    public List<string> RequiredCertifications { get; set; } = new();
+    public int MemberConcurrentBookingLimit { get; set; } = 1;
+    public bool RequiresMemberSupervision { get; set; } = false;
+    public decimal MemberHourlyRate { get; set; }
+    public decimal NonMemberHourlyRate { get; set; }
+    public string? Location { get; set; }
+    public string? Icon { get; set; }
+    
     // Navigation properties
     public FacilityType FacilityType { get; set; } = null!;
+    public List<FacilityBooking> Bookings { get; set; } = new();
 }
 
 public enum FacilityStatus
