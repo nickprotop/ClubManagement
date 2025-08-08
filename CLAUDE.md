@@ -48,6 +48,40 @@ dotnet ef database drop --project src/Infrastructure/ClubManagement.Infrastructu
 ./scripts/generate-jwt-secret.sh
 ```
 
+### Database Access
+When direct database access is needed for debugging or data inspection, use Docker with credentials from your `.env` file:
+
+```bash
+# Access PostgreSQL via Docker container
+# Authentication credentials are automatically read from your .env file by docker-compose
+docker exec -it clubmanagement-postgres-1 psql -U clubadmin -d clubmanagement
+
+# Access specific tenant database (replace demo_club with your tenant)
+docker exec -it clubmanagement-postgres-1 psql -U clubadmin -d clubmanagement_demo_club
+
+# Alternative: Use PGPASSWORD environment variable from .env
+PGPASSWORD=$(grep "^POSTGRES_PASSWORD=" .env | cut -d'=' -f2) docker exec -it clubmanagement-postgres-1 psql -U clubadmin -d clubmanagement
+
+# Access with specific host and port (useful for external tools)
+PGPASSWORD=$(grep "^POSTGRES_PASSWORD=" .env | cut -d'=' -f2) psql -h localhost -p 4004 -U clubadmin -d clubmanagement
+
+# List all databases (catalog + tenant databases)
+docker exec -it clubmanagement-postgres-1 psql -U clubadmin -d postgres -c "\l"
+
+# Connect to specific tenant database for member investigation
+PGPASSWORD=$(grep "^POSTGRES_PASSWORD=" .env | cut -d'=' -f2) psql -h localhost -p 4004 -U clubadmin -d clubmanagement_demo_club -c "SELECT id, user_id, first_name, last_name FROM members;"
+
+# Check User-Member relationships
+PGPASSWORD=$(grep "^POSTGRES_PASSWORD=" .env | cut -d'=' -f2) psql -h localhost -p 4004 -U clubadmin -d clubmanagement_demo_club -c "SELECT u.id, u.email, u.first_name, u.last_name, u.role, m.id as member_id, m.tier FROM users u LEFT JOIN members m ON u.id = m.user_id WHERE u.email IN ('admin@demo.localhost', 'member@demo.localhost', 'coach@demo.localhost');"
+```
+
+**Important Database Access Notes:**
+- **Security**: Never commit `.env` file - it contains sensitive database credentials
+- **Multi-tenant isolation**: Always specify the correct tenant database when investigating issues
+- **Catalog vs Tenant**: Use `clubmanagement` for tenant registry, `clubmanagement_[tenant]` for tenant data
+- **Container name**: May vary based on docker-compose version (try `clubmanagement_postgres_1` if above doesn't work)
+- **External tools**: Use localhost:4004 with credentials from `.env` for GUI database clients
+
 ## Architecture Overview
 
 ### Multi-Tenant Database-per-Tenant Design
