@@ -10,7 +10,7 @@
 
 <div class="collapsible-nav-menu">
     <!-- Dashboard - Always visible -->
-    <div class="nav-item @(IsCurrentPage("/") ? "active" : "")" @onclick="@(() => NavigateTo("/"))">
+    <div class="nav-item @(IsCurrentPage("/dashboard") ? "active" : "")" @onclick="@(() => NavigateTo("/dashboard"))">
         <div class="nav-link">
             <MudIcon Icon="@Icons.Material.Filled.Dashboard" Class="nav-icon" />
             <span class="nav-text">Dashboard</span>

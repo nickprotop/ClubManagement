@@ -1,0 +1,363 @@
+@page "/dashboard"
+@using ClubManagement.Client.Services
+@using ClubManagement.Client.Components.Facilities
+@using ClubManagement.Shared.DTOs
+@using ClubManagement.Shared.Models
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthService AuthService
+@inject IDashboardService DashboardService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@attribute [Authorize]
+
+<PageTitle>Dashboard - Club Management</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbItems" />
+
+@if (_isLoading)
+{
+    <MudStack AlignItems="AlignItems.Center" Class="pa-8">
+        <MudProgressCircular Size="Size.Large" Indeterminate="true" />
+        <MudText>Loading dashboard...</MudText>
+    </MudStack>
+}
+else if (_dashboardData != null)
+{
+    <MudStack Spacing="4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4">@GetDashboardTitle()</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">@GetWelcomeMessage()</MudText>
+        </MudStack>
+        
+        @if (_currentUser != null)
+        {
+            <MudAlert Severity="Severity.Info" ContentAlignment="HorizontalAlignment.Center">
+                Welcome back, @_currentUser.FirstName! Last login: @(_currentUser.LastLoginAt?.ToString("MMM dd, yyyy HH:mm") ?? "First time")
+            </MudAlert>
+        }
+
+        <!-- Alerts Section -->
+        @if (_dashboardData.Alerts.Any())
+        {
+            <MudStack Spacing="2">
+                @foreach (var alert in _dashboardData.Alerts)
+                {
+                    <MudAlert Severity="@GetSeverity(alert.Severity)" 
+                              ContentAlignment="HorizontalAlignment.Start"
+                              ShowCloseIcon="true">
+                        <div class="d-flex align-center">
+                            @if (!string.IsNullOrEmpty(alert.Icon))
+                            {
+                                <MudIcon Icon="@alert.Icon" Class="mr-2" />
+                            }
+                            <div class="flex-grow-1">
+                                <MudText>@alert.Message</MudText>
+                                @if (!string.IsNullOrEmpty(alert.ActionText) && !string.IsNullOrEmpty(alert.ActionHref))
+                                {
+                                    <MudButton Size="Size.Small" 
+                                               Variant="Variant.Text" 
+                                               Href="@alert.ActionHref"
+                                               Class="mt-1">
+                                        @alert.ActionText
+                                    </MudButton>
+                                }
+                            </div>
+                        </div>
+                    </MudAlert>
+                }
+            </MudStack>
+        }
+
+        <!-- Key Metrics Cards -->
+        <MudGrid>
+            @foreach (var metric in _dashboardData.MetricCards)
+            {
+                <MudItem xs="12" sm="6" md="3">
+                    <MudCard>
+                        <MudCardContent>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudStack Spacing="1">
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">@metric.Title</MudText>
+                                    <MudText Typo="Typo.h4">@metric.Value</MudText>
+                                    @if (!string.IsNullOrEmpty(metric.SubText))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@metric.SubText</MudText>
+                                    }
+                                    @if (!string.IsNullOrEmpty(metric.TrendText))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="@GetMudColor(metric.TrendColor)">@metric.TrendText</MudText>
+                                    }
+                                </MudStack>
+                                <MudIcon Icon="@metric.Icon" Size="Size.Large" Color="@GetMudColor(metric.Color)" />
+                            </MudStack>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+
+        <!-- Quick Actions -->
+        @if (_dashboardData.QuickActions.Any())
+        {
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Quick Actions</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid>
+                        @foreach (var action in _dashboardData.QuickActions)
+                        {
+                            <MudItem xs="12" sm="6" md="4" lg="3">
+                                <MudButton Variant="Variant.Outlined" 
+                                           Color="@GetMudColor(action.Color)" 
+                                           StartIcon="@action.Icon"
+                                           FullWidth="true"
+                                           Href="@action.Href">
+                                    @action.Title
+                                </MudButton>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                </MudCardContent>
+            </MudCard>
+        }
+
+        <!-- Member Facility Dashboard Widget -->
+        @if (_currentUser?.Role == UserRole.Member)
+        {
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">My Facilities</MudText>
+                        <MudText Typo="Typo.caption">Your facility usage and bookings</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MemberFacilityDashboard MemberId="_currentUser.Id" OnNavigate="NavigateToPage" />
+                </MudCardContent>
+            </MudCard>
+        }
+
+        <!-- Content Grid -->
+        <MudGrid>
+            <!-- Recent Activity -->
+            @if (_dashboardData.RecentActivity.Any())
+            {
+                <MudItem xs="12" md="8">
+                    <MudCard>
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">Recent Activity</MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudTimeline TimelineOrientation="TimelineOrientation.Vertical">
+                                @foreach (var activity in _dashboardData.RecentActivity.Take(5))
+                                {
+                                    <MudTimelineItem Color="@GetMudColor(activity.Color)" 
+                                                     Icon="@activity.Icon" 
+                                                     TimelineAlign="TimelineAlign.Start">
+                                        <ItemContent>
+                                            <MudText Typo="Typo.body1">@activity.Title</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">@activity.Description - @activity.TimeAgo</MudText>
+                                        </ItemContent>
+                                    </MudTimelineItem>
+                                }
+                            </MudTimeline>
+                        </MudCardContent>
+                        @if (_dashboardData.RecentActivity.Count > 5)
+                        {
+                            <MudCardActions>
+                                <MudButton StartIcon="@Icons.Material.Filled.History" 
+                                           Variant="Variant.Text" 
+                                           Href="/activity">
+                                    View All Activity
+                                </MudButton>
+                            </MudCardActions>
+                        }
+                    </MudCard>
+                </MudItem>
+            }
+
+            <!-- Upcoming Events -->
+            @if (_dashboardData.UpcomingEvents.Any())
+            {
+                <MudItem xs="12" md="@(GetEventColumnSize())">
+                    <MudCard>
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">@GetEventsTitle()</MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudStack Spacing="3">
+                                @foreach (var evt in _dashboardData.UpcomingEvents.Take(5))
+                                {
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                        <MudStack Spacing="1">
+                                            <MudText Typo="Typo.body2">@evt.Title</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                @evt.StartDateTime.ToString("ddd MMM dd, yyyy h:mm tt")
+                                            </MudText>
+                                        </MudStack>
+                                        <MudChip T="string"
+                                                 Size="Size.Small" 
+                                                 Color="@GetMudColor(evt.StatusColor)">
+                                            @evt.Status
+                                        </MudChip>
+                                    </MudStack>
+                                }
+                            </MudStack>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton StartIcon="@Icons.Material.Filled.Event" 
+                                       Variant="Variant.Text" 
+                                       Href="/events">
+                                View All Events
+                            </MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    </MudStack>
+}
+else if (_hasError)
+{
+    <MudAlert Severity="Severity.Error" ContentAlignment="HorizontalAlignment.Center">
+        <MudText>Unable to load dashboard data. Please try refreshing the page.</MudText>
+        <MudButton Variant="Variant.Text" OnClick="LoadDashboardData" Class="mt-2">
+            Retry
+        </MudButton>
+    </MudAlert>
+}
+
+@code {
+    private List<BreadcrumbItem> _breadcrumbItems = new()
+    {
+        new BreadcrumbItem("Dashboard", href: "/dashboard", disabled: true, icon: Icons.Material.Filled.Dashboard)
+    };
+
+    private UserProfileDto? _currentUser;
+    private DashboardDataDto? _dashboardData;
+    private bool _isLoading = true;
+    private bool _hasError = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check authentication
+        if (!await AuthService.IsAuthenticatedAsync())
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        _currentUser = await AuthService.GetCurrentUserAsync();
+        await LoadDashboardData();
+    }
+
+    private async Task LoadDashboardData()
+    {
+        try
+        {
+            _isLoading = true;
+            _hasError = false;
+            
+            var response = await DashboardService.GetDashboardDataAsync();
+            if (response.Success)
+            {
+                _dashboardData = response.Data;
+            }
+            else
+            {
+                _hasError = true;
+                Snackbar.Add($"Failed to load dashboard: {response.Message}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            _hasError = true;
+            Snackbar.Add($"Error loading dashboard: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private string GetDashboardTitle()
+    {
+        return _dashboardData?.UserRole switch
+        {
+            UserRole.SuperAdmin => "System Overview",
+            UserRole.Admin => "Club Dashboard",
+            UserRole.Coach => "Coach Dashboard",
+            UserRole.Staff => "Staff Dashboard", 
+            UserRole.Instructor => "Instructor Dashboard",
+            UserRole.Member => "My Dashboard",
+            _ => "Dashboard"
+        };
+    }
+
+    private string GetWelcomeMessage()
+    {
+        return _dashboardData?.UserRole switch
+        {
+            UserRole.SuperAdmin => "Manage all tenants and system operations",
+            UserRole.Admin => "Oversee club operations and member management",
+            UserRole.Coach => "Manage your classes and track student progress",
+            UserRole.Staff => "Handle daily operations and member support",
+            UserRole.Instructor => "Plan lessons and monitor student development", 
+            UserRole.Member => "Track your activities and manage your membership",
+            _ => "Welcome to the club management system"
+        };
+    }
+
+    private string GetEventsTitle()
+    {
+        return _dashboardData?.UserRole switch
+        {
+            UserRole.Coach or UserRole.Instructor => "My Upcoming Classes",
+            UserRole.Member => "My Registered Events",
+            _ => "Upcoming Events"
+        };
+    }
+
+    private int GetEventColumnSize()
+    {
+        return _dashboardData?.RecentActivity.Any() == true ? 4 : 12;
+    }
+
+    private static Color GetMudColor(string colorString)
+    {
+        return colorString.ToLowerInvariant() switch
+        {
+            "primary" => Color.Primary,
+            "secondary" => Color.Secondary,
+            "tertiary" => Color.Tertiary,
+            "info" => Color.Info,
+            "success" => Color.Success,
+            "warning" => Color.Warning,
+            "error" => Color.Error,
+            _ => Color.Default
+        };
+    }
+
+    private static Severity GetSeverity(string severityString)
+    {
+        return severityString.ToLowerInvariant() switch
+        {
+            "success" => Severity.Success,
+            "warning" => Severity.Warning,
+            "error" => Severity.Error,
+            _ => Severity.Info
+        };
+    }
+
+    private void NavigateToPage(string page)
+    {
+        Navigation.NavigateTo(page);
+    }
+}

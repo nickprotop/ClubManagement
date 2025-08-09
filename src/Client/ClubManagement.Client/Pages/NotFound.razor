@@ -1,0 +1,171 @@
+@page "/not-found"
+@inject NavigationManager Navigation
+@layout EmptyLayout
+
+<PageTitle>Page Not Found - Club Management</PageTitle>
+
+<style>
+    .not-found-container {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem;
+        color: white;
+    }
+
+    .not-found-content {
+        text-align: center;
+        max-width: 600px;
+        width: 100%;
+    }
+
+    .error-code {
+        font-size: 8rem;
+        font-weight: 800;
+        line-height: 1;
+        margin-bottom: 1rem;
+        background: linear-gradient(45deg, #FF6B6B, #FF8E53);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
+    }
+
+    .error-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+
+    .error-message {
+        font-size: 1.2rem;
+        margin-bottom: 3rem;
+        opacity: 0.9;
+        line-height: 1.6;
+    }
+
+    .error-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .btn {
+        padding: 1rem 2rem;
+        border-radius: 8px;
+        font-weight: 600;
+        text-decoration: none;
+        border: 2px solid;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        background: none;
+        font-size: 1rem;
+    }
+
+    .btn-primary {
+        background: white;
+        color: #667eea;
+        border-color: white;
+    }
+
+    .btn-primary:hover {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border-color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    .btn-outline {
+        background: transparent;
+        color: white;
+        border-color: rgba(255,255,255,0.5);
+    }
+
+    .btn-outline:hover {
+        background: rgba(255,255,255,0.1);
+        border-color: white;
+        transform: translateY(-2px);
+    }
+
+    .sports-illustration {
+        margin: 2rem 0;
+        opacity: 0.6;
+    }
+
+    @@media (max-width: 768px) {
+        .error-code {
+            font-size: 6rem;
+        }
+        
+        .error-title {
+            font-size: 2rem;
+        }
+        
+        .error-actions {
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .btn {
+            width: 100%;
+            max-width: 300px;
+        }
+    }
+</style>
+
+<div class="not-found-container">
+    <div class="not-found-content">
+        <div class="error-code">404</div>
+        
+        <h1 class="error-title">Game Over!</h1>
+        
+        <div class="sports-illustration">
+            <svg width="120" height="80" viewBox="0 0 120 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <!-- Soccer ball -->
+                <circle cx="30" cy="40" r="15" fill="white" opacity="0.8"/>
+                <path d="M20 40L40 40M30 30L30 50M25 35L35 45M25 45L35 35" stroke="rgba(102, 126, 234, 0.6)" stroke-width="2"/>
+                
+                <!-- Basketball -->
+                <circle cx="60" cy="40" r="13" fill="#FF8E53" opacity="0.8"/>
+                <path d="M47 40L73 40M60 27L60 53M52 32L68 48M52 48L68 32" stroke="rgba(255,255,255,0.8)" stroke-width="2"/>
+                
+                <!-- Tennis ball -->
+                <circle cx="90" cy="40" r="10" fill="#ffeaa7" opacity="0.8"/>
+                <path d="M82 35C85 40 87 40 90 35M82 45C85 40 87 40 90 45" stroke="white" stroke-width="2"/>
+            </svg>
+        </div>
+        
+        <p class="error-message">
+            Looks like this page took a timeout! The page you're looking for doesn't exist or has been moved to the bench.
+        </p>
+        
+        <div class="error-actions">
+            <a href="/" class="btn btn-primary">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M10 20V14H14V20H19V12H22L12 3L2 12H5V20H10Z"/>
+                </svg>
+                Back to Home
+            </a>
+            <button @onclick="GoBack" class="btn btn-outline">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20 11H7.83L13.42 5.41L12 4L4 12L12 20L13.41 18.59L7.83 13H20V11Z"/>
+                </svg>
+                Go Back
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/");
+    }
+}
